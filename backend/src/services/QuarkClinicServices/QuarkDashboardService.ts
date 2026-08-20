@@ -345,7 +345,10 @@ export const listQuarkDashboardAppointments = async (
                 DATE_FORMAT(NOW(), '%Y-%m-%d'),
                 ':',
                 LEFT(a.scheduleFingerprint, 24),
-                ':to:%'
+                CHAR(58),
+                'to',
+                CHAR(58),
+                '%'
               )
             )
         ) AS manualReminderToday,
