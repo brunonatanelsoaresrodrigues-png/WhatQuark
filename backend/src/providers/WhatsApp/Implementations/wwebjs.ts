@@ -300,11 +300,11 @@ const syncUnreadMessages = async (wbot: Session) => {
   }
 };
 
-const removeSession = (whatsappId: number): void => {
+const removeSession = async (whatsappId: number): Promise<void> => {
   try {
     const sessionIndex = sessions.findIndex(s => s.id === whatsappId);
     if (sessionIndex !== -1) {
-      sessions[sessionIndex].destroy();
+      await sessions[sessionIndex].destroy();
       sessions.splice(sessionIndex, 1);
     }
   } catch (err) {
@@ -442,7 +442,7 @@ const deleteMessage = async (
 
 const init = async (whatsapp: Whatsapp): Promise<void> => {
   try {
-    removeSession(whatsapp.id);
+    await removeSession(whatsapp.id);
 
     const io = getIO();
     const sessionName = whatsapp.name;
@@ -618,9 +618,17 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   }
 };
 
+const shutdown = async (): Promise<void> => {
+  const ids = sessions
+    .map(session => session.id)
+    .filter((id): id is number => typeof id === "number");
+  await Promise.all(ids.map(removeSession));
+};
+
 export const WhatsappWebJsProvider: WhatsappProvider = {
   init,
   removeSession,
+  shutdown,
   logout,
   sendMessage,
   sendMedia,

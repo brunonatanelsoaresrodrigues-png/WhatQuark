@@ -12,6 +12,16 @@ import { quietHoursDelayMs, randomSendIntervalMs } from "./workerTiming";
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
 let workerTimer: NodeJS.Timeout | undefined;
 let workerStopped = true;
+let activeWorkerRun: Promise<void> | undefined;
+
+const triggerWorker = (config: QuarkConfig, delay: number): void => {
+  workerTimer = setTimeout(() => {
+    activeWorkerRun = runWorker(config).finally(() => {
+      activeWorkerRun = undefined;
+    });
+  }, delay);
+  workerTimer.unref();
+};
 
 const claimNextNotification = async (): Promise<
   QuarkAppointmentNotification | undefined
@@ -234,8 +244,7 @@ const runWorker = async (config: QuarkConfig): Promise<void> => {
     });
   } finally {
     if (!workerStopped) {
-      workerTimer = setTimeout(() => runWorker(config), nextDelay);
-      workerTimer.unref();
+      triggerWorker(config, nextDelay);
     }
   }
 };
@@ -253,12 +262,12 @@ export const StartQuarkNotificationWorker = async (
 
   workerStopped = false;
   await recoverStuckNotifications(config);
-  workerTimer = setTimeout(() => runWorker(config), 1000);
-  workerTimer.unref();
+  triggerWorker(config, 1000);
 };
 
-export const StopQuarkNotificationWorker = (): void => {
+export const StopQuarkNotificationWorker = async (): Promise<void> => {
   workerStopped = true;
   if (workerTimer) clearTimeout(workerTimer);
   workerTimer = undefined;
+  if (activeWorkerRun) await activeWorkerRun;
 };

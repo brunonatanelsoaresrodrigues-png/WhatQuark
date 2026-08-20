@@ -120,7 +120,7 @@ const createDueReminder = async (
     snapshot,
     `reminder:${hours}:${snapshot.scheduleFingerprint.slice(0, 24)}`,
     "REMINDER",
-    reminderAppointmentMessage(snapshot, hours),
+    reminderAppointmentMessage(snapshot, hours, config.clinicAddress),
     suppress ? "SUPPRESSED" : "PENDING"
   );
 };
@@ -145,7 +145,7 @@ const processNewAppointment = async (
       snapshot,
       "created",
       "CREATED",
-      newAppointmentMessage(snapshot)
+      newAppointmentMessage(snapshot, config.clinicAddress)
     );
     await createDueReminder(config, snapshot, true);
   }
@@ -194,7 +194,7 @@ const processExistingAppointment = async (
       snapshot,
       `changed:${snapshot.snapshotFingerprint.slice(0, 24)}`,
       scheduleChanged ? "RESCHEDULED" : "UPDATED",
-      changedAppointmentMessage(snapshot)
+      changedAppointmentMessage(snapshot, config.clinicAddress)
     );
     await createDueReminder(config, snapshot, true);
   } else {

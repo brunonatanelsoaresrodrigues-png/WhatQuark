@@ -2,6 +2,7 @@ import {
   buildAppointmentSnapshot,
   normalizeQuarkPhone,
   parseConfirmationChoice,
+  parseConfirmationReply,
   parseQuarkScheduledAt
 } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
@@ -27,6 +28,7 @@ const config: QuarkConfig = {
   processingTimeoutMs: 600000,
   workerPollIntervalMs: 5000,
   timezone: "America/Sao_Paulo",
+  clinicAddress: "",
   dryRun: true,
   testAllowlist: []
 };
@@ -61,6 +63,18 @@ describe("QuarkClinic appointment helpers", () => {
     expect(parseConfirmationChoice("2 - cancelar")).toBe(2);
     expect(parseConfirmationChoice("12")).toBeNull();
     expect(parseConfirmationChoice("confirmar")).toBeNull();
+  });
+
+  it("accepts unambiguous SIM and NÃO replies with an optional appointment number", () => {
+    expect(parseConfirmationReply("SIM")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("Sim, confirmo")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("NÃO")).toEqual({ choice: 2 });
+    expect(parseConfirmationReply("nao 2")).toEqual({
+      choice: 2,
+      appointmentOption: 2
+    });
+    expect(parseConfirmationReply("acho que sim")).toBeNull();
+    expect(parseConfirmationReply("talvez não")).toBeNull();
   });
 
   it("changes the schedule fingerprint when an old appointment is moved", () => {

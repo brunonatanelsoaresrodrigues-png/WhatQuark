@@ -29,6 +29,7 @@ export interface QuarkConfig {
   processingTimeoutMs: number;
   workerPollIntervalMs: number;
   timezone: string;
+  clinicAddress: string;
   dryRun: boolean;
   testAllowlist: string[];
 }
@@ -136,6 +137,7 @@ export const getQuarkConfig = (): QuarkConfig => {
     workerPollIntervalMs:
       positiveNumber(process.env.QUARK_WORKER_POLL_INTERVAL_SECONDS, 5) * 1000,
     timezone,
+    clinicAddress: (process.env.QUARK_CLINIC_ADDRESS || "").trim(),
     dryRun: process.env.QUARK_DRY_RUN !== "false",
     testAllowlist: (process.env.QUARK_TEST_ALLOWLIST || "")
       .split(",")

@@ -22,8 +22,10 @@ os serviços internos de envio do WhaTicket.
 - Lembretes usam QUARK_REMINDER_HOURS. Lembretes que já estariam vencidos na
   baseline e lembretes coincidentes com uma mensagem de criação/alteração são
   suprimidos para evitar mensagens em sequência.
-- Respostas 1 e 2 são aplicadas ao agendamento futuro pendente mais próximo do
-  número que respondeu: 1 confirma e 2 cancela.
+- Respostas SIM/1 e NÃO/2 são aplicadas ao agendamento futuro pendente do
+  número que respondeu. Quando o mesmo telefone tem mais de uma consulta
+  pendente, o sistema pede SIM 1, NÃO 1, SIM 2 ou NÃO 2 e não escolhe
+  silenciosamente. SIM/1 confirma no Quark e NÃO/2 cancela no Quark.
 
 ## Persistência e idempotência
 
@@ -60,6 +62,7 @@ ignorado pelo Git. Não coloque tokens em Compose versionado, testes ou logs.
     QUARK_SYNC_HORIZON_DAYS=365
     QUARK_TIMEZONE=America/Sao_Paulo
     QUARK_DEFAULT_COUNTRY_CODE=55
+    QUARK_CLINIC_ADDRESS=
     QUARK_REMINDER_HOURS=24,2
     QUARK_SEND_INTERVAL_MIN_SECONDS=15
     QUARK_SEND_INTERVAL_MAX_SECONDS=45
@@ -82,6 +85,12 @@ itens de outros números permanecem pendentes.
 
 O horário silencioso usa QUARK_TIMEZONE. O container também recebe
 TZ=America/Sao_Paulo; mantenha ambos coerentes.
+
+QUARK_CLINIC_ADDRESS completa a mensagem com o endereço da unidade. A API de
+agendamentos informa o nome da clínica, mas não retorna seu endereço. Deixe a
+variável vazia se houver unidades com endereços diferentes até existir uma
+fonte confiável por clinicaId; nunca envie um endereço fixo para a unidade
+errada.
 
 ## Rollout seguro
 

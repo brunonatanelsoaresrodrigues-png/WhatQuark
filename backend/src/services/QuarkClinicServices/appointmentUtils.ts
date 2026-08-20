@@ -144,7 +144,33 @@ export const appointmentIsCancelled = (status: string): boolean =>
 export const appointmentCanBeConfirmed = (status: string): boolean =>
   status === "AGENDADO";
 
-export const parseConfirmationChoice = (body: string): 1 | 2 | null => {
-  const match = body.trim().match(/^([12])(?:\D|$)/);
-  return match ? (Number(match[1]) as 1 | 2) : null;
+export interface ConfirmationReply {
+  choice: 1 | 2;
+  appointmentOption?: number;
+}
+
+export const parseConfirmationReply = (
+  body: string
+): ConfirmationReply | null => {
+  const normalized = body
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  const numeric = normalized.match(/^([12])(?:\D|$)/);
+  if (numeric) return { choice: Number(numeric[1]) as 1 | 2 };
+
+  const textual = normalized.match(/^(sim|nao)(?:[\s,:;-]+(\d+))?(?:\b|$)/);
+  if (!textual) return null;
+
+  const option = textual[2] ? Number(textual[2]) : undefined;
+  return {
+    choice: textual[1] === "sim" ? 1 : 2,
+    appointmentOption:
+      option && Number.isSafeInteger(option) && option > 0 ? option : undefined
+  };
 };
+
+export const parseConfirmationChoice = (body: string): 1 | 2 | null =>
+  parseConfirmationReply(body)?.choice || null;

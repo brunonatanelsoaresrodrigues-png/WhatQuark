@@ -75,6 +75,7 @@ interface Session extends WASocket {
 
 const sessions = new Map<number, Session>();
 const stores = new Map<number, Store>();
+const inFlightMessageHandlers = new Set<Promise<void>>();
 
 const msgRetryCounterLRU = new LRUCache<string, number>({
   max: 5000,
@@ -1016,7 +1017,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
     if (validMessages.length === 0) return;
 
-    await Promise.all(
+    const handling = Promise.all(
       validMessages.map(async msg => {
         try {
           const {
@@ -1036,7 +1037,13 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
           logger.error(err, "Error handling message upsert");
         }
       })
-    );
+    ).then(() => undefined);
+    inFlightMessageHandlers.add(handling);
+    try {
+      await handling;
+    } finally {
+      inFlightMessageHandlers.delete(handling);
+    }
   });
 
   wbot.ev.on("connection.update", async update => {
@@ -1200,6 +1207,16 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       })
     );
   });
+};
+
+const shutdown = async (): Promise<void> => {
+  sessions.forEach(wbot => wbot.ev.removeAllListeners("messages.upsert"));
+  await Promise.all(
+    Array.from(inFlightMessageHandlers).map(handler =>
+      handler.catch(() => undefined)
+    )
+  );
+  await Promise.all(Array.from(sessions.keys()).map(removeSession));
 };
 
 const logout = async (sessionId: number): Promise<void> => {
@@ -1522,6 +1539,7 @@ const fetchChatMessages = async (
 export const WhaileysProvider: WhatsappProvider = {
   init,
   removeSession,
+  shutdown,
   logout,
   sendMessage,
   sendMedia,

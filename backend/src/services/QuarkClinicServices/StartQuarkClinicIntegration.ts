@@ -13,11 +13,18 @@ import {
 let timer: NodeJS.Timeout | undefined;
 let running = false;
 let started = false;
+let activeSync: Promise<void> | undefined;
 
 const scheduleNext = (config: QuarkConfig): void => {
   if (!started) return;
-  timer = setTimeout(() => runSync(config), config.pollIntervalMs);
+  timer = setTimeout(() => triggerSync(config), config.pollIntervalMs);
   timer.unref();
+};
+
+const triggerSync = (config: QuarkConfig): void => {
+  activeSync = runSync(config).finally(() => {
+    activeSync = undefined;
+  });
 };
 
 const runSync = async (config: QuarkConfig): Promise<void> => {
@@ -54,7 +61,7 @@ const StartQuarkClinicIntegration = (): void => {
         err: error
       })
     );
-    timer = setTimeout(() => runSync(config), config.startupDelayMs);
+    timer = setTimeout(() => triggerSync(config), config.startupDelayMs);
     timer.unref();
   } catch (error) {
     logger.error({
@@ -64,11 +71,12 @@ const StartQuarkClinicIntegration = (): void => {
   }
 };
 
-export const StopQuarkClinicIntegration = (): void => {
+export const StopQuarkClinicIntegration = async (): Promise<void> => {
   started = false;
   if (timer) clearTimeout(timer);
   timer = undefined;
-  StopQuarkNotificationWorker();
+  await StopQuarkNotificationWorker();
+  if (activeSync) await activeSync;
 };
 
 export default StartQuarkClinicIntegration;

@@ -52,6 +52,7 @@ const config = {
   processingTimeoutMs: 600000,
   workerPollIntervalMs: 5000,
   timezone: "America/Sao_Paulo",
+  clinicAddress: "Avenida de Teste, 123",
   dryRun: true,
   testAllowlist: []
 } as QuarkConfig;

@@ -2,7 +2,8 @@ import gracefulShutdown from "http-graceful-shutdown";
 import app from "./app";
 import { initIO } from "./libs/socket";
 import { logger } from "./utils/logger";
-import { initRedis } from "./libs/redisStore";
+import { closeRedis, initRedis } from "./libs/redisStore";
+import { whatsappProvider } from "./providers/WhatsApp";
 import { StartAllWhatsAppsSessions } from "./services/WbotServices/StartAllWhatsAppsSessions";
 import StartQuarkClinicIntegration, {
   StopQuarkClinicIntegration
@@ -16,9 +17,16 @@ initIO(server);
 initRedis();
 StartAllWhatsAppsSessions();
 StartQuarkClinicIntegration();
-process.once("SIGTERM", StopQuarkClinicIntegration);
-process.once("SIGINT", StopQuarkClinicIntegration);
-gracefulShutdown(server);
+gracefulShutdown(server, {
+  timeout: 30000,
+  onShutdown: async signal => {
+    logger.info({ info: "Graceful shutdown started", signal });
+    await StopQuarkClinicIntegration();
+    await whatsappProvider.shutdown();
+    await closeRedis();
+    logger.info("Graceful shutdown completed");
+  }
+});
 
 process.on("uncaughtException", err => {
   logger.error({ info: "Global uncaught exception", err });

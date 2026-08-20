@@ -93,3 +93,10 @@ export const deleteFromRedis = async (key: string) => {
 };
 
 export const getRedisClient = () => redisClient;
+
+export const closeRedis = async (): Promise<void> => {
+  if (!redisClient) return;
+  const client = redisClient;
+  redisClient = null;
+  await client.quit();
+};
