@@ -99,7 +99,11 @@ describe("HandleQuarkConfirmationReply", () => {
       })
     );
     expect(SendWhatsAppMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ body: expect.stringContaining("confirmada") })
+      expect.objectContaining({
+        body: expect.stringMatching(
+          /Consulta confirmada com sucesso[\s\S]*Profissional 10\nAtendimento por ordem de chegada/
+        )
+      })
     );
   });
 
@@ -166,6 +170,11 @@ describe("HandleQuarkConfirmationReply", () => {
       expect.objectContaining({
         appointmentId: "20",
         decision: "CANCELLED"
+      })
+    );
+    expect(SendWhatsAppMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.not.stringContaining("Atendimento por ordem de chegada")
       })
     );
   });

@@ -28,6 +28,8 @@ interface StoredSnapshot {
   profissionalNome?: string | null;
 }
 
+const ARRIVAL_ORDER_NOTICE = "Atendimento por ordem de chegada";
+
 const appointmentDescription = (appointment: QuarkAppointment): string => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
   let professional = "profissional a confirmar";
@@ -68,7 +70,7 @@ const sendAlreadyApplied = async (
       choice === 1
         ? `Esta consulta já está confirmada no QuarkClinic: ${appointmentDescription(
             appointment
-          )}.`
+          )}.\n${ARRIVAL_ORDER_NOTICE}`
         : `Esta consulta já está cancelada no QuarkClinic: ${appointmentDescription(
             appointment
           )}.`,
@@ -185,7 +187,7 @@ const HandleQuarkConfirmationReply = async ({
       await appointment.update({ status: "CONFIRMADO" });
       successBody = `✅ Consulta confirmada com sucesso no QuarkClinic!\n\n${appointmentDescription(
         appointment
-      )}.`;
+      )}\n${ARRIVAL_ORDER_NOTICE}`;
     } else {
       await cancelQuarkAppointment(config, appointment.appointmentId);
       await appointment.update({ status: "CANCELADO" });
