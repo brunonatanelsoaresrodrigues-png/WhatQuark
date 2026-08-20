@@ -263,22 +263,6 @@ const processTicket = async (
   const persistedNotice = ticket.inactivityNoticeMessageId
     ? await Message.findByPk(ticket.inactivityNoticeMessageId)
     : null;
-  const latestMessageIsNotice =
-    Boolean(persistedNotice) && lastMessage.id === persistedNotice?.id;
-
-  if (
-    !latestMessageIsNotice &&
-    lastMessage.createdAt.getTime() > ticket.awaitingPatientSince.getTime()
-  ) {
-    await ticket.update({
-      awaitingPatientSince: lastMessage.createdAt,
-      inactivityClosingAt: null,
-      inactivityNoticeSentAt: null,
-      inactivityNoticeMessageId: null
-    });
-    await emitTicketInactivityUpdate(ticket.id);
-    return;
-  }
 
   if (await hasQuarkOperationInProgress(ticket.contact.number)) {
     await releaseClaim(ticket.id);
