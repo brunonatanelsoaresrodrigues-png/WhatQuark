@@ -29,7 +29,10 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD true
 
 WORKDIR /usr/src/app
 COPY package*.json ./
-RUN npm install
+RUN git config --global url."https://github.com/".insteadOf git://github.com/ \
+    && git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/ \
+    && git config --global --add url."https://github.com/".insteadOf git@github.com: \
+    && npm install
 
 COPY . .
 RUN npm run build
