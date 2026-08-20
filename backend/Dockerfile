@@ -1,6 +1,12 @@
 FROM node:14 as build-deps
 
-RUN apt-get update && apt-get install -y wget
+RUN sed -i \
+      -e 's|deb.debian.org/debian|archive.debian.org/debian|g' \
+      -e 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' \
+      -e '/buster-updates/d' \
+      /etc/apt/sources.list \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y wget
 
 ENV DOCKERIZE_VERSION v0.6.1
 RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
