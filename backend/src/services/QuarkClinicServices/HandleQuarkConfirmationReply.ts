@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
+import QuarkAppointmentResponse from "../../models/QuarkAppointmentResponse";
 import Ticket from "../../models/Ticket";
 import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
@@ -14,6 +15,7 @@ import {
   cancelQuarkAppointment,
   confirmQuarkAppointment
 } from "./QuarkClinicClient";
+import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 
 interface Request {
   body: string;
@@ -139,7 +141,44 @@ const HandleQuarkConfirmationReply = async ({
     return true;
   }
 
-  let successBody: string;
+  let responseAudit: QuarkAppointmentResponse | undefined;
+  try {
+    const receivedAt = new Date();
+    const sourceNotification = await QuarkAppointmentNotification.findOne({
+      where: { appointmentId: appointment.appointmentId, status: "SENT" },
+      order: [["sentAt", "DESC"]]
+    });
+    const responseTimeSeconds = sourceNotification?.sentAt
+      ? Math.max(
+          0,
+          Math.round(
+            (receivedAt.getTime() - sourceNotification.sentAt.getTime()) / 1000
+          )
+        )
+      : null;
+    responseAudit = await QuarkAppointmentResponse.create({
+      appointmentId: appointment.appointmentId,
+      notificationId: sourceNotification?.id || null,
+      decision: reply.choice === 1 ? "CONFIRMED" : "CANCELLED",
+      source: "WHATSAPP",
+      status: "PROCESSING",
+      previousQuarkStatus: appointment.status,
+      newQuarkStatus: null,
+      receivedAt,
+      appliedAt: null,
+      responseTimeSeconds,
+      errorCode: null
+    });
+    emitQuarkDashboardUpdate("response", responseAudit.id);
+  } catch (error) {
+    logger.error({
+      info: "Could not create QuarkClinic response audit",
+      appointmentId: appointment.appointmentId,
+      err: error
+    });
+  }
+
+  let successBody = "";
   try {
     if (reply.choice === 1) {
       await confirmQuarkAppointment(config, appointment.appointmentId);
@@ -168,6 +207,25 @@ const HandleQuarkConfirmationReply = async ({
     }
   } catch (error) {
     await appointment.update({ awaitingConfirmation: true });
+    const errorCode = (error instanceof Error ? error.message : "Unknown error")
+      .replace(/[\r\n]+/g, " ")
+      .slice(0, 500);
+    if (responseAudit) {
+      await responseAudit
+        .update({
+          status: "FAILED",
+          appliedAt: new Date(),
+          errorCode
+        })
+        .then(() => emitQuarkDashboardUpdate("response", responseAudit?.id))
+        .catch(auditError =>
+          logger.error({
+            info: "Could not update failed QuarkClinic response audit",
+            appointmentId: appointment.appointmentId,
+            err: auditError
+          })
+        );
+    }
     logger.error({
       info: "Could not apply patient reply in QuarkClinic",
       appointmentId: appointment.appointmentId,
@@ -184,6 +242,24 @@ const HandleQuarkConfirmationReply = async ({
       })
     );
     return true;
+  }
+
+  if (responseAudit) {
+    await responseAudit
+      .update({
+        status: "SUCCESS",
+        newQuarkStatus: reply.choice === 1 ? "CONFIRMADO" : "CANCELADO",
+        appliedAt: new Date(),
+        errorCode: null
+      })
+      .then(() => emitQuarkDashboardUpdate("response", responseAudit?.id))
+      .catch(error =>
+        logger.error({
+          info: "Could not update successful QuarkClinic response audit",
+          appointmentId: appointment.appointmentId,
+          err: error
+        })
+      );
   }
 
   await SendWhatsAppMessage({ body: successBody, ticket }).catch(error =>

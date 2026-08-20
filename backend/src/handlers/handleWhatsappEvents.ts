@@ -13,6 +13,8 @@ import Ticket from "../models/Ticket";
 import Message from "../models/Message";
 
 import CreateMessageService from "../services/MessageServices/CreateMessageService";
+import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification";
+import { emitQuarkDashboardUpdate } from "../services/QuarkClinicServices/dashboardEvents";
 import CreateOrUpdateContactService from "../services/ContactServices/CreateOrUpdateContactService";
 import FindOrCreateTicketService from "../services/TicketServices/FindOrCreateTicketService";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
@@ -357,6 +359,20 @@ export const handleMessageAck = async (
     }
 
     await messageToUpdate.update({ ack });
+
+    const deliveryUpdate =
+      ack >= 3
+        ? { deliveredAt: new Date(), readAt: new Date() }
+        : ack >= 2
+        ? { deliveredAt: new Date() }
+        : undefined;
+    if (deliveryUpdate) {
+      const [updated] = await QuarkAppointmentNotification.update(
+        deliveryUpdate,
+        { where: { messageId } }
+      );
+      if (updated > 0) emitQuarkDashboardUpdate("delivery", messageId);
+    }
 
     io.to(messageToUpdate.ticketId.toString()).emit("appMessage", {
       action: "update",

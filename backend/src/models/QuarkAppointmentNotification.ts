@@ -60,6 +60,22 @@ class QuarkAppointmentNotification extends Model<QuarkAppointmentNotification> {
   @Column(DataType.STRING(512))
   lastError: string | null;
 
+  @AllowNull
+  @Column(DataType.STRING)
+  messageId: string | null;
+
+  @AllowNull
+  @Column
+  ticketId: number | null;
+
+  @AllowNull
+  @Column(DataType.DATE)
+  deliveredAt: Date | null;
+
+  @AllowNull
+  @Column(DataType.DATE)
+  readAt: Date | null;
+
   @CreatedAt
   @Column(DataType.DATE)
   createdAt: Date;

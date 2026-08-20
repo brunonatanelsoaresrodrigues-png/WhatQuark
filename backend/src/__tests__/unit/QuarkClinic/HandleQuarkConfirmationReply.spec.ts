@@ -1,5 +1,6 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
+import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
 import HandleQuarkConfirmationReply from "../../../services/QuarkClinicServices/HandleQuarkConfirmationReply";
 import {
   cancelQuarkAppointment,
@@ -18,7 +19,16 @@ jest.mock("../../../models/QuarkAppointment", () => ({
 
 jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
-  default: { update: jest.fn() }
+  default: { findOne: jest.fn(), update: jest.fn() }
+}));
+
+jest.mock("../../../models/QuarkAppointmentResponse", () => ({
+  __esModule: true,
+  default: { create: jest.fn() }
+}));
+
+jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
+  emitQuarkDashboardUpdate: jest.fn()
 }));
 
 jest.mock("../../../services/QuarkClinicServices/config", () => ({
@@ -52,6 +62,14 @@ describe("HandleQuarkConfirmationReply", () => {
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
     (QuarkAppointment.update as jest.Mock).mockResolvedValue([1]);
     (QuarkAppointmentNotification.update as jest.Mock).mockResolvedValue([0]);
+    (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue({
+      id: 99,
+      sentAt: new Date()
+    });
+    (QuarkAppointmentResponse.create as jest.Mock).mockResolvedValue({
+      id: 1,
+      update: jest.fn().mockResolvedValue(undefined)
+    });
     (SendWhatsAppMessage as jest.Mock).mockResolvedValue({});
   });
 
@@ -73,6 +91,13 @@ describe("HandleQuarkConfirmationReply", () => {
       "10"
     );
     expect(cancelQuarkAppointment).not.toHaveBeenCalled();
+    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appointmentId: "10",
+        decision: "CONFIRMED",
+        status: "PROCESSING"
+      })
+    );
     expect(SendWhatsAppMessage).toHaveBeenCalledWith(
       expect.objectContaining({ body: expect.stringContaining("confirmada") })
     );
@@ -137,5 +162,11 @@ describe("HandleQuarkConfirmationReply", () => {
       "20"
     );
     expect(second.update).toHaveBeenCalledWith({ status: "CANCELADO" });
+    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appointmentId: "20",
+        decision: "CANCELLED"
+      })
+    );
   });
 });

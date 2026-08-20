@@ -21,7 +21,7 @@ const SendQuarkWhatsAppMessage = async (
   phone: string,
   patientName: string,
   body: string
-): Promise<void> => {
+): Promise<{ messageId: string; ticketId: number }> => {
   if (!/^\d{10,15}$/.test(phone)) {
     throw new Error("QUARK_PERMANENT_INVALID_PHONE");
   }
@@ -46,7 +46,8 @@ const SendQuarkWhatsAppMessage = async (
     isGroup: false
   });
   const ticket = await FindOrCreateTicketService(contact, whatsapp.id, 0);
-  await SendWhatsAppMessage({ body, ticket });
+  const message = await SendWhatsAppMessage({ body, ticket });
+  return { messageId: message.id, ticketId: ticket.id };
 };
 
 export default SendQuarkWhatsAppMessage;

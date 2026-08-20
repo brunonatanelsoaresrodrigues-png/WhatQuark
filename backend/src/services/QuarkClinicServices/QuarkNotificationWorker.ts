@@ -8,6 +8,7 @@ import { QuarkConfig } from "./config";
 import SendQuarkWhatsAppMessage from "./SendQuarkWhatsAppMessage";
 import { QuarkOutboxPayload } from "./notificationLedger";
 import { quietHoursDelayMs, randomSendIntervalMs } from "./workerTiming";
+import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
 let workerTimer: NodeJS.Timeout | undefined;
@@ -165,7 +166,7 @@ const processNotification = async (
       return;
     }
 
-    await SendQuarkWhatsAppMessage(
+    const sentMessage = await SendQuarkWhatsAppMessage(
       config,
       payload.phone,
       payload.patientName,
@@ -176,7 +177,9 @@ const processNotification = async (
       sentAt: new Date(),
       processingStartedAt: null,
       workerId: null,
-      lastError: null
+      lastError: null,
+      messageId: sentMessage.messageId,
+      ticketId: sentMessage.ticketId
     });
     if (payload.requestsConfirmation) {
       await QuarkAppointment.update(
@@ -193,6 +196,7 @@ const processNotification = async (
       appointmentId: notification.appointmentId,
       eventType: notification.eventType
     });
+    emitQuarkDashboardUpdate("notification", notification.id);
   } catch (error) {
     const attempts = notification.attempts + 1;
     const lastError = sanitizeError(error);
@@ -217,6 +221,7 @@ const processNotification = async (
       attempts,
       errorCode: lastError
     });
+    emitQuarkDashboardUpdate("notification", notification.id);
   }
 };
 

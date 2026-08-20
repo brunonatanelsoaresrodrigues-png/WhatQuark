@@ -14,6 +14,7 @@ import WppKey from "../models/WppKey";
 import QuarkAppointment from "../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification";
 import QuarkSyncState from "../models/QuarkSyncState";
+import QuarkAppointmentResponse from "../models/QuarkAppointmentResponse";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -36,6 +37,7 @@ const models = [
   WppKey,
   QuarkAppointment,
   QuarkAppointmentNotification,
+  QuarkAppointmentResponse,
   QuarkSyncState
 ];
 

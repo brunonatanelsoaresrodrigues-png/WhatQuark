@@ -34,7 +34,11 @@ A migration cria:
 - QuarkAppointments: último estado mínimo conhecido, fingerprints, primeira e
   última observação, última mudança e indicação de origem na baseline.
 - QuarkAppointmentNotifications: outbox com chave única, payload mínimo,
-  tentativas, retry, lock do worker, envio, erro sanitizado e dead letter.
+  tentativas, retry, lock do worker, envio, erro sanitizado, dead letter,
+  identificador da mensagem do WhaTicket e horários de entrega/leitura.
+- QuarkAppointmentResponses: auditoria da decisão recebida pelo WhatsApp,
+  resultado da aplicação no Quark e tempo de resposta, sem armazenar o texto
+  livre enviado pelo paciente.
 - QuarkSyncStates: estado da baseline, último ciclo bem-sucedido, versão do
   fingerprint e lock do sincronizador.
 
@@ -43,6 +47,30 @@ transação com lock e skip locked. Itens presos em PROCESSING são recuperados
 depois do timeout configurado. Falhas temporárias usam backoff exponencial com
 jitter; telefone inválido e conexão inexistente vão para DEAD_LETTER.
 Notificações que chegam à vez depois do horário da consulta são suprimidas.
+
+## Painel Automação Quark
+
+Usuários administradores acessam `/quark-dashboard` pelo item **Automação
+Quark** do menu. O painel possui filtros de período e situação, cartões de
+agendas, fila, envios, entregas, leituras, falhas, confirmações e cancelamentos,
+além de série diária, detalhamento por profissional e tabela operacional com
+nome e telefone mascarados.
+
+Os endpoints autenticados usados pela página são:
+
+- `GET /quark/dashboard/summary`
+- `GET /quark/dashboard/timeseries`
+- `GET /quark/dashboard/breakdown`
+- `GET /quark/dashboard/appointments`
+
+O backend emite `quarkDashboard` pelo Socket.IO após sincronização, envio,
+entrega/leitura ou resposta. A tela atualiza em tempo real e também permite
+atualização manual. O acesso é recusado no backend para perfis que não sejam
+administradores; esconder o item de menu não é a única proteção.
+
+Métricas de envio existentes antes da migration podem ser contabilizadas como
+SENT, mas entrega, leitura e origem exata da confirmação passam a ser completas
+somente para mensagens processadas depois da implantação da auditoria.
 
 ## Configuração
 

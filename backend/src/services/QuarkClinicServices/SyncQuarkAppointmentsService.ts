@@ -18,6 +18,7 @@ import {
   newAppointmentMessage,
   reminderAppointmentMessage
 } from "./messageTemplates";
+import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 
 const SYNC_STATE_KEY = "appointments";
 const FINGERPRINT_VERSION = 1;
@@ -361,6 +362,7 @@ export const SyncQuarkAppointmentsService = async (
       baselineMode,
       horizonDays: config.syncHorizonDays
     });
+    emitQuarkDashboardUpdate("sync", SYNC_STATE_KEY);
   } catch (error) {
     await state
       .update({ syncLockUntil: null, syncWorkerId: null })
