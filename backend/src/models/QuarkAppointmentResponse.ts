@@ -30,7 +30,7 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
 
   @Default("WHATSAPP")
   @Column(DataType.STRING(16))
-  source: "WHATSAPP";
+  source: "WHATSAPP" | "DASHBOARD";
 
   @Column(DataType.STRING(16))
   status: "PROCESSING" | "SUCCESS" | "FAILED";

@@ -29,5 +29,10 @@ quarkDashboardRoutes.post(
   isAuth,
   QuarkDashboardController.enqueueReminder
 );
+quarkDashboardRoutes.post(
+  "/quark/dashboard/appointments/:appointmentId/confirm",
+  isAuth,
+  QuarkDashboardController.confirmAppointment
+);
 
 export default quarkDashboardRoutes;

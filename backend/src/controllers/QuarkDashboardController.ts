@@ -7,6 +7,7 @@ import {
   listQuarkDashboardAppointments
 } from "../services/QuarkClinicServices/QuarkDashboardService";
 import EnqueueManualQuarkReminderService from "../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
+import ConfirmQuarkAppointmentFromDashboardService from "../services/QuarkClinicServices/ConfirmQuarkAppointmentFromDashboardService";
 
 const ensureAdmin = (req: Request): void => {
   if (req.user.profile !== "admin") {
@@ -20,6 +21,14 @@ const filtersFrom = (req: Request) => ({
   status: typeof req.query.status === "string" ? req.query.status : undefined,
   eventType:
     typeof req.query.eventType === "string" ? req.query.eventType : undefined,
+  messageStatus:
+    typeof req.query.messageStatus === "string"
+      ? req.query.messageStatus
+      : undefined,
+  responseStatus:
+    typeof req.query.responseStatus === "string"
+      ? req.query.responseStatus
+      : undefined,
   page: typeof req.query.page === "string" ? Number(req.query.page) : undefined,
   pageSize:
     typeof req.query.pageSize === "string"
@@ -65,4 +74,15 @@ export const enqueueReminder = async (
     appointmentId: req.params.appointmentId
   });
   return res.status(201).json(result);
+};
+
+export const confirmAppointment = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  ensureAdmin(req);
+  const result = await ConfirmQuarkAppointmentFromDashboardService({
+    appointmentId: req.params.appointmentId
+  });
+  return res.json(result);
 };

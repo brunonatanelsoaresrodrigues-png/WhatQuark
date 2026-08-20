@@ -26,6 +26,7 @@ import { makeStyles, useTheme } from "@material-ui/core/styles";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import NotificationsActiveIcon from "@material-ui/icons/NotificationsActive";
 import ChatBubbleOutlineIcon from "@material-ui/icons/ChatBubbleOutline";
+import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import {
   Bar,
   BarChart,
@@ -138,6 +139,7 @@ const notificationLabels = {
 const statusLabels = {
   AGENDADO: "Agendada",
   CONFIRMADO: "Confirmada",
+  CONFIRMING: "Confirmando no Quark",
   CANCELADO: "Cancelada",
   CANCELADO_VIA_SMS: "Cancelada",
   EXCLUIDO: "Excluída",
@@ -169,7 +171,9 @@ const QuarkDashboard = () => {
   const [filters, setFilters] = useState({
     from: isoDate(new Date()),
     to: isoDate(addDays(new Date(), 30)),
-    status: ""
+    status: "",
+    messageStatus: "",
+    responseStatus: ""
   });
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -182,6 +186,7 @@ const QuarkDashboard = () => {
   const [appointments, setAppointments] = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [sendingReminder, setSendingReminder] = useState(null);
+  const [confirmingAppointment, setConfirmingAppointment] = useState(null);
 
   const params = useMemo(
     () => ({ from: filters.from, to: filters.to }),
@@ -200,6 +205,8 @@ const QuarkDashboard = () => {
             params: {
               ...params,
               status: filters.status || undefined,
+              messageStatus: filters.messageStatus || undefined,
+              responseStatus: filters.responseStatus || undefined,
               page: page + 1,
               pageSize
             }
@@ -214,7 +221,7 @@ const QuarkDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters.status, page, pageSize, params]);
+  }, [filters.messageStatus, filters.responseStatus, filters.status, page, pageSize, params]);
 
   useEffect(() => {
     loadDashboard();
@@ -271,6 +278,40 @@ const QuarkDashboard = () => {
     return "";
   };
 
+  const confirmDisabledReason = row => {
+    if (row.status === "CONFIRMADO") return "A consulta já está confirmada.";
+    if (row.status !== "AGENDADO") return "A consulta não está agendada.";
+    const scheduledAt = new Date(row.scheduledAt).getTime();
+    if (Number.isNaN(scheduledAt) || scheduledAt <= Date.now()) {
+      return "O horário da consulta já passou.";
+    }
+    return "";
+  };
+
+  const confirmAppointment = async row => {
+    const confirmed = window.confirm(
+      `Confirmar no Quark a consulta de ${row.patient} em ${formatDateTime(
+        row.scheduledAt
+      )}?`
+    );
+    if (!confirmed) return;
+
+    setConfirmingAppointment(row.appointmentId);
+    try {
+      await api.post(
+        `/quark/dashboard/appointments/${encodeURIComponent(
+          row.appointmentId
+        )}/confirm`
+      );
+      toast.success("Consulta confirmada com sucesso no Quark.");
+      await loadDashboard();
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setConfirmingAppointment(null);
+    }
+  };
+
   if (loading && !summary) {
     return (
       <div className={classes.loading}>
@@ -320,7 +361,7 @@ const QuarkDashboard = () => {
 
       <Paper className={classes.filters}>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid item xs={12} sm={4} md={2}>
             <TextField
               fullWidth
               type="date"
@@ -331,7 +372,7 @@ const QuarkDashboard = () => {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid item xs={12} sm={4} md={2}>
             <TextField
               fullWidth
               type="date"
@@ -342,7 +383,7 @@ const QuarkDashboard = () => {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid item xs={12} sm={4} md={2}>
             <FormControl fullWidth className={classes.filterControl}>
               <InputLabel>Situação da consulta</InputLabel>
               <Select name="status" value={filters.status} onChange={changeFilter}>
@@ -351,6 +392,41 @@ const QuarkDashboard = () => {
                 <MenuItem value="AWAITING_RESPONSE">Aguardando resposta</MenuItem>
                 <MenuItem value="CONFIRMED">Confirmadas</MenuItem>
                 <MenuItem value="CANCELLED">Canceladas</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth className={classes.filterControl}>
+              <InputLabel>Situação da mensagem</InputLabel>
+              <Select
+                name="messageStatus"
+                value={filters.messageStatus}
+                onChange={changeFilter}
+              >
+                <MenuItem value="">Todas</MenuItem>
+                <MenuItem value="NO_MESSAGE">Sem envio</MenuItem>
+                <MenuItem value="QUEUED">Na fila ou processando</MenuItem>
+                <MenuItem value="SENT">Enviada</MenuItem>
+                <MenuItem value="DELIVERED">Entregue</MenuItem>
+                <MenuItem value="READ">Lida</MenuItem>
+                <MenuItem value="REMINDER_SENT">Lembrete enviado</MenuItem>
+                <MenuItem value="FAILED">Com falha</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth className={classes.filterControl}>
+              <InputLabel>Situação da resposta</InputLabel>
+              <Select
+                name="responseStatus"
+                value={filters.responseStatus}
+                onChange={changeFilter}
+              >
+                <MenuItem value="">Todas</MenuItem>
+                <MenuItem value="AWAITING">Aguardando resposta</MenuItem>
+                <MenuItem value="CONFIRMED">Confirmada</MenuItem>
+                <MenuItem value="CANCELLED">Cancelou</MenuItem>
+                <MenuItem value="NO_RESPONSE">Sem resposta</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -458,7 +534,9 @@ const QuarkDashboard = () => {
                   </TableCell>
                   <TableCell>
                     {row.lastDecision === "CONFIRMED"
-                      ? "Confirmou"
+                      ? row.lastDecisionSource === "DASHBOARD"
+                        ? "Confirmada pela equipe"
+                        : "Confirmou"
                       : row.lastDecision === "CANCELLED"
                       ? "Cancelou"
                       : "—"}
@@ -480,13 +558,38 @@ const QuarkDashboard = () => {
                             }
                             disabled={
                               Boolean(reminderDisabledReason(row)) ||
-                              sendingReminder !== null
+                              sendingReminder !== null ||
+                              confirmingAppointment !== null
                             }
                             onClick={() => sendReminder(row)}
                           >
                             {Number(row.manualReminderToday)
                               ? "Solicitado hoje"
                               : "Enviar lembrete"}
+                          </Button>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title={confirmDisabledReason(row) || "Confirmar esta consulta diretamente no Quark"}>
+                        <span>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            startIcon={
+                              confirmingAppointment === row.appointmentId ? (
+                                <CircularProgress size={16} color="inherit" />
+                              ) : (
+                                <CheckCircleOutlineIcon />
+                              )
+                            }
+                            disabled={
+                              Boolean(confirmDisabledReason(row)) ||
+                              confirmingAppointment !== null ||
+                              sendingReminder !== null
+                            }
+                            onClick={() => confirmAppointment(row)}
+                          >
+                            Confirmar no Quark
                           </Button>
                         </span>
                       </Tooltip>

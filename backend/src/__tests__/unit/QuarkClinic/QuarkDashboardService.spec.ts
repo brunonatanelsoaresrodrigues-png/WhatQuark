@@ -130,13 +130,19 @@ describe("QuarkDashboardService", () => {
 
     const result = await listQuarkDashboardAppointments({
       from: "2026-08-20",
-      to: "2026-08-21"
+      to: "2026-08-21",
+      messageStatus: "REMINDER_SENT",
+      responseStatus: "AWAITING"
     });
     const sql = (sequelize.query as jest.Mock).mock.calls[0][0] as string;
 
     expect(sql).toContain("a.patientName AS patient");
     expect(sql).toContain("a.phone");
     expect(sql).toContain("n.ticketId IS NOT NULL");
+    expect(sql).toContain("n.eventType IN ('REMINDER', 'MANUAL_REMINDER')");
+    expect(sql).toContain(
+      "a.awaitingConfirmation = 1 AND a.status = 'AGENDADO'"
+    );
     expect(sql).not.toContain("CONCAT(LEFT(TRIM(a.patientName)");
     expect(result.rows[0]).toEqual(
       expect.objectContaining({
@@ -145,5 +151,20 @@ describe("QuarkDashboardService", () => {
         ticketId: 77
       })
     );
+  });
+
+  it("ignores unknown operational filters instead of adding raw SQL", async () => {
+    (sequelize.query as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ total: "0" }]);
+
+    await listQuarkDashboardAppointments({
+      messageStatus: "DROP TABLE QuarkAppointments",
+      responseStatus: "UNKNOWN"
+    });
+    const sql = (sequelize.query as jest.Mock).mock.calls[0][0] as string;
+
+    expect(sql).not.toContain("DROP TABLE");
+    expect(sql).not.toContain("UNKNOWN");
   });
 });

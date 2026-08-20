@@ -8,6 +8,8 @@ interface DashboardFilters {
   pageSize?: number;
   status?: string;
   eventType?: string;
+  messageStatus?: string;
+  responseStatus?: string;
 }
 
 interface CountRow {
@@ -77,8 +79,8 @@ export const getQuarkDashboardSummary = async (
         `SELECT
           COUNT(*) AS responses,
           SUM(status = 'SUCCESS') AS successfulResponses,
-          SUM(status = 'SUCCESS' AND decision = 'CONFIRMED') AS confirmedViaWhatsapp,
-          SUM(status = 'SUCCESS' AND decision = 'CANCELLED') AS cancelledViaWhatsapp,
+          SUM(status = 'SUCCESS' AND decision = 'CONFIRMED' AND source = 'WHATSAPP') AS confirmedViaWhatsapp,
+          SUM(status = 'SUCCESS' AND decision = 'CANCELLED' AND source = 'WHATSAPP') AS cancelledViaWhatsapp,
           SUM(status = 'FAILED') AS responseFailures,
           ROUND(AVG(CASE WHEN status = 'SUCCESS' THEN responseTimeSeconds END)) AS averageResponseSeconds
         FROM QuarkAppointmentResponses
@@ -241,6 +243,32 @@ const allowedStatuses: Record<string, string> = {
   SCHEDULED: "a.status = 'AGENDADO'"
 };
 
+const latestNotification = (condition: string): string =>
+  `(SELECT ${condition} FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId ORDER BY n.id DESC LIMIT 1)`;
+
+const allowedMessageStatuses: Record<string, string> = {
+  NO_MESSAGE:
+    "NOT EXISTS (SELECT 1 FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId)",
+  QUEUED: `${latestNotification("n.status")} IN ('PENDING', 'PROCESSING', 'FAILED_RETRY')`,
+  SENT: `${latestNotification("n.sentAt")} IS NOT NULL`,
+  DELIVERED: `${latestNotification("n.deliveredAt")} IS NOT NULL`,
+  READ: `${latestNotification("n.readAt")} IS NOT NULL`,
+  FAILED: `${latestNotification("n.status")} IN ('FAILED_RETRY', 'DEAD_LETTER')`,
+  REMINDER_SENT:
+    "EXISTS (SELECT 1 FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId AND n.eventType IN ('REMINDER', 'MANUAL_REMINDER') AND n.status = 'SENT')"
+};
+
+const allowedResponseStatuses: Record<string, string> = {
+  AWAITING:
+    "a.awaitingConfirmation = 1 AND a.status = 'AGENDADO'",
+  CONFIRMED:
+    "EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS' AND r.decision = 'CONFIRMED')",
+  CANCELLED:
+    "EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS' AND r.decision = 'CANCELLED')",
+  NO_RESPONSE:
+    "NOT EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS')"
+};
+
 export const listQuarkDashboardAppointments = async (
   filters: DashboardFilters
 ) => {
@@ -248,10 +276,18 @@ export const listQuarkDashboardAppointments = async (
   const page = Math.max(1, Math.floor(filters.page || 1));
   const pageSize = Math.min(100, Math.max(10, Math.floor(filters.pageSize || 25)));
   const offset = (page - 1) * pageSize;
-  const statusClause =
-    filters.status && allowedStatuses[filters.status]
-      ? ` AND ${allowedStatuses[filters.status]}`
-      : "";
+  const filterClauses = [
+    filters.status ? allowedStatuses[filters.status] : undefined,
+    filters.messageStatus
+      ? allowedMessageStatuses[filters.messageStatus]
+      : undefined,
+    filters.responseStatus
+      ? allowedResponseStatuses[filters.responseStatus]
+      : undefined
+  ].filter(Boolean);
+  const filterClause = filterClauses.length
+    ? ` AND ${filterClauses.join(" AND ")}`
+    : "";
   const replacements = {
     fromDateTime: range.fromDateTime,
     toDateTime: range.toDateTime,
@@ -287,17 +323,18 @@ export const listQuarkDashboardAppointments = async (
             )
         ) AS manualReminderToday,
         (SELECT r.decision FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecision,
+        (SELECT r.source FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecisionSource,
         (SELECT r.status FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecisionStatus,
         (SELECT r.receivedAt FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastResponseAt
       FROM QuarkAppointments a
-      WHERE a.scheduledAt BETWEEN :fromDateTime AND :toDateTime${statusClause}
+      WHERE a.scheduledAt BETWEEN :fromDateTime AND :toDateTime${filterClause}
       ORDER BY a.scheduledAt ASC
       LIMIT :limit OFFSET :offset`,
       { replacements, type: QueryTypes.SELECT }
     ),
     sequelize.query<CountRow>(
       `SELECT COUNT(*) AS total FROM QuarkAppointments a
-      WHERE a.scheduledAt BETWEEN :fromDateTime AND :toDateTime${statusClause}`,
+      WHERE a.scheduledAt BETWEEN :fromDateTime AND :toDateTime${filterClause}`,
       { replacements, type: QueryTypes.SELECT }
     )
   ]);
