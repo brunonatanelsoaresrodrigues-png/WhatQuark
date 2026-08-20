@@ -34,9 +34,7 @@ const resolveDateRange = (filters: DashboardFilters) => {
       ? filters.from
       : formatDate(defaultFrom);
   const to =
-    filters.to && datePattern.test(filters.to)
-      ? filters.to
-      : formatDate(today);
+    filters.to && datePattern.test(filters.to) ? filters.to : formatDate(today);
   return {
     from,
     to,
@@ -49,9 +47,22 @@ const numberValue = (value: unknown): number => Number(value || 0);
 
 const firstRow = (rows: CountRow[]): CountRow => rows[0] || {};
 
-export const getQuarkDashboardSummary = async (
-  filters: DashboardFilters
-) => {
+const parsePhoneList = (
+  value: string | number | null,
+  fallback: string | number | null
+): string[] => {
+  try {
+    const parsed = JSON.parse(String(value || "[]"));
+    if (Array.isArray(parsed)) {
+      return parsed.filter(phone => typeof phone === "string" && phone);
+    }
+  } catch {
+    // Legacy data uses the former primary phone column.
+  }
+  return fallback ? [String(fallback)] : [];
+};
+
+export const getQuarkDashboardSummary = async (filters: DashboardFilters) => {
   const range = resolveDateRange(filters);
   const replacements = {
     fromDateTime: range.fromDateTime,
@@ -132,7 +143,9 @@ export const getQuarkDashboardSummary = async (
       averageResponseSeconds: numberValue(responses.averageResponseSeconds),
       responseRate:
         confirmationRequests > 0
-          ? Number(((successfulResponses / confirmationRequests) * 100).toFixed(1))
+          ? Number(
+              ((successfulResponses / confirmationRequests) * 100).toFixed(1)
+            )
           : 0
     },
     appointments: {
@@ -199,9 +212,7 @@ export const getQuarkDashboardTimeseries = async (
   );
 };
 
-export const getQuarkDashboardBreakdown = async (
-  filters: DashboardFilters
-) => {
+export const getQuarkDashboardBreakdown = async (filters: DashboardFilters) => {
   const range = resolveDateRange(filters);
   const replacements = {
     fromDateTime: range.fromDateTime,
@@ -249,18 +260,21 @@ const latestNotification = (condition: string): string =>
 const allowedMessageStatuses: Record<string, string> = {
   NO_MESSAGE:
     "NOT EXISTS (SELECT 1 FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId)",
-  QUEUED: `${latestNotification("n.status")} IN ('PENDING', 'PROCESSING', 'FAILED_RETRY')`,
+  QUEUED: `${latestNotification(
+    "n.status"
+  )} IN ('PENDING', 'PROCESSING', 'FAILED_RETRY')`,
   SENT: `${latestNotification("n.sentAt")} IS NOT NULL`,
   DELIVERED: `${latestNotification("n.deliveredAt")} IS NOT NULL`,
   READ: `${latestNotification("n.readAt")} IS NOT NULL`,
-  FAILED: `${latestNotification("n.status")} IN ('FAILED_RETRY', 'DEAD_LETTER')`,
+  FAILED: `${latestNotification(
+    "n.status"
+  )} IN ('FAILED_RETRY', 'DEAD_LETTER')`,
   REMINDER_SENT:
     "EXISTS (SELECT 1 FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId AND n.eventType IN ('REMINDER', 'MANUAL_REMINDER') AND n.status = 'SENT')"
 };
 
 const allowedResponseStatuses: Record<string, string> = {
-  AWAITING:
-    "a.awaitingConfirmation = 1 AND a.status = 'AGENDADO'",
+  AWAITING: "a.awaitingConfirmation = 1 AND a.status = 'AGENDADO'",
   CONFIRMED:
     "EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS' AND r.decision = 'CONFIRMED')",
   CANCELLED:
@@ -274,7 +288,10 @@ export const listQuarkDashboardAppointments = async (
 ) => {
   const range = resolveDateRange(filters);
   const page = Math.max(1, Math.floor(filters.page || 1));
-  const pageSize = Math.min(100, Math.max(10, Math.floor(filters.pageSize || 25)));
+  const pageSize = Math.min(
+    100,
+    Math.max(10, Math.floor(filters.pageSize || 25))
+  );
   const offset = (page - 1) * pageSize;
   const filterClauses = [
     filters.status ? allowedStatuses[filters.status] : undefined,
@@ -302,6 +319,7 @@ export const listQuarkDashboardAppointments = async (
         a.appointmentId,
         a.patientName AS patient,
         a.phone,
+        a.phones,
         a.scheduledAt,
         a.status,
         a.awaitingConfirmation,
@@ -315,11 +333,20 @@ export const listQuarkDashboardAppointments = async (
         EXISTS(
           SELECT 1 FROM QuarkAppointmentNotifications n
           WHERE n.appointmentId = a.appointmentId
-            AND n.notificationKey = CONCAT(
-              'manual-reminder:',
-              DATE_FORMAT(NOW(), '%Y-%m-%d'),
-              ':',
-              LEFT(a.scheduleFingerprint, 24)
+            AND (
+              n.notificationKey = CONCAT(
+                'manual-reminder:',
+                DATE_FORMAT(NOW(), '%Y-%m-%d'),
+                ':',
+                LEFT(a.scheduleFingerprint, 24)
+              )
+              OR n.notificationKey LIKE CONCAT(
+                'manual-reminder:',
+                DATE_FORMAT(NOW(), '%Y-%m-%d'),
+                ':',
+                LEFT(a.scheduleFingerprint, 24),
+                ':to:%'
+              )
             )
         ) AS manualReminderToday,
         (SELECT r.decision FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecision,
@@ -339,7 +366,10 @@ export const listQuarkDashboardAppointments = async (
     )
   ]);
   return {
-    rows,
+    rows: rows.map(row => ({
+      ...row,
+      phones: parsePhoneList(row.phones, row.phone)
+    })),
     total: numberValue(countRows[0]?.total),
     page,
     pageSize

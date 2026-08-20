@@ -12,11 +12,13 @@ import {
   IconButton,
   Menu,
   Switch,
+  Avatar,
 } from "@material-ui/core";
 import MenuIcon from "@material-ui/icons/Menu";
 import ChevronLeftIcon from "@material-ui/icons/ChevronLeft";
 import AccountCircle from "@material-ui/icons/AccountCircle";
 import Brightness4Icon from "@material-ui/icons/Brightness4";
+import LocalHospitalOutlinedIcon from "@material-ui/icons/LocalHospitalOutlined";
 
 import MainListItems from "./MainListItems";
 import NotificationsPopOver from "../components/NotificationsPopOver";
@@ -26,25 +28,62 @@ import BackdropLoading from "../components/BackdropLoading";
 import { i18n } from "../translate/i18n";
 import { useThemeContext } from "../context/DarkMode";
 
-const drawerWidth = 240;
+const drawerWidth = 252;
 
 const useStyles = makeStyles((theme) => ({
   root: {
     display: "flex",
     height: "100vh",
+    backgroundColor: theme.palette.background.default,
     [theme.breakpoints.down("sm")]: {
       height: "calc(100vh - 56px)",
     },
   },
   toolbar: {
-    paddingRight: 24, // keep right padding when drawer closed
+    padding: "0 20px",
+    minHeight: 64,
   },
   toolbarIcon: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end",
-    padding: "0 8px",
-    minHeight: "48px",
+    justifyContent: "space-between",
+    padding: "0 10px 0 14px",
+    minHeight: 64,
+    color: "#fff",
+    background: "linear-gradient(135deg, #005b53 0%, #08766c 100%)",
+  },
+  brand: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.2),
+  },
+  brandIcon: {
+    width: 36,
+    height: 36,
+    color: "#08766c",
+    backgroundColor: "#e7f7f3",
+  },
+  brandText: {
+    minWidth: 0,
+    lineHeight: 1.05,
+  },
+  brandName: {
+    color: "#fff",
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+  },
+  brandCaption: {
+    display: "block",
+    marginTop: 2,
+    color: "rgba(255,255,255,.72)",
+    fontSize: "0.65rem",
+    fontWeight: 700,
+    letterSpacing: ".08em",
+    textTransform: "uppercase",
+  },
+  closeDrawerButton: {
+    color: "#fff",
   },
   appBar: {
     zIndex: theme.zIndex.drawer + 1,
@@ -52,7 +91,10 @@ const useStyles = makeStyles((theme) => ({
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.leavingScreen,
     }),
-    backgroundColor: theme.palette.background.default,
+    minHeight: 64,
+    color: "#fff",
+    background: "linear-gradient(90deg, #006158 0%, #08766c 65%, #0a8175 100%)",
+    boxShadow: "0 3px 18px rgba(0, 61, 55, .18)",
   },
   appBarShift: {
     marginLeft: drawerWidth,
@@ -63,15 +105,30 @@ const useStyles = makeStyles((theme) => ({
     }),
   },
   menuButton: {
-    marginRight: 36,
-    color: theme.palette.text.primary,
+    marginRight: 18,
+    color: "#fff",
   },
   menuButtonHidden: {
     display: "none",
   },
   title: {
     flexGrow: 1,
-    color: theme.palette.text.primary,
+    minWidth: 0,
+    color: "#fff",
+  },
+  titlePrimary: {
+    display: "block",
+    fontSize: ".9rem",
+    lineHeight: 1.2,
+    fontWeight: 800,
+    letterSpacing: ".04em",
+    textTransform: "uppercase",
+  },
+  titleSecondary: {
+    display: "block",
+    marginTop: 2,
+    color: "rgba(255,255,255,.72)",
+    fontSize: ".69rem",
   },
   drawerPaper: {
     position: "relative",
@@ -82,6 +139,11 @@ const useStyles = makeStyles((theme) => ({
       duration: theme.transitions.duration.enteringScreen,
     }),
     backgroundColor: theme.palette.background.paper,
+    borderRight: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "8px 0 28px rgba(0,0,0,.14)"
+        : "8px 0 28px rgba(4,77,69,.05)",
   },
   drawerPaperClose: {
     overflowX: "hidden",
@@ -95,11 +157,12 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   appBarSpacer: {
-    minHeight: "48px",
+    minHeight: 64,
   },
   content: {
     flex: 1,
     overflow: "auto",
+    backgroundColor: theme.palette.background.default,
   },
   container: {
     paddingTop: theme.spacing(4),
@@ -115,14 +178,61 @@ const useStyles = makeStyles((theme) => ({
     transform: "scale(0.8)",
   },
   iconButton: {
-    color: theme.palette.text.primary,
+    color: "#fff",
   },
   themeSwitchContainer: {
     display: "flex",
     alignItems: "center",
   },
   themeIcon: {
+    color: "rgba(255,255,255,.84)",
+  },
+  profilePanel: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+    margin: theme.spacing(1.5),
+    padding: theme.spacing(1.4),
+    borderRadius: 10,
     color: theme.palette.text.primary,
+    backgroundColor: theme.palette.type === "dark" ? "#203532" : "#edf7f5",
+    border: `1px solid ${theme.palette.divider}`,
+  },
+  profilePanelCompact: {
+    justifyContent: "center",
+    margin: theme.spacing(1),
+    padding: theme.spacing(1),
+  },
+  profileAvatar: {
+    width: 38,
+    height: 38,
+    fontSize: ".82rem",
+    fontWeight: 800,
+    color: "#fff",
+    background: "linear-gradient(135deg, #08766c 0%, #37b9a6 100%)",
+  },
+  profileName: {
+    maxWidth: 156,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontWeight: 800,
+  },
+  profileCaption: {
+    color: theme.palette.text.secondary,
+    fontSize: ".7rem",
+  },
+  headerUserName: {
+    maxWidth: 220,
+    marginLeft: theme.spacing(1),
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "rgba(255,255,255,.9)",
+    fontSize: ".76rem",
+    fontWeight: 800,
+    textTransform: "uppercase",
+    [theme.breakpoints.down("sm")]: { display: "none" },
   },
 }));
 
@@ -136,6 +246,12 @@ const LoggedInLayout = ({ children }) => {
   const [drawerVariant, setDrawerVariant] = useState("permanent");
   const { user } = useContext(AuthContext);
   const { darkMode, toggleTheme } = useThemeContext();
+  const userInitials = (user?.name || "Usuário")
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
 
   useEffect(() => {
     if (document.body.offsetWidth > 600) {
@@ -195,11 +311,45 @@ const LoggedInLayout = ({ children }) => {
         open={drawerOpen}
       >
         <div className={classes.toolbarIcon}>
-          <IconButton onClick={() => setDrawerOpen(!drawerOpen)}>
+          <div className={classes.brand}>
+            <Avatar className={classes.brandIcon}>
+              <LocalHospitalOutlinedIcon fontSize="small" />
+            </Avatar>
+            {drawerOpen && (
+              <div className={classes.brandText}>
+                <Typography variant="subtitle1" className={classes.brandName}>
+                  SquadChat
+                </Typography>
+                <span className={classes.brandCaption}>Essencial Saúde</span>
+              </div>
+            )}
+          </div>
+          <IconButton
+            className={classes.closeDrawerButton}
+            onClick={() => setDrawerOpen(!drawerOpen)}
+          >
             <ChevronLeftIcon />
           </IconButton>
         </div>
         <Divider />
+        <div
+          className={clsx(
+            classes.profilePanel,
+            !drawerOpen && classes.profilePanelCompact
+          )}
+        >
+          <Avatar className={classes.profileAvatar}>{userInitials}</Avatar>
+          {drawerOpen && (
+            <div>
+              <div className={classes.profileName}>
+                {user?.name || "Usuário"}
+              </div>
+              <div className={classes.profileCaption}>
+                Atendimento integrado
+              </div>
+            </div>
+          )}
+        </div>
         <List>
           <MainListItems drawerClose={drawerClose} />
         </List>
@@ -226,14 +376,12 @@ const LoggedInLayout = ({ children }) => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography
-            component="h1"
-            variant="h6"
-            noWrap
-            className={classes.title}
-          >
-            SquadChat
-          </Typography>
+          <div className={classes.title}>
+            <span className={classes.titlePrimary}>Essencial Saúde</span>
+            <span className={classes.titleSecondary}>
+              Atendimento integrado ao QuarkClinic
+            </span>
+          </div>
 
           <div className={classes.themeSwitchContainer}>
             <Brightness4Icon className={classes.themeIcon} />
@@ -245,9 +393,9 @@ const LoggedInLayout = ({ children }) => {
             />
           </div>
 
-          {user.id && (
-            <NotificationsPopOver className={classes.iconButton} />
-          )}
+          {user.id && <NotificationsPopOver className={classes.iconButton} />}
+
+          <span className={classes.headerUserName}>{user?.name}</span>
 
           <div>
             <IconButton

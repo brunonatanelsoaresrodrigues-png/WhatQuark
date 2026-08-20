@@ -31,6 +31,9 @@ class QuarkAppointment extends Model<QuarkAppointment> {
   @Column(DataType.STRING(32))
   phone: string | null;
 
+  @Column(DataType.TEXT)
+  phones: string;
+
   @Column(DataType.STRING)
   patientName: string;
 

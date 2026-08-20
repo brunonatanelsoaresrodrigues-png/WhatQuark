@@ -21,6 +21,7 @@ export const createQuarkNotificationOnce = async (
       appointmentId,
       notificationKey,
       eventType,
+      recipientPhone: payload.phone,
       payload: JSON.stringify(payload),
       status,
       attempts: 0,

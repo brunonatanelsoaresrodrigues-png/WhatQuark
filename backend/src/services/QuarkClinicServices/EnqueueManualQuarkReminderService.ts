@@ -1,6 +1,11 @@
 import AppError from "../../errors/AppError";
 import QuarkAppointment from "../../models/QuarkAppointment";
-import { AppointmentSnapshot, appointmentCanBeConfirmed } from "./appointmentUtils";
+import {
+  AppointmentPhone,
+  AppointmentSnapshot,
+  appointmentCanBeConfirmed,
+  quarkPhoneKey
+} from "./appointmentUtils";
 import { getQuarkConfig } from "./config";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import { manualReminderAppointmentMessage } from "./messageTemplates";
@@ -46,6 +51,20 @@ const appointmentSnapshotFrom = (
   record: QuarkAppointment
 ): AppointmentSnapshot => {
   const stored = parseStoredSnapshot(record.snapshot);
+  let storedPhones: string[] = record.phone ? [record.phone] : [];
+  try {
+    const parsed = JSON.parse(record.phones || "[]");
+    if (Array.isArray(parsed)) {
+      storedPhones = parsed.filter(phone => typeof phone === "string");
+    }
+  } catch {
+    // Legacy rows keep using the primary phone.
+  }
+  const phones: AppointmentPhone[] = storedPhones.map((phone, index) => ({
+    phone,
+    source: "LEGACY",
+    isPrimary: index === 0
+  }));
   const raw: QuarkAppointmentDto = {
     id: record.appointmentId,
     pacienteId: record.patientId || undefined,
@@ -76,6 +95,7 @@ const appointmentSnapshotFrom = (
     appointmentId: record.appointmentId,
     patientId: record.patientId,
     phone: record.phone,
+    phones,
     patientName: record.patientName,
     status: record.status,
     scheduledAt: record.scheduledAt,
@@ -87,7 +107,7 @@ const appointmentSnapshotFrom = (
 
 const EnqueueManualQuarkReminderService = async ({
   appointmentId
-}: Request): Promise<{ queued: true }> => {
+}: Request): Promise<{ queued: true; recipients: number }> => {
   const record = await QuarkAppointment.findOne({ where: { appointmentId } });
 
   if (!record) {
@@ -99,33 +119,40 @@ const EnqueueManualQuarkReminderService = async ({
       409
     );
   }
-  if (!record.phone) {
+  const snapshot = appointmentSnapshotFrom(record);
+  if (snapshot.phones.length === 0) {
     throw new AppError("O paciente não possui telefone válido.", 409);
   }
   if (!record.scheduledAt || record.scheduledAt.getTime() <= Date.now()) {
-    throw new AppError("A consulta já ocorreu ou não possui horário válido.", 409);
+    throw new AppError(
+      "A consulta já ocorreu ou não possui horário válido.",
+      409
+    );
   }
 
   const config = getQuarkConfig();
-  const snapshot = appointmentSnapshotFrom(record);
   const notificationKey = `manual-reminder:${localDateKey(
     new Date(),
     config.timezone
   )}:${record.scheduleFingerprint.slice(0, 24)}`;
-  const queued = await createQuarkNotificationOnce(
-    record.appointmentId,
-    notificationKey,
-    "MANUAL_REMINDER",
-    {
-      phone: record.phone,
-      patientName: record.patientName,
-      body: manualReminderAppointmentMessage(snapshot, config.clinicAddress),
-      requestsConfirmation: true,
-      validUntil: record.scheduledAt.toISOString()
-    }
-  );
+  let recipients = 0;
+  for (const recipient of snapshot.phones) {
+    const queued = await createQuarkNotificationOnce(
+      record.appointmentId,
+      `${notificationKey}:to:${quarkPhoneKey(recipient.phone)}`,
+      "MANUAL_REMINDER",
+      {
+        phone: recipient.phone,
+        patientName: record.patientName,
+        body: manualReminderAppointmentMessage(snapshot, config.clinicAddress),
+        requestsConfirmation: true,
+        validUntil: record.scheduledAt.toISOString()
+      }
+    );
+    if (queued) recipients += 1;
+  }
 
-  if (!queued) {
+  if (recipients === 0) {
     throw new AppError(
       "Um lembrete manual já foi solicitado hoje para esta consulta.",
       409
@@ -133,7 +160,7 @@ const EnqueueManualQuarkReminderService = async ({
   }
 
   emitQuarkDashboardUpdate("notification", record.appointmentId);
-  return { queued: true };
+  return { queued: true, recipients };
 };
 
 export default EnqueueManualQuarkReminderService;

@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
+import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkAppointmentResponse from "../../models/QuarkAppointmentResponse";
 import Ticket from "../../models/Ticket";
 import { logger } from "../../utils/logger";
@@ -98,9 +99,22 @@ const HandleQuarkConfirmationReply = async ({
   const normalizedPhone = normalizeQuarkPhone(phone, "", true);
   if (!normalizedPhone) return false;
 
+  const recipients = await QuarkAppointmentRecipient.findAll({
+    where: { phone: normalizedPhone, active: true }
+  });
+  const recipientAppointmentIds = recipients.map(item => item.appointmentId);
+  const phoneOwnership = {
+    [Op.or]: [
+      { phone: normalizedPhone },
+      ...(recipientAppointmentIds.length
+        ? [{ appointmentId: { [Op.in]: recipientAppointmentIds } }]
+        : [])
+    ]
+  };
+
   const appointments = await QuarkAppointment.findAll({
     where: {
-      phone: normalizedPhone,
+      ...phoneOwnership,
       awaitingConfirmation: true,
       status: "AGENDADO",
       scheduledAt: { [Op.gte]: new Date() }
@@ -110,7 +124,7 @@ const HandleQuarkConfirmationReply = async ({
   if (appointments.length === 0) {
     const alreadyApplied = await QuarkAppointment.findOne({
       where: {
-        phone: normalizedPhone,
+        ...phoneOwnership,
         status: reply.choice === 1 ? "CONFIRMADO" : "CANCELADO",
         confirmationRequestedAt: { [Op.ne]: null } as any,
         scheduledAt: { [Op.gte]: new Date() }
@@ -151,7 +165,11 @@ const HandleQuarkConfirmationReply = async ({
   try {
     const receivedAt = new Date();
     const sourceNotification = await QuarkAppointmentNotification.findOne({
-      where: { appointmentId: appointment.appointmentId, status: "SENT" },
+      where: {
+        appointmentId: appointment.appointmentId,
+        status: "SENT",
+        [Op.or]: [{ recipientPhone: normalizedPhone }, { recipientPhone: null }]
+      },
       order: [["sentAt", "DESC"]]
     });
     const responseTimeSeconds = sourceNotification?.sentAt
@@ -165,6 +183,7 @@ const HandleQuarkConfirmationReply = async ({
     responseAudit = await QuarkAppointmentResponse.create({
       appointmentId: appointment.appointmentId,
       notificationId: sourceNotification?.id || null,
+      recipientPhone: normalizedPhone,
       decision: reply.choice === 1 ? "CONFIRMED" : "CANCELLED",
       source: "WHATSAPP",
       status: "PROCESSING",
@@ -207,22 +226,25 @@ const HandleQuarkConfirmationReply = async ({
         newStatus: "CANCELADO"
       });
       await appointment.update({ status: "CANCELADO" });
-      await QuarkAppointmentNotification.update(
-        {
-          status: "SUPPRESSED",
-          lastError: "Appointment cancelled by the patient"
-        },
-        {
-          where: {
-            appointmentId: appointment.appointmentId,
-            status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
-          }
-        }
-      );
       successBody = `Consulta cancelada no QuarkClinic conforme solicitado.\n\n${appointmentDescription(
         appointment
       )}.\n\nCaso queira realizar um novo agendamento, fale com nossa equipe.`;
     }
+    await QuarkAppointmentNotification.update(
+      {
+        status: "SUPPRESSED",
+        lastError:
+          reply.choice === 1
+            ? "Appointment confirmed by the patient"
+            : "Appointment cancelled by the patient"
+      },
+      {
+        where: {
+          appointmentId: appointment.appointmentId,
+          status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
+        }
+      }
+    );
   } catch (error) {
     await appointment.update({ awaitingConfirmation: true });
     const errorCode = (error instanceof Error ? error.message : "Unknown error")

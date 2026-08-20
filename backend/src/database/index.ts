@@ -23,6 +23,7 @@ import DailyReportRecipient from "../models/DailyReportRecipient";
 import DailyReportRun from "../models/DailyReportRun";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import DailyReportRecipientEvent from "../models/DailyReportRecipientEvent";
+import QuarkAppointmentRecipient from "../models/QuarkAppointmentRecipient";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -54,7 +55,8 @@ const models = [
   DailyReportRecipient,
   DailyReportRun,
   DailyReportDelivery,
-  DailyReportRecipientEvent
+  DailyReportRecipientEvent,
+  QuarkAppointmentRecipient
 ];
 
 sequelize.addModels(models);

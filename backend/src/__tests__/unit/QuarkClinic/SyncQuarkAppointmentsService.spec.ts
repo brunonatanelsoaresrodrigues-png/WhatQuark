@@ -1,4 +1,5 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
+import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../../models/QuarkSyncState";
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
@@ -10,6 +11,14 @@ jest.mock("../../../models/QuarkAppointment", () => ({
   __esModule: true,
   default: {
     findAll: jest.fn(),
+    findOrCreate: jest.fn()
+  }
+}));
+
+jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
+  __esModule: true,
+  default: {
+    update: jest.fn(),
     findOrCreate: jest.fn()
   }
 }));
@@ -97,6 +106,11 @@ describe("SyncQuarkAppointmentsService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
+    (QuarkAppointmentRecipient.update as jest.Mock).mockResolvedValue([0]);
+    (QuarkAppointmentRecipient.findOrCreate as jest.Mock).mockResolvedValue([
+      { update: jest.fn().mockResolvedValue(undefined) },
+      true
+    ]);
   });
 
   it("imports the initial two-sweep baseline without creating an outbound message", async () => {
@@ -125,6 +139,7 @@ describe("SyncQuarkAppointmentsService", () => {
       appointmentId: "42",
       status: "AGENDADO",
       phone: currentSnapshot.phone,
+      phones: JSON.stringify(currentSnapshot.phones.map(item => item.phone)),
       scheduleFingerprint: "old-schedule-fingerprint",
       snapshotFingerprint: "old-snapshot-fingerprint",
       baselineImported: true,
@@ -143,7 +158,7 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
     expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
       "42",
-      expect.stringMatching(/^changed:/),
+      expect.stringMatching(/^changed:.*:to:[a-f0-9]{16}$/),
       "RESCHEDULED",
       expect.objectContaining({ phone: "5511999990000" }),
       "PENDING"

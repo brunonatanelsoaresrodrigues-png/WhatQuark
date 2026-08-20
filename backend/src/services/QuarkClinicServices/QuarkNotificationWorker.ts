@@ -121,6 +121,7 @@ const processNotification = async (
     const newerNotification = await QuarkAppointmentNotification.findOne({
       where: {
         appointmentId: notification.appointmentId,
+        recipientPhone: notification.recipientPhone,
         id: { [Op.gt]: notification.id },
         status: {
           [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY", "SENT"]

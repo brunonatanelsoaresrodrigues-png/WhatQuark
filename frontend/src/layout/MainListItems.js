@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useLocation } from "react-router-dom";
+import { makeStyles } from "@material-ui/core/styles";
 
 import ListItem from "@material-ui/core/ListItem";
 import ListItemIcon from "@material-ui/core/ListItemIcon";
@@ -24,8 +25,59 @@ import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
 import { AuthContext } from "../context/Auth/AuthContext";
 import { Can } from "../components/Can";
 
+const useStyles = makeStyles((theme) => ({
+  navigation: {
+    padding: theme.spacing(0.5, 1.25, 2),
+  },
+  item: {
+    minHeight: 42,
+    margin: theme.spacing(0.35, 0),
+    paddingLeft: theme.spacing(1.5),
+    borderRadius: 8,
+    borderLeft: "3px solid transparent",
+    color: theme.palette.text.secondary,
+    "& .MuiListItemIcon-root": {
+      minWidth: 38,
+      color: "inherit",
+    },
+    "& .MuiListItemText-primary": {
+      fontSize: ".86rem",
+      fontWeight: 650,
+    },
+    "&:hover": {
+      color: theme.palette.primary.main,
+      backgroundColor:
+        theme.palette.type === "dark" ? "rgba(54,183,165,.1)" : "#edf8f6",
+    },
+    "&.Mui-selected": {
+      color: theme.palette.primary.dark,
+      borderLeftColor: theme.palette.primary.main,
+      backgroundColor:
+        theme.palette.type === "dark" ? "rgba(54,183,165,.16)" : "#dff3ef",
+    },
+    "&.Mui-selected:hover": {
+      backgroundColor:
+        theme.palette.type === "dark" ? "rgba(54,183,165,.2)" : "#d5eee9",
+    },
+  },
+  divider: { margin: theme.spacing(1.25, 0) },
+  subheader: {
+    color: theme.palette.primary.main,
+    fontSize: ".68rem",
+    fontWeight: 800,
+    lineHeight: "32px",
+    letterSpacing: ".08em",
+    textTransform: "uppercase",
+  },
+}));
+
 function ListItemLink(props) {
   const { icon, primary, to, className } = props;
+  const location = useLocation();
+  const selected =
+    to === "/"
+      ? location.pathname === "/"
+      : location.pathname === to || location.pathname.startsWith(`${to}/`);
 
   const renderLink = React.useMemo(
     () =>
@@ -37,7 +89,12 @@ function ListItemLink(props) {
 
   return (
     <li>
-      <ListItem button component={renderLink} className={className}>
+      <ListItem
+        button
+        component={renderLink}
+        className={className}
+        selected={selected}
+      >
         {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
         <ListItemText primary={primary} />
       </ListItem>
@@ -46,6 +103,7 @@ function ListItemLink(props) {
 }
 
 const MainListItems = (props) => {
+  const classes = useStyles();
   const { drawerClose } = props;
   const { whatsApps } = useContext(WhatsAppsContext);
   const { user } = useContext(AuthContext);
@@ -74,11 +132,12 @@ const MainListItems = (props) => {
   }, [whatsApps]);
 
   return (
-    <div onClick={drawerClose}>
+    <div onClick={drawerClose} className={classes.navigation}>
       <ListItemLink
         to="/"
         primary="Dashboard"
         icon={<DashboardOutlinedIcon />}
+        className={classes.item}
       />
       <ListItemLink
         to="/connections"
@@ -88,28 +147,33 @@ const MainListItems = (props) => {
             <SyncAltIcon />
           </Badge>
         }
+        className={classes.item}
       />
       <ListItemLink
         to="/tickets"
         primary={i18n.t("mainDrawer.listItems.tickets")}
         icon={<WhatsAppIcon />}
+        className={classes.item}
       />
 
       <ListItemLink
         to="/contacts"
         primary={i18n.t("mainDrawer.listItems.contacts")}
         icon={<ContactPhoneOutlinedIcon />}
+        className={classes.item}
       />
       <ListItemLink
         to="/quickAnswers"
         primary={i18n.t("mainDrawer.listItems.quickAnswers")}
         icon={<QuestionAnswerOutlinedIcon />}
+        className={classes.item}
       />
       {user.canAccessQuarkClinic && (
         <ListItemLink
           to="/quark-clinic"
           primary="Quark Clinic"
           icon={<LocalHospitalOutlinedIcon />}
+          className={classes.item}
         />
       )}
       <Can
@@ -117,34 +181,39 @@ const MainListItems = (props) => {
         perform="drawer-admin-items:view"
         yes={() => (
           <>
-            <Divider />
-            <ListSubheader inset>
+            <Divider className={classes.divider} />
+            <ListSubheader className={classes.subheader} disableSticky>
               {i18n.t("mainDrawer.listItems.administration")}
             </ListSubheader>
             <ListItemLink
               to="/quark-dashboard"
               primary="Automação Quark"
               icon={<AssessmentOutlinedIcon />}
+              className={classes.item}
             />
             <ListItemLink
               to="/daily-reports"
               primary="Relatórios Diários"
               icon={<InsertChartOutlinedIcon />}
+              className={classes.item}
             />
             <ListItemLink
               to="/users"
               primary={i18n.t("mainDrawer.listItems.users")}
               icon={<PeopleAltOutlinedIcon />}
+              className={classes.item}
             />
             <ListItemLink
               to="/queues"
               primary={i18n.t("mainDrawer.listItems.queues")}
               icon={<AccountTreeOutlinedIcon />}
+              className={classes.item}
             />
             <ListItemLink
               to="/settings"
               primary={i18n.t("mainDrawer.listItems.settings")}
               icon={<SettingsOutlinedIcon />}
+              className={classes.item}
             />
           </>
         )}

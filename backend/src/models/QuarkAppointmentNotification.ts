@@ -26,6 +26,10 @@ class QuarkAppointmentNotification extends Model<QuarkAppointmentNotification> {
   @Column(DataType.STRING(32))
   eventType: string;
 
+  @AllowNull
+  @Column(DataType.STRING(32))
+  recipientPhone: string | null;
+
   @Column(DataType.TEXT)
   payload: string;
 

@@ -25,6 +25,10 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
   @Column(DataType.INTEGER)
   notificationId: number | null;
 
+  @AllowNull
+  @Column(DataType.STRING(32))
+  recipientPhone: string | null;
+
   @Column(DataType.STRING(16))
   decision: "CONFIRMED" | "CANCELLED";
 

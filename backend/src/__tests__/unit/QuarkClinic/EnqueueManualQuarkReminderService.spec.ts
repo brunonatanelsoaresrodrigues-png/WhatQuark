@@ -22,6 +22,7 @@ const appointment = {
   appointmentId: "quark-42",
   patientId: "patient-7",
   phone: "5585999990000",
+  phones: JSON.stringify(["5585999990000"]),
   patientName: "PACIENTE COMPLETO",
   status: "AGENDADO",
   scheduledAt: new Date("2099-08-21T16:00:00-03:00"),
@@ -50,11 +51,13 @@ describe("EnqueueManualQuarkReminderService", () => {
   it("queues a confirmation reminder through the protected outbox", async () => {
     await expect(
       EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
-    ).resolves.toEqual({ queued: true });
+    ).resolves.toEqual({ queued: true, recipients: 1 });
 
     expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
       "quark-42",
-      expect.stringMatching(/^manual-reminder:\d{4}-\d{2}-\d{2}:a{24}$/),
+      expect.stringMatching(
+        /^manual-reminder:\d{4}-\d{2}-\d{2}:a{24}:to:[a-f0-9]{16}$/
+      ),
       "MANUAL_REMINDER",
       expect.objectContaining({
         phone: "5585999990000",
@@ -67,6 +70,26 @@ describe("EnqueueManualQuarkReminderService", () => {
     expect(emitQuarkDashboardUpdate).toHaveBeenCalledWith(
       "notification",
       "quark-42"
+    );
+  });
+
+  it("queues one reminder for each distinct phone", async () => {
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...appointment,
+      phones: JSON.stringify(["5585999990000", "5585988880000"])
+    });
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).resolves.toEqual({ queued: true, recipients: 2 });
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(2);
+    expect(createQuarkNotificationOnce).toHaveBeenNthCalledWith(
+      2,
+      "quark-42",
+      expect.stringMatching(/:to:[a-f0-9]{16}$/),
+      "MANUAL_REMINDER",
+      expect.objectContaining({ phone: "5585988880000" })
     );
   });
 

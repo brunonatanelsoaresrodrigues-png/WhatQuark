@@ -20,7 +20,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography
+  Typography,
 } from "@material-ui/core";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import RefreshIcon from "@material-ui/icons/Refresh";
@@ -35,7 +35,7 @@ import {
   ResponsiveContainer,
   Tooltip as ChartTooltip,
   XAxis,
-  YAxis
+  YAxis,
 } from "recharts";
 import { addDays, format } from "date-fns";
 import { useHistory } from "react-router-dom";
@@ -44,10 +44,10 @@ import api from "../../services/api";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => ({
   container: {
     paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(4)
+    paddingBottom: theme.spacing(4),
   },
   header: {
     display: "flex",
@@ -55,71 +55,71 @@ const useStyles = makeStyles(theme => ({
     justifyContent: "space-between",
     flexWrap: "wrap",
     gap: theme.spacing(2),
-    marginBottom: theme.spacing(2)
+    marginBottom: theme.spacing(2),
   },
   filters: {
     padding: theme.spacing(2),
-    marginBottom: theme.spacing(3)
+    marginBottom: theme.spacing(3),
   },
   filterControl: {
-    minWidth: 190
+    minWidth: 190,
   },
   metric: {
     minHeight: 118,
     padding: theme.spacing(2),
-    borderTop: `4px solid ${theme.palette.primary.main}`
+    borderTop: `4px solid ${theme.palette.primary.main}`,
   },
   metricValue: {
     marginTop: theme.spacing(1),
-    fontWeight: 700
+    fontWeight: 700,
   },
   chartPaper: {
     height: 360,
-    padding: theme.spacing(2)
+    padding: theme.spacing(2),
   },
   section: {
-    marginTop: theme.spacing(3)
+    marginTop: theme.spacing(3),
   },
   sectionTitle: {
     padding: theme.spacing(2),
-    paddingBottom: 0
+    paddingBottom: 0,
   },
   syncText: {
-    color: theme.palette.text.secondary
+    color: theme.palette.text.secondary,
   },
   loading: {
     minHeight: 320,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
   },
   statusChip: {
-    fontWeight: 600
+    fontWeight: 600,
   },
   actions: {
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(1),
-    whiteSpace: "nowrap"
-  }
+    whiteSpace: "nowrap",
+  },
 }));
 
-const isoDate = date => format(date, "yyyy-MM-dd");
+const isoDate = (date) => format(date, "yyyy-MM-dd");
 
-const formatDateTime = value => {
+const formatDateTime = (value) => {
   if (!value) return "—";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
   return format(parsed, "dd/MM/yyyy HH:mm");
 };
 
-const formatPhone = value => {
+const formatPhone = (value) => {
   if (!value) return "Sem telefone";
   const phone = String(value).trim();
   return phone.startsWith("+") ? phone : `+${phone}`;
 };
 
-const formatDuration = seconds => {
+const formatDuration = (seconds) => {
   const value = Number(seconds || 0);
   if (!value) return "—";
   if (value < 60) return `${value}s`;
@@ -133,7 +133,7 @@ const notificationLabels = {
   RESCHEDULED: "Alteração",
   UPDATED: "Atualização",
   CANCELLED: "Cancelamento",
-  MANUAL_REMINDER: "Lembrete manual"
+  MANUAL_REMINDER: "Lembrete manual",
 };
 
 const statusLabels = {
@@ -148,7 +148,7 @@ const statusLabels = {
   SENT: "Enviada",
   FAILED_RETRY: "Nova tentativa",
   DEAD_LETTER: "Falha",
-  SUPPRESSED: "Suprimida"
+  SUPPRESSED: "Suprimida",
 };
 
 const MetricCard = ({ label, value, color }) => (
@@ -173,7 +173,7 @@ const QuarkDashboard = () => {
     to: isoDate(addDays(new Date(), 30)),
     status: "",
     messageStatus: "",
-    responseStatus: ""
+    responseStatus: "",
   });
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -181,7 +181,7 @@ const QuarkDashboard = () => {
   const [timeseries, setTimeseries] = useState([]);
   const [breakdown, setBreakdown] = useState({
     eventTypes: [],
-    professionals: []
+    professionals: [],
   });
   const [appointments, setAppointments] = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
@@ -208,9 +208,9 @@ const QuarkDashboard = () => {
               messageStatus: filters.messageStatus || undefined,
               responseStatus: filters.responseStatus || undefined,
               page: page + 1,
-              pageSize
-            }
-          })
+              pageSize,
+            },
+          }),
         ]);
       setSummary(summaryResult.data);
       setTimeseries(timeseriesResult.data);
@@ -221,7 +221,14 @@ const QuarkDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters.messageStatus, filters.responseStatus, filters.status, page, pageSize, params]);
+  }, [
+    filters.messageStatus,
+    filters.responseStatus,
+    filters.status,
+    page,
+    pageSize,
+    params,
+  ]);
 
   useEffect(() => {
     loadDashboard();
@@ -240,22 +247,24 @@ const QuarkDashboard = () => {
     };
   }, [loadDashboard]);
 
-  const changeFilter = event => {
+  const changeFilter = (event) => {
     const { name, value } = event.target;
     setPage(0);
-    setFilters(current => ({ ...current, [name]: value }));
+    setFilters((current) => ({ ...current, [name]: value }));
   };
 
-  const sendReminder = async row => {
+  const sendReminder = async (row) => {
     setSendingReminder(row.appointmentId);
     try {
-      await api.post(
+      const { data } = await api.post(
         `/quark/dashboard/appointments/${encodeURIComponent(
           row.appointmentId
         )}/reminder`
       );
       toast.success(
-        "Lembrete adicionado à fila. O envio seguirá o intervalo automático."
+        Number(data?.recipients) > 1
+          ? `Lembretes adicionados à fila para ${data.recipients} números. Os envios seguirão o intervalo automático.`
+          : "Lembrete adicionado à fila. O envio seguirá o intervalo automático."
       );
       await loadDashboard();
     } catch (error) {
@@ -265,9 +274,11 @@ const QuarkDashboard = () => {
     }
   };
 
-  const reminderDisabledReason = row => {
+  const reminderDisabledReason = (row) => {
     if (row.status !== "AGENDADO") return "A consulta não está agendada.";
-    if (!row.phone) return "O paciente não possui telefone válido.";
+    if (!(row.phones || []).length && !row.phone) {
+      return "O paciente não possui telefone válido.";
+    }
     const scheduledAt = new Date(row.scheduledAt).getTime();
     if (Number.isNaN(scheduledAt) || scheduledAt <= Date.now()) {
       return "O horário da consulta já passou.";
@@ -278,7 +289,7 @@ const QuarkDashboard = () => {
     return "";
   };
 
-  const confirmDisabledReason = row => {
+  const confirmDisabledReason = (row) => {
     if (row.status === "CONFIRMADO") return "A consulta já está confirmada.";
     if (row.status !== "AGENDADO") return "A consulta não está agendada.";
     const scheduledAt = new Date(row.scheduledAt).getTime();
@@ -288,7 +299,7 @@ const QuarkDashboard = () => {
     return "";
   };
 
-  const confirmAppointment = async row => {
+  const confirmAppointment = async (row) => {
     const confirmed = window.confirm(
       `Confirmar no Quark a consulta de ${row.patient} em ${formatDateTime(
         row.scheduledAt
@@ -331,12 +342,20 @@ const QuarkDashboard = () => {
     ["Entregues", notifications.delivered || 0, "#00acc1"],
     ["Lidas", notifications.read || 0, "#00897b"],
     ["Aguardando envio", notifications.queued || 0, "#ff9800"],
-    ["Aguardando resposta", appointmentMetrics.awaitingResponse || 0, "#f9a825"],
+    [
+      "Aguardando resposta",
+      appointmentMetrics.awaitingResponse || 0,
+      "#f9a825",
+    ],
     ["Confirmadas pelo WhatsApp", responses.confirmed || 0, "#43a047"],
     ["Canceladas pelo WhatsApp", responses.cancelled || 0, "#e53935"],
     ["Falhas de envio", notifications.failed || 0, "#b71c1c"],
     ["Taxa de resposta", `${responses.responseRate || 0}%`, "#7e57c2"],
-    ["Tempo médio de resposta", formatDuration(responses.averageResponseSeconds), "#5c6bc0"]
+    [
+      "Tempo médio de resposta",
+      formatDuration(responses.averageResponseSeconds),
+      "#5c6bc0",
+    ],
   ];
 
   return (
@@ -345,13 +364,20 @@ const QuarkDashboard = () => {
         <div>
           <Typography variant="h5">Automação Quark</Typography>
           <Typography variant="body2" className={classes.syncText}>
-            Última sincronização: {formatDateTime(summary?.sync?.lastSuccessfulSyncAt)}
+            Última sincronização:{" "}
+            {formatDateTime(summary?.sync?.lastSuccessfulSyncAt)}
           </Typography>
         </div>
         <Button
           variant="contained"
           color="primary"
-          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <RefreshIcon />}
+          startIcon={
+            loading ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <RefreshIcon />
+            )
+          }
           onClick={loadDashboard}
           disabled={loading}
         >
@@ -386,10 +412,16 @@ const QuarkDashboard = () => {
           <Grid item xs={12} sm={4} md={2}>
             <FormControl fullWidth className={classes.filterControl}>
               <InputLabel>Situação da consulta</InputLabel>
-              <Select name="status" value={filters.status} onChange={changeFilter}>
+              <Select
+                name="status"
+                value={filters.status}
+                onChange={changeFilter}
+              >
                 <MenuItem value="">Todas</MenuItem>
                 <MenuItem value="SCHEDULED">Agendadas</MenuItem>
-                <MenuItem value="AWAITING_RESPONSE">Aguardando resposta</MenuItem>
+                <MenuItem value="AWAITING_RESPONSE">
+                  Aguardando resposta
+                </MenuItem>
                 <MenuItem value="CONFIRMED">Confirmadas</MenuItem>
                 <MenuItem value="CANCELLED">Canceladas</MenuItem>
               </Select>
@@ -446,13 +478,20 @@ const QuarkDashboard = () => {
           <Paper className={classes.chartPaper}>
             <Typography variant="h6">Mensagens e respostas por dia</Typography>
             <ResponsiveContainer width="100%" height="90%">
-              <BarChart data={timeseries} margin={{ top: 20, right: 10, left: 0, bottom: 5 }}>
+              <BarChart
+                data={timeseries}
+                margin={{ top: 20, right: 10, left: 0, bottom: 5 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis allowDecimals={false} />
                 <ChartTooltip />
                 <Legend />
-                <Bar dataKey="sent" name="Enviadas" fill={theme.palette.primary.main} />
+                <Bar
+                  dataKey="sent"
+                  name="Enviadas"
+                  fill={theme.palette.primary.main}
+                />
                 <Bar dataKey="delivered" name="Entregues" fill="#00acc1" />
                 <Bar dataKey="read" name="Lidas" fill="#00897b" />
                 <Bar dataKey="confirmed" name="Confirmadas" fill="#43a047" />
@@ -475,12 +514,20 @@ const QuarkDashboard = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {breakdown.eventTypes.map(row => (
+                  {breakdown.eventTypes.map((row) => (
                     <TableRow key={row.eventType}>
-                      <TableCell>{notificationLabels[row.eventType] || row.eventType}</TableCell>
-                      <TableCell align="right">{Number(row.generated || 0)}</TableCell>
-                      <TableCell align="right">{Number(row.sent || 0)}</TableCell>
-                      <TableCell align="right">{Number(row.failed || 0)}</TableCell>
+                      <TableCell>
+                        {notificationLabels[row.eventType] || row.eventType}
+                      </TableCell>
+                      <TableCell align="right">
+                        {Number(row.generated || 0)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {Number(row.sent || 0)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {Number(row.failed || 0)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -509,11 +556,23 @@ const QuarkDashboard = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {appointments.rows.map(row => (
+              {appointments.rows.map((row) => (
                 <TableRow key={row.id} hover>
                   <TableCell>
                     <Typography variant="body2">{row.patient}</Typography>
-                    <Typography variant="caption" color="textSecondary">{formatPhone(row.phone)}</Typography>
+                    {(row.phones?.length ? row.phones : [row.phone])
+                      .filter(Boolean)
+                      .map((phone, index) => (
+                        <Typography
+                          key={phone}
+                          variant="caption"
+                          color="textSecondary"
+                          display="block"
+                        >
+                          {index === 0 ? "Principal" : `Alternativo ${index}`}:{" "}
+                          {formatPhone(phone)}
+                        </Typography>
+                      ))}
                   </TableCell>
                   <TableCell>{formatDateTime(row.scheduledAt)}</TableCell>
                   <TableCell>{row.professional}</TableCell>
@@ -521,16 +580,36 @@ const QuarkDashboard = () => {
                     <Chip
                       size="small"
                       className={classes.statusChip}
-                      label={row.awaitingConfirmation ? "Aguardando resposta" : statusLabels[row.status] || row.status}
-                      color={row.status === "CONFIRMADO" ? "primary" : "default"}
+                      label={
+                        row.awaitingConfirmation
+                          ? "Aguardando resposta"
+                          : statusLabels[row.status] || row.status
+                      }
+                      color={
+                        row.status === "CONFIRMADO" ? "primary" : "default"
+                      }
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{notificationLabels[row.lastEventType] || row.lastEventType || "—"}</Typography>
-                    <Typography variant="caption" color="textSecondary">{statusLabels[row.lastNotificationStatus] || row.lastNotificationStatus || "Sem envio"}</Typography>
+                    <Typography variant="body2">
+                      {notificationLabels[row.lastEventType] ||
+                        row.lastEventType ||
+                        "—"}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {statusLabels[row.lastNotificationStatus] ||
+                        row.lastNotificationStatus ||
+                        "Sem envio"}
+                    </Typography>
                   </TableCell>
                   <TableCell>
-                    {row.lastReadAt ? "Lida" : row.lastDeliveredAt ? "Entregue" : row.lastSentAt ? "Enviada" : "—"}
+                    {row.lastReadAt
+                      ? "Lida"
+                      : row.lastDeliveredAt
+                      ? "Entregue"
+                      : row.lastSentAt
+                      ? "Enviada"
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     {row.lastDecision === "CONFIRMED"
@@ -543,7 +622,12 @@ const QuarkDashboard = () => {
                   </TableCell>
                   <TableCell>
                     <div className={classes.actions}>
-                      <Tooltip title={reminderDisabledReason(row) || "Enviar mensagem para confirmar a consulta"}>
+                      <Tooltip
+                        title={
+                          reminderDisabledReason(row) ||
+                          "Enviar mensagem para confirmar a consulta"
+                        }
+                      >
                         <span>
                           <Button
                             size="small"
@@ -569,7 +653,12 @@ const QuarkDashboard = () => {
                           </Button>
                         </span>
                       </Tooltip>
-                      <Tooltip title={confirmDisabledReason(row) || "Confirmar esta consulta diretamente no Quark"}>
+                      <Tooltip
+                        title={
+                          confirmDisabledReason(row) ||
+                          "Confirmar esta consulta diretamente no Quark"
+                        }
+                      >
                         <span>
                           <Button
                             size="small"
@@ -599,7 +688,9 @@ const QuarkDashboard = () => {
                             size="small"
                             variant="outlined"
                             startIcon={<ChatBubbleOutlineIcon />}
-                            onClick={() => history.push(`/tickets/${row.ticketId}`)}
+                            onClick={() =>
+                              history.push(`/tickets/${row.ticketId}`)
+                            }
                           >
                             Conversa
                           </Button>
@@ -611,7 +702,9 @@ const QuarkDashboard = () => {
               ))}
               {appointments.rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">Nenhuma consulta encontrada no período.</TableCell>
+                  <TableCell colSpan={8} align="center">
+                    Nenhuma consulta encontrada no período.
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -623,7 +716,7 @@ const QuarkDashboard = () => {
           page={page}
           onChangePage={(_, nextPage) => setPage(nextPage)}
           rowsPerPage={pageSize}
-          onChangeRowsPerPage={event => {
+          onChangeRowsPerPage={(event) => {
             setPageSize(Number(event.target.value));
             setPage(0);
           }}
@@ -648,13 +741,21 @@ const QuarkDashboard = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {breakdown.professionals.map(row => (
+              {breakdown.professionals.map((row) => (
                 <TableRow key={row.professional}>
                   <TableCell>{row.professional}</TableCell>
-                  <TableCell align="right">{Number(row.appointments || 0)}</TableCell>
-                  <TableCell align="right">{Number(row.confirmedInQuark || 0)}</TableCell>
-                  <TableCell align="right">{Number(row.cancelledInQuark || 0)}</TableCell>
-                  <TableCell align="right">{Number(row.awaitingResponse || 0)}</TableCell>
+                  <TableCell align="right">
+                    {Number(row.appointments || 0)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {Number(row.confirmedInQuark || 0)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {Number(row.cancelledInQuark || 0)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {Number(row.awaitingResponse || 0)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

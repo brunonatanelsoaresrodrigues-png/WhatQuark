@@ -3,7 +3,8 @@ import {
   normalizeQuarkPhone,
   parseConfirmationChoice,
   parseConfirmationReply,
-  parseQuarkScheduledAt
+  parseQuarkScheduledAt,
+  selectQuarkPhones
 } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 
@@ -42,6 +43,41 @@ describe("QuarkClinic appointment helpers", () => {
     expect(normalizeQuarkPhone("+55 11 98765-4321", "55", true)).toBe(
       "5511987654321"
     );
+  });
+
+  it("returns the main and alternate Quark phones without duplicates", () => {
+    expect(
+      selectQuarkPhones(
+        {
+          id: 42,
+          telefoneComDDI: "+55 85 99999-0000",
+          telefoneOutro: "(85) 98888-0000"
+        },
+        config
+      )
+    ).toEqual([
+      {
+        phone: "5585999990000",
+        source: "telefoneComDDI",
+        isPrimary: true
+      },
+      {
+        phone: "5585988880000",
+        source: "telefoneOutro",
+        isPrimary: false
+      }
+    ]);
+
+    expect(
+      selectQuarkPhones(
+        {
+          id: 42,
+          telefoneComDDI: "+55 85 99999-0000",
+          telefoneOutroComDDI: "+55 85 99999-0000"
+        },
+        config
+      )
+    ).toHaveLength(1);
   });
 
   it("combines the Quark date and time without changing the local hour", () => {

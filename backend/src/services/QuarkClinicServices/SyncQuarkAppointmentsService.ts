@@ -1,13 +1,15 @@
 import { hostname } from "os";
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../models/QuarkSyncState";
 import { logger } from "../../utils/logger";
 import {
   AppointmentSnapshot,
   appointmentCanBeConfirmed,
   appointmentIsCancelled,
-  buildAppointmentSnapshot
+  buildAppointmentSnapshot,
+  quarkPhoneKey
 } from "./appointmentUtils";
 import { QuarkConfig } from "./config";
 import { listQuarkAppointments } from "./QuarkClinicClient";
@@ -22,7 +24,7 @@ import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 
 const SYNC_STATE_KEY = "appointments";
-const FINGERPRINT_VERSION = 1;
+const FINGERPRINT_VERSION = 2;
 const syncWorkerId = `${hostname()}-${process.pid}`.slice(0, 64);
 
 const pad = (value: number): string =>
@@ -51,6 +53,7 @@ const valuesForPersistence = (
   appointmentId: snapshot.appointmentId,
   patientId: snapshot.patientId,
   phone: snapshot.phone,
+  phones: JSON.stringify(snapshot.phones.map(item => item.phone)),
   patientName: snapshot.patientName,
   status: snapshot.status,
   scheduledAt: snapshot.scheduledAt,
@@ -65,7 +68,8 @@ const valuesForPersistence = (
     profissionalNome: snapshot.raw.profissional?.nome || null,
     procedimentoId: snapshot.raw.procedimentoId || null,
     procedimentoNome: snapshot.raw.procedimento?.nome || null,
-    statusMarcacao: snapshot.status
+    statusMarcacao: snapshot.status,
+    phones: snapshot.phones
   }),
   lastSeenAt: now,
   firstSeenAt: now,
@@ -76,28 +80,68 @@ const valuesForPersistence = (
   confirmationRequestedAt: null
 });
 
-const createOutbox = (
+const createOutbox = async (
   snapshot: AppointmentSnapshot,
   notificationKey: string,
   eventType: string,
   body: string,
   status: "PENDING" | "SUPPRESSED" = "PENDING"
-): Promise<boolean> =>
-  createQuarkNotificationOnce(
-    snapshot.appointmentId,
-    notificationKey,
-    eventType,
+): Promise<boolean> => {
+  let created = false;
+  for (const recipient of snapshot.phones) {
+    const recipientCreated = await createQuarkNotificationOnce(
+      snapshot.appointmentId,
+      `${notificationKey}:to:${quarkPhoneKey(recipient.phone)}`,
+      eventType,
+      {
+        phone: recipient.phone,
+        patientName: snapshot.patientName,
+        body,
+        requestsConfirmation: appointmentCanBeConfirmed(snapshot.status),
+        validUntil: snapshot.scheduledAt
+          ? snapshot.scheduledAt.toISOString()
+          : null
+      },
+      status
+    );
+    created = recipientCreated || created;
+  }
+  return created;
+};
+
+const syncRecipients = async (snapshot: AppointmentSnapshot): Promise<void> => {
+  const phones = snapshot.phones.map(item => item.phone);
+  await QuarkAppointmentRecipient.update(
+    { active: false },
     {
-      phone: snapshot.phone,
-      patientName: snapshot.patientName,
-      body,
-      requestsConfirmation: appointmentCanBeConfirmed(snapshot.status),
-      validUntil: snapshot.scheduledAt
-        ? snapshot.scheduledAt.toISOString()
-        : null
-    },
-    status
+      where: {
+        appointmentId: snapshot.appointmentId,
+        ...(phones.length ? { phone: { [Op.notIn]: phones } } : {})
+      }
+    }
   );
+
+  for (const recipient of snapshot.phones) {
+    const [record] = await QuarkAppointmentRecipient.findOrCreate({
+      where: {
+        appointmentId: snapshot.appointmentId,
+        phone: recipient.phone
+      },
+      defaults: {
+        appointmentId: snapshot.appointmentId,
+        phone: recipient.phone,
+        source: recipient.source,
+        isPrimary: recipient.isPrimary,
+        active: true
+      }
+    });
+    await record.update({
+      source: recipient.source,
+      isPrimary: recipient.isPrimary,
+      active: true
+    });
+  }
+};
 
 const dueReminderHours = (
   config: QuarkConfig,
@@ -179,7 +223,18 @@ const processExistingAppointment = async (
     appointmentIsCancelled(snapshot.status);
   const scheduleChanged =
     record.scheduleFingerprint !== snapshot.scheduleFingerprint;
-  const phoneChanged = record.phone !== snapshot.phone;
+  let storedPhones: string[] = record.phone ? [record.phone] : [];
+  try {
+    storedPhones = JSON.parse(record.phones || "[]") as string[];
+  } catch {
+    // Legacy rows fall back to the former primary phone column.
+  }
+  const phoneListChanged =
+    JSON.stringify(storedPhones) !==
+    JSON.stringify(snapshot.phones.map(item => item.phone));
+  const phoneChanged =
+    record.phone !== snapshot.phone ||
+    (record.fingerprintVersion >= FINGERPRINT_VERSION && phoneListChanged);
   const relevantChanged = scheduleChanged || phoneChanged;
 
   if (
@@ -309,6 +364,7 @@ const processSnapshots = async (
     } else {
       await processNewAppointment(config, snapshot, baselineMode);
     }
+    await syncRecipients(snapshot);
   }
 };
 

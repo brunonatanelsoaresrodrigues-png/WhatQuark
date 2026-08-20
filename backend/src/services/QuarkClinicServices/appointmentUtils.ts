@@ -6,6 +6,7 @@ export interface AppointmentSnapshot {
   appointmentId: string;
   patientId: string | null;
   phone: string | null;
+  phones: AppointmentPhone[];
   patientName: string;
   status: string;
   scheduledAt: Date | null;
@@ -14,8 +15,22 @@ export interface AppointmentSnapshot {
   raw: QuarkAppointmentDto;
 }
 
+export interface AppointmentPhone {
+  phone: string;
+  source:
+    | "telefoneComDDI"
+    | "telefone"
+    | "telefoneOutroComDDI"
+    | "telefoneOutro"
+    | "LEGACY";
+  isPrimary: boolean;
+}
+
 const hash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+export const quarkPhoneKey = (phone: string): string =>
+  hash(phone).slice(0, 16);
 
 const digitsOnly = (value: string | undefined): string =>
   (value || "").replace(/\D/g, "");
@@ -64,24 +79,60 @@ export const parseQuarkScheduledAt = (
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const selectPhone = (
+export const selectQuarkPhones = (
   appointment: QuarkAppointmentDto,
   config: QuarkConfig
-): string | null => {
-  const withCountryCode =
-    appointment.telefoneComDDI || appointment.telefoneOutroComDDI;
-  if (withCountryCode) {
-    return normalizeQuarkPhone(
-      withCountryCode,
-      config.defaultCountryCode,
-      true
-    );
-  }
-
-  return normalizeQuarkPhone(
-    appointment.telefone || appointment.telefoneOutro,
-    config.defaultCountryCode
-  );
+): AppointmentPhone[] => {
+  const candidates: Array<Omit<AppointmentPhone, "isPrimary"> | null> = [
+    appointment.telefoneComDDI
+      ? {
+          phone:
+            normalizeQuarkPhone(
+              appointment.telefoneComDDI,
+              config.defaultCountryCode,
+              true
+            ) || "",
+          source: "telefoneComDDI"
+        }
+      : appointment.telefone
+      ? {
+          phone:
+            normalizeQuarkPhone(
+              appointment.telefone,
+              config.defaultCountryCode
+            ) || "",
+          source: "telefone"
+        }
+      : null,
+    appointment.telefoneOutroComDDI
+      ? {
+          phone:
+            normalizeQuarkPhone(
+              appointment.telefoneOutroComDDI,
+              config.defaultCountryCode,
+              true
+            ) || "",
+          source: "telefoneOutroComDDI"
+        }
+      : appointment.telefoneOutro
+      ? {
+          phone:
+            normalizeQuarkPhone(
+              appointment.telefoneOutro,
+              config.defaultCountryCode
+            ) || "",
+          source: "telefoneOutro"
+        }
+      : null
+  ];
+  const seen = new Set<string>();
+  const phones: AppointmentPhone[] = [];
+  candidates.forEach(candidate => {
+    if (!candidate?.phone || seen.has(candidate.phone)) return;
+    seen.add(candidate.phone);
+    phones.push({ ...candidate, isPrimary: phones.length === 0 });
+  });
+  return phones;
 };
 
 export const buildAppointmentSnapshot = (
@@ -92,6 +143,7 @@ export const buildAppointmentSnapshot = (
     appointment.dataAgendamento,
     appointment.horaAgendamento
   );
+  const phones = selectQuarkPhones(appointment, config);
 
   const scheduleIdentity = {
     dataAgendamento: appointment.dataAgendamento || "",
@@ -111,7 +163,8 @@ export const buildAppointmentSnapshot = (
       appointment.pacienteId === undefined
         ? null
         : String(appointment.pacienteId),
-    phone: selectPhone(appointment, config),
+    phone: phones[0]?.phone || null,
+    phones,
     patientName: appointment.nomePaciente || "Paciente",
     status: appointment.statusMarcacao || "DESCONHECIDO",
     scheduledAt,
@@ -119,7 +172,7 @@ export const buildAppointmentSnapshot = (
     snapshotFingerprint: hash({
       ...scheduleIdentity,
       status: appointment.statusMarcacao || "DESCONHECIDO",
-      phone: selectPhone(appointment, config)
+      phones: phones.map(item => item.phone)
     }),
     raw: appointment
   };
