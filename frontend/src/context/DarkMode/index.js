@@ -106,10 +106,16 @@ export const ThemeProvider = ({ children }) => {
             MuiButton: {
               root: { borderRadius: 8, minHeight: 36, letterSpacing: 0 },
               containedPrimary: {
-                background: "linear-gradient(135deg, #08766c 0%, #049d8e 100%)",
+                color: "#ffffff",
+                background: "linear-gradient(135deg, #08766c 0%, #078276 100%)",
                 "&:hover": {
                   background:
                     "linear-gradient(135deg, #005f57 0%, #087f74 100%)",
+                },
+                "&.Mui-disabled": {
+                  color: darkMode ? "#b7cbc7" : "#526a66",
+                  background: darkMode ? "#2b403d" : "#dce8e6",
+                  boxShadow: "none",
                 },
               },
             },
