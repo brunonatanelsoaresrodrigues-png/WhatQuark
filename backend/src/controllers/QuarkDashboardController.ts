@@ -6,6 +6,7 @@ import {
   getQuarkDashboardTimeseries,
   listQuarkDashboardAppointments
 } from "../services/QuarkClinicServices/QuarkDashboardService";
+import EnqueueManualQuarkReminderService from "../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
 
 const ensureAdmin = (req: Request): void => {
   if (req.user.profile !== "admin") {
@@ -53,4 +54,15 @@ export const appointments = async (
 ): Promise<Response> => {
   ensureAdmin(req);
   return res.json(await listQuarkDashboardAppointments(filtersFrom(req)));
+};
+
+export const enqueueReminder = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  ensureAdmin(req);
+  const result = await EnqueueManualQuarkReminderService({
+    appointmentId: req.params.appointmentId
+  });
+  return res.status(201).json(result);
 };

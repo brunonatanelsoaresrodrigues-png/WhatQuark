@@ -1,7 +1,8 @@
 import sequelize from "../../../database";
 import {
   getQuarkDashboardSummary,
-  getQuarkDashboardTimeseries
+  getQuarkDashboardTimeseries,
+  listQuarkDashboardAppointments
 } from "../../../services/QuarkClinicServices/QuarkDashboardService";
 
 jest.mock("../../../database", () => ({
@@ -114,5 +115,35 @@ describe("QuarkDashboardService", () => {
         cancelled: 0
       }
     ]);
+  });
+
+  it("returns complete admin patient data and the linked conversation", async () => {
+    (sequelize.query as jest.Mock)
+      .mockResolvedValueOnce([
+        {
+          patient: "PACIENTE COMPLETO",
+          phone: "5585999990000",
+          ticketId: 77
+        }
+      ])
+      .mockResolvedValueOnce([{ total: "1" }]);
+
+    const result = await listQuarkDashboardAppointments({
+      from: "2026-08-20",
+      to: "2026-08-21"
+    });
+    const sql = (sequelize.query as jest.Mock).mock.calls[0][0] as string;
+
+    expect(sql).toContain("a.patientName AS patient");
+    expect(sql).toContain("a.phone");
+    expect(sql).toContain("n.ticketId IS NOT NULL");
+    expect(sql).not.toContain("CONCAT(LEFT(TRIM(a.patientName)");
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({
+        patient: "PACIENTE COMPLETO",
+        phone: "5585999990000",
+        ticketId: 77
+      })
+    );
   });
 });

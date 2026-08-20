@@ -74,6 +74,15 @@ export const reminderAppointmentMessage = (
   `*Lembrete: sua consulta é ${
     hours <= 2 ? "hoje" : "amanhã"
   }.*\n\n${appointmentDetails(
+  appointment,
+    clinicAddress
+  )}${confirmationOptions}`;
+
+export const manualReminderAppointmentMessage = (
+  appointment: AppointmentSnapshot,
+  clinicAddress = ""
+): string =>
+  `*Lembrete de consulta.*\n\n${appointmentDetails(
     appointment,
     clinicAddress
   )}${confirmationOptions}`;

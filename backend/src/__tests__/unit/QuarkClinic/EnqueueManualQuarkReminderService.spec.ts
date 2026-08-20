@@ -1,0 +1,97 @@
+import QuarkAppointment from "../../../models/QuarkAppointment";
+import { getQuarkConfig } from "../../../services/QuarkClinicServices/config";
+import { emitQuarkDashboardUpdate } from "../../../services/QuarkClinicServices/dashboardEvents";
+import EnqueueManualQuarkReminderService from "../../../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
+import { createQuarkNotificationOnce } from "../../../services/QuarkClinicServices/notificationLedger";
+
+jest.mock("../../../models/QuarkAppointment", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn() }
+}));
+jest.mock("../../../services/QuarkClinicServices/config", () => ({
+  getQuarkConfig: jest.fn()
+}));
+jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
+  emitQuarkDashboardUpdate: jest.fn()
+}));
+jest.mock("../../../services/QuarkClinicServices/notificationLedger", () => ({
+  createQuarkNotificationOnce: jest.fn()
+}));
+
+const appointment = {
+  appointmentId: "quark-42",
+  patientId: "patient-7",
+  phone: "5585999990000",
+  patientName: "PACIENTE COMPLETO",
+  status: "AGENDADO",
+  scheduledAt: new Date("2099-08-21T16:00:00-03:00"),
+  scheduleFingerprint: "a".repeat(64),
+  snapshotFingerprint: "b".repeat(64),
+  snapshot: JSON.stringify({
+    dataAgendamento: "21-08-2099",
+    horaAgendamento: "16:00:00",
+    clinicaNome: "ESSENCIAL SAÚDE",
+    profissionalNome: "PROFISSIONAL COMPLETO",
+    procedimentoNome: "Consulta"
+  })
+};
+
+describe("EnqueueManualQuarkReminderService", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getQuarkConfig as jest.Mock).mockReturnValue({
+      timezone: "America/Sao_Paulo",
+      clinicAddress: "Avenida Ulisses Bezerra, 2227"
+    });
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(appointment);
+    (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
+  });
+
+  it("queues a confirmation reminder through the protected outbox", async () => {
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).resolves.toEqual({ queued: true });
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
+      "quark-42",
+      expect.stringMatching(/^manual-reminder:\d{4}-\d{2}-\d{2}:a{24}$/),
+      "MANUAL_REMINDER",
+      expect.objectContaining({
+        phone: "5585999990000",
+        patientName: "PACIENTE COMPLETO",
+        requestsConfirmation: true,
+        validUntil: appointment.scheduledAt.toISOString(),
+        body: expect.stringContaining("SIM para confirmar")
+      })
+    );
+    expect(emitQuarkDashboardUpdate).toHaveBeenCalledWith(
+      "notification",
+      "quark-42"
+    );
+  });
+
+  it("rejects a duplicate manual reminder on the same day", async () => {
+    (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(false);
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).rejects.toEqual(
+      expect.objectContaining({
+        statusCode: 409,
+        message: "Um lembrete manual já foi solicitado hoje para esta consulta."
+      })
+    );
+  });
+
+  it("does not queue reminders for non-scheduled appointments", async () => {
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...appointment,
+      status: "CONFIRMADO"
+    });
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).rejects.toEqual(expect.objectContaining({ statusCode: 409 }));
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+  });
+});

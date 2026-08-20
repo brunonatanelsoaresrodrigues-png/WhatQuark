@@ -1,6 +1,7 @@
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
+  manualReminderAppointmentMessage,
   newAppointmentMessage,
   reminderAppointmentMessage
 } from "../../../services/QuarkClinicServices/messageTemplates";
@@ -46,5 +47,15 @@ describe("QuarkClinic message templates", () => {
     expect(reminderAppointmentMessage(snapshot, 2)).toContain(
       "sua consulta é hoje"
     );
+  });
+
+  it("creates a manual confirmation reminder without guessing the day", () => {
+    const body = manualReminderAppointmentMessage(snapshot);
+
+    expect(body).toContain("Lembrete de consulta");
+    expect(body).toContain("CLAUDESON NASCIMENTO DA SILVA");
+    expect(body).toContain("SIM para confirmar");
+    expect(body).not.toContain("sua consulta é amanhã");
+    expect(body).not.toContain("sua consulta é hoje");
   });
 });

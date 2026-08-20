@@ -264,8 +264,8 @@ export const listQuarkDashboardAppointments = async (
       `SELECT
         a.id,
         a.appointmentId,
-        CONCAT(LEFT(TRIM(a.patientName), 1), '***') AS patient,
-        CASE WHEN a.phone IS NULL THEN NULL ELSE CONCAT('****', RIGHT(a.phone, 4)) END AS phone,
+        a.patientName AS patient,
+        a.phone,
         a.scheduledAt,
         a.status,
         a.awaitingConfirmation,
@@ -275,6 +275,17 @@ export const listQuarkDashboardAppointments = async (
         (SELECT n.sentAt FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId ORDER BY n.id DESC LIMIT 1) AS lastSentAt,
         (SELECT n.deliveredAt FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId ORDER BY n.id DESC LIMIT 1) AS lastDeliveredAt,
         (SELECT n.readAt FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId ORDER BY n.id DESC LIMIT 1) AS lastReadAt,
+        (SELECT n.ticketId FROM QuarkAppointmentNotifications n WHERE n.appointmentId = a.appointmentId AND n.ticketId IS NOT NULL ORDER BY n.id DESC LIMIT 1) AS ticketId,
+        EXISTS(
+          SELECT 1 FROM QuarkAppointmentNotifications n
+          WHERE n.appointmentId = a.appointmentId
+            AND n.notificationKey = CONCAT(
+              'manual-reminder:',
+              DATE_FORMAT(NOW(), '%Y-%m-%d'),
+              ':',
+              LEFT(a.scheduleFingerprint, 24)
+            )
+        ) AS manualReminderToday,
         (SELECT r.decision FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecision,
         (SELECT r.status FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastDecisionStatus,
         (SELECT r.receivedAt FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId ORDER BY r.id DESC LIMIT 1) AS lastResponseAt

@@ -19,21 +19,26 @@ import {
   TablePagination,
   TableRow,
   TextField,
+  Tooltip,
   Typography
 } from "@material-ui/core";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import RefreshIcon from "@material-ui/icons/Refresh";
+import NotificationsActiveIcon from "@material-ui/icons/NotificationsActive";
+import ChatBubbleOutlineIcon from "@material-ui/icons/ChatBubbleOutline";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as ChartTooltip,
   XAxis,
   YAxis
 } from "recharts";
 import { addDays, format } from "date-fns";
+import { useHistory } from "react-router-dom";
+import { toast } from "react-toastify";
 import api from "../../services/api";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
@@ -89,6 +94,12 @@ const useStyles = makeStyles(theme => ({
   },
   statusChip: {
     fontWeight: 600
+  },
+  actions: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    whiteSpace: "nowrap"
   }
 }));
 
@@ -99,6 +110,12 @@ const formatDateTime = value => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
   return format(parsed, "dd/MM/yyyy HH:mm");
+};
+
+const formatPhone = value => {
+  if (!value) return "Sem telefone";
+  const phone = String(value).trim();
+  return phone.startsWith("+") ? phone : `+${phone}`;
 };
 
 const formatDuration = seconds => {
@@ -114,7 +131,8 @@ const notificationLabels = {
   REMINDER: "Lembrete",
   RESCHEDULED: "Alteração",
   UPDATED: "Atualização",
-  CANCELLED: "Cancelamento"
+  CANCELLED: "Cancelamento",
+  MANUAL_REMINDER: "Lembrete manual"
 };
 
 const statusLabels = {
@@ -147,6 +165,7 @@ const MetricCard = ({ label, value, color }) => (
 const QuarkDashboard = () => {
   const classes = useStyles();
   const theme = useTheme();
+  const history = useHistory();
   const [filters, setFilters] = useState({
     from: isoDate(new Date()),
     to: isoDate(addDays(new Date(), 30)),
@@ -162,6 +181,7 @@ const QuarkDashboard = () => {
   });
   const [appointments, setAppointments] = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
+  const [sendingReminder, setSendingReminder] = useState(null);
 
   const params = useMemo(
     () => ({ from: filters.from, to: filters.to }),
@@ -217,6 +237,38 @@ const QuarkDashboard = () => {
     const { name, value } = event.target;
     setPage(0);
     setFilters(current => ({ ...current, [name]: value }));
+  };
+
+  const sendReminder = async row => {
+    setSendingReminder(row.appointmentId);
+    try {
+      await api.post(
+        `/quark/dashboard/appointments/${encodeURIComponent(
+          row.appointmentId
+        )}/reminder`
+      );
+      toast.success(
+        "Lembrete adicionado à fila. O envio seguirá o intervalo automático."
+      );
+      await loadDashboard();
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setSendingReminder(null);
+    }
+  };
+
+  const reminderDisabledReason = row => {
+    if (row.status !== "AGENDADO") return "A consulta não está agendada.";
+    if (!row.phone) return "O paciente não possui telefone válido.";
+    const scheduledAt = new Date(row.scheduledAt).getTime();
+    if (Number.isNaN(scheduledAt) || scheduledAt <= Date.now()) {
+      return "O horário da consulta já passou.";
+    }
+    if (Number(row.manualReminderToday)) {
+      return "Um lembrete manual já foi solicitado hoje.";
+    }
+    return "";
   };
 
   if (loading && !summary) {
@@ -322,7 +374,7 @@ const QuarkDashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis allowDecimals={false} />
-                <Tooltip />
+                <ChartTooltip />
                 <Legend />
                 <Bar dataKey="sent" name="Enviadas" fill={theme.palette.primary.main} />
                 <Bar dataKey="delivered" name="Entregues" fill="#00acc1" />
@@ -377,6 +429,7 @@ const QuarkDashboard = () => {
                 <TableCell>Última mensagem</TableCell>
                 <TableCell>Entrega</TableCell>
                 <TableCell>Resposta</TableCell>
+                <TableCell>Ações</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -384,7 +437,7 @@ const QuarkDashboard = () => {
                 <TableRow key={row.id} hover>
                   <TableCell>
                     <Typography variant="body2">{row.patient}</Typography>
-                    <Typography variant="caption" color="textSecondary">{row.phone || "Sem telefone"}</Typography>
+                    <Typography variant="caption" color="textSecondary">{formatPhone(row.phone)}</Typography>
                   </TableCell>
                   <TableCell>{formatDateTime(row.scheduledAt)}</TableCell>
                   <TableCell>{row.professional}</TableCell>
@@ -410,11 +463,52 @@ const QuarkDashboard = () => {
                       ? "Cancelou"
                       : "—"}
                   </TableCell>
+                  <TableCell>
+                    <div className={classes.actions}>
+                      <Tooltip title={reminderDisabledReason(row) || "Enviar mensagem para confirmar a consulta"}>
+                        <span>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            startIcon={
+                              sendingReminder === row.appointmentId ? (
+                                <CircularProgress size={16} />
+                              ) : (
+                                <NotificationsActiveIcon />
+                              )
+                            }
+                            disabled={
+                              Boolean(reminderDisabledReason(row)) ||
+                              sendingReminder !== null
+                            }
+                            onClick={() => sendReminder(row)}
+                          >
+                            {Number(row.manualReminderToday)
+                              ? "Solicitado hoje"
+                              : "Enviar lembrete"}
+                          </Button>
+                        </span>
+                      </Tooltip>
+                      {row.ticketId && (
+                        <Tooltip title="Abrir a conversa deste paciente">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<ChatBubbleOutlineIcon />}
+                            onClick={() => history.push(`/tickets/${row.ticketId}`)}
+                          >
+                            Conversa
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
               {appointments.rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">Nenhuma consulta encontrada no período.</TableCell>
+                  <TableCell colSpan={8} align="center">Nenhuma consulta encontrada no período.</TableCell>
                 </TableRow>
               )}
             </TableBody>

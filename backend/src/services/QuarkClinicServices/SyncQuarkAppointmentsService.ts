@@ -63,6 +63,7 @@ const valuesForPersistence = (
     profissionalId: snapshot.raw.profissionalId || null,
     profissionalNome: snapshot.raw.profissional?.nome || null,
     procedimentoId: snapshot.raw.procedimentoId || null,
+    procedimentoNome: snapshot.raw.procedimento?.nome || null,
     statusMarcacao: snapshot.status
   }),
   lastSeenAt: now,
