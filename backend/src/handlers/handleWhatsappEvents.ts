@@ -21,6 +21,7 @@ import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService
 import UpdateTicketService from "../services/TicketServices/UpdateTicketService";
 import CreateContactService from "../services/ContactServices/CreateContactService";
 import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/HandleQuarkConfirmationReply";
+import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
 
 import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
@@ -292,7 +293,18 @@ export const handleMessage = async (
 
     await ticket.update({ lastMessage: lastMessageText });
 
-    await CreateMessageService({ messageData });
+    const createdMessage = await CreateMessageService({ messageData });
+
+    await HandleTicketMessageForInactivity({
+      ticket,
+      message: createdMessage
+    }).catch(error =>
+      logger.error({
+        info: "Could not update ticket patient-waiting state",
+        ticketId: ticket.id,
+        err: error
+      })
+    );
 
     await processVcardMessage(processedMessage);
 

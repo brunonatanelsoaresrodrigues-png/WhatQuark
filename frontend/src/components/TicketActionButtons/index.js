@@ -2,8 +2,9 @@ import React, { useContext, useState } from "react";
 import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { IconButton } from "@material-ui/core";
-import { MoreVert, Replay } from "@material-ui/icons";
+import { Chip, IconButton } from "@material-ui/core";
+import { HourglassEmpty, MoreVert, Replay, TimerOff } from "@material-ui/icons";
+import { toast } from "react-toastify";
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
@@ -60,8 +61,32 @@ const TicketActionButtons = ({ ticket }) => {
 		}
 	};
 
+	const handleWaitingForPatient = async waiting => {
+		setLoading(true);
+		try {
+			await api.post(`/tickets/${ticket.id}/awaiting-patient`, { waiting });
+			toast.success(
+				waiting
+					? i18n.t("messagesList.header.buttons.waitingPatientStarted")
+					: i18n.t("messagesList.header.buttons.waitingPatientCancelled")
+			);
+		} catch (err) {
+			toastError(err);
+		} finally {
+			setLoading(false);
+		}
+	};
+
 	return (
 		<div className={classes.actionButtons}>
+			{ticket.status === "closed" && ticket.closedByInactivity && (
+				<Chip
+					size="small"
+					variant="outlined"
+					color="secondary"
+					label={i18n.t("messagesList.header.inactivityResolved")}
+				/>
+			)}
 			{ticket.status === "closed" && (
 				<ButtonWithSpinner
 					loading={loading}
@@ -74,6 +99,22 @@ const TicketActionButtons = ({ ticket }) => {
 			)}
 			{ticket.status === "open" && (
 				<>
+					<ButtonWithSpinner
+						loading={loading}
+						startIcon={
+							ticket.awaitingPatientSince ? <TimerOff /> : <HourglassEmpty />
+						}
+						size="small"
+						variant="outlined"
+						color={ticket.awaitingPatientSince ? "secondary" : "default"}
+						onClick={() =>
+							handleWaitingForPatient(!ticket.awaitingPatientSince)
+						}
+					>
+						{ticket.awaitingPatientSince
+							? i18n.t("messagesList.header.buttons.cancelWaitingPatient")
+							: i18n.t("messagesList.header.buttons.waitForPatient")}
+					</ButtonWithSpinner>
 					<ButtonWithSpinner
 						loading={loading}
 						startIcon={<Replay />}

@@ -15,6 +15,7 @@ import QuarkAppointment from "../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification";
 import QuarkSyncState from "../models/QuarkSyncState";
 import QuarkAppointmentResponse from "../models/QuarkAppointmentResponse";
+import TicketInactivityEvent from "../models/TicketInactivityEvent";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -38,7 +39,8 @@ const models = [
   QuarkAppointment,
   QuarkAppointmentNotification,
   QuarkAppointmentResponse,
-  QuarkSyncState
+  QuarkSyncState,
+  TicketInactivityEvent
 ];
 
 sequelize.addModels(models);

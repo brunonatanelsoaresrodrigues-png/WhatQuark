@@ -261,6 +261,7 @@ const messages = {
         },
       },
       ticketsList: {
+        waitingPatient: "Aguardando paciente",
         pendingHeader: "Aguardando",
         assignedHeader: "Atendendo",
         noTicketsTitle: "Nada aqui!",
@@ -379,10 +380,15 @@ const messages = {
       messagesList: {
         header: {
           assignedTo: "Atribuído à:",
+          inactivityResolved: "Resolvido por inatividade",
           buttons: {
             return: "Retornar",
             resolve: "Resolver",
             reopen: "Reabrir",
+            waitForPatient: "Aguardar paciente (15 min)",
+            cancelWaitingPatient: "Aguardando paciente — cancelar",
+            waitingPatientStarted: "Cronômetro de 15 minutos iniciado.",
+            waitingPatientCancelled: "Espera pelo paciente cancelada.",
             accept: "Aceitar",
           },
         },
@@ -452,6 +458,14 @@ const messages = {
         ERR_NO_SETTING_FOUND: "Nenhuma configuração encontrada com este ID.",
         ERR_NO_CONTACT_FOUND: "Nenhum contato encontrado com este ID.",
         ERR_NO_TICKET_FOUND: "Nenhum tíquete encontrado com este ID.",
+        ERR_INACTIVITY_GROUP_NOT_SUPPORTED:
+          "A espera automática não é aplicada a grupos.",
+        ERR_INACTIVITY_TICKET_MUST_BE_OPEN:
+          "Aceite o atendimento antes de aguardar o paciente.",
+        ERR_INACTIVITY_LAST_MESSAGE_NOT_FROM_CLINIC:
+          "O cronômetro só pode começar quando a última mensagem for da clínica.",
+        ERR_INACTIVITY_AUTOMATION_DISABLED:
+          "A automação de inatividade está desativada.",
         ERR_NO_USER_FOUND: "Nenhum usuário encontrado com este ID.",
         ERR_NO_WAPP_FOUND: "Nenhum WhatsApp encontrado com este ID.",
         ERR_CREATING_MESSAGE: "Erro ao criar mensagem no banco de dados.",

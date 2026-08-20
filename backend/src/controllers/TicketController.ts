@@ -9,6 +9,7 @@ import UpdateTicketService from "../services/TicketServices/UpdateTicketService"
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import formatBody from "../helpers/Mustache";
+import SetTicketWaitingForPatientService from "../services/TicketInactivityServices/SetTicketWaitingForPatientService";
 
 type IndexQuery = {
   searchParam: string;
@@ -106,6 +107,26 @@ export const update = async (
       });
     }
   }
+
+  return res.status(200).json(ticket);
+};
+
+export const setWaitingForPatient = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const { ticketId } = req.params;
+  const { waiting } = req.body as { waiting?: boolean };
+
+  if (typeof waiting !== "boolean") {
+    return res.status(400).json({ error: "ERR_INVALID_WAITING_STATE" });
+  }
+
+  const ticket = await SetTicketWaitingForPatientService({
+    ticketId,
+    waiting,
+    userId: Number(req.user.id)
+  });
 
   return res.status(200).json(ticket);
 };

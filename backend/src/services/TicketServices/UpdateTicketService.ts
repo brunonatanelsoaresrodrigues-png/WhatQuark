@@ -47,7 +47,17 @@ const UpdateTicketService = async ({
   await ticket.update({
     status,
     queueId,
-    userId
+    userId,
+    ...(status && status !== oldStatus
+      ? {
+          awaitingPatientSince: null,
+          inactivityClosingAt: null,
+          inactivityNoticeSentAt: null,
+          inactivityNoticeMessageId: null,
+          closedByInactivity: false,
+          inactivityPreviousUserId: null
+        }
+      : {})
   });
 
   if (whatsappId) {

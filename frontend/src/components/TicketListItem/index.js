@@ -13,6 +13,7 @@ import Typography from "@material-ui/core/Typography";
 import Avatar from "@material-ui/core/Avatar";
 import Divider from "@material-ui/core/Divider";
 import Badge from "@material-ui/core/Badge";
+import Chip from "@material-ui/core/Chip";
 
 import { i18n } from "../../translate/i18n";
 
@@ -79,6 +80,13 @@ const useStyles = makeStyles(theme => ({
 		alignSelf: "center",
 		marginRight: 8,
 		marginLeft: "auto",
+	},
+
+	waitingPatientChip: {
+		alignSelf: "center",
+		fontSize: "0.68rem",
+		height: 20,
+		marginRight: 8,
 	},
 
 	badgeStyle: {
@@ -193,7 +201,7 @@ const TicketListItem = ({ ticket }) => {
 							{ticket.status === "closed" && (
 								<Badge
 									className={classes.closedBadge}
-									badgeContent={"closed"}
+									badgeContent={ticket.closedByInactivity ? "inatividade" : "closed"}
 									color="primary"
 								/>
 							)}
@@ -231,6 +239,15 @@ const TicketListItem = ({ ticket }) => {
 									<br />
 								)}
 							</Typography>
+							{ticket.awaitingPatientSince && (
+								<Chip
+									className={classes.waitingPatientChip}
+									size="small"
+									variant="outlined"
+									color="secondary"
+									label={i18n.t("ticketsList.waitingPatient")}
+								/>
+							)}
 
 							<Badge
 								className={classes.newMessagesCount}

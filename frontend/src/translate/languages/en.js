@@ -259,6 +259,7 @@ const messages = {
         },
       },
       ticketsList: {
+        waitingPatient: "Waiting for patient",
         pendingHeader: "Queue",
         assignedHeader: "Working on",
         noTicketsTitle: "Nothing here!",
@@ -375,10 +376,15 @@ const messages = {
       messagesList: {
         header: {
           assignedTo: "Assigned to:",
+          inactivityResolved: "Resolved due to inactivity",
           buttons: {
             return: "Return",
             resolve: "Resolve",
             reopen: "Reopen",
+            waitForPatient: "Wait for patient (15 min)",
+            cancelWaitingPatient: "Waiting for patient — cancel",
+            waitingPatientStarted: "The 15-minute timer has started.",
+            waitingPatientCancelled: "Patient wait cancelled.",
             accept: "Accept",
           },
         },
@@ -448,6 +454,14 @@ const messages = {
         ERR_NO_SETTING_FOUND: "No setting found with this ID.",
         ERR_NO_CONTACT_FOUND: "No contact found with this ID.",
         ERR_NO_TICKET_FOUND: "No ticket found with this ID.",
+        ERR_INACTIVITY_GROUP_NOT_SUPPORTED:
+          "Automatic waiting is not available for groups.",
+        ERR_INACTIVITY_TICKET_MUST_BE_OPEN:
+          "Accept the ticket before waiting for the patient.",
+        ERR_INACTIVITY_LAST_MESSAGE_NOT_FROM_CLINIC:
+          "The timer can only start when the clinic sent the last message.",
+        ERR_INACTIVITY_AUTOMATION_DISABLED:
+          "The inactivity automation is disabled.",
         ERR_NO_USER_FOUND: "No user found with this ID.",
         ERR_NO_WAPP_FOUND: "No WhatsApp found with this ID.",
         ERR_CREATING_MESSAGE: "Error while creating message on database.",

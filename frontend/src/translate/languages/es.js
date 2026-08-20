@@ -262,6 +262,7 @@ const messages = {
         },
       },
       ticketsList: {
+        waitingPatient: "Esperando al paciente",
         pendingHeader: "Cola",
         assignedHeader: "Trabajando en",
         noTicketsTitle: "¡Nada acá!",
@@ -380,10 +381,15 @@ const messages = {
       messagesList: {
         header: {
           assignedTo: "Asignado a:",
+          inactivityResolved: "Resuelto por inactividad",
           buttons: {
             return: "Devolver",
             resolve: "Resolver",
             reopen: "Reabrir",
+            waitForPatient: "Esperar al paciente (15 min)",
+            cancelWaitingPatient: "Esperando al paciente — cancelar",
+            waitingPatientStarted: "El temporizador de 15 minutos comenzó.",
+            waitingPatientCancelled: "Espera del paciente cancelada.",
             accept: "Aceptar",
           },
         },
@@ -455,6 +461,14 @@ const messages = {
           "No se encontró ninguna configuración con este ID.",
         ERR_NO_CONTACT_FOUND: "No se encontró ningún contacto con este ID.",
         ERR_NO_TICKET_FOUND: "No se encontró ningún ticket con este ID.",
+        ERR_INACTIVITY_GROUP_NOT_SUPPORTED:
+          "La espera automática no está disponible para grupos.",
+        ERR_INACTIVITY_TICKET_MUST_BE_OPEN:
+          "Acepte el ticket antes de esperar al paciente.",
+        ERR_INACTIVITY_LAST_MESSAGE_NOT_FROM_CLINIC:
+          "El temporizador solo puede comenzar cuando la clínica envió el último mensaje.",
+        ERR_INACTIVITY_AUTOMATION_DISABLED:
+          "La automatización de inactividad está desactivada.",
         ERR_NO_USER_FOUND: "No se encontró ningún usuario con este ID.",
         ERR_NO_WAPP_FOUND: "No se encontró WhatsApp con este ID.",
         ERR_CREATING_MESSAGE: "Error al crear el mensaje en la base de datos.",

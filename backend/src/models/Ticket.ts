@@ -9,7 +9,8 @@ import {
   BelongsTo,
   HasMany,
   AutoIncrement,
-  Default
+  Default,
+  DataType
 } from "sequelize-typescript";
 
 import Contact from "./Contact";
@@ -33,6 +34,25 @@ class Ticket extends Model<Ticket> {
 
   @Column
   lastMessage: string;
+
+  @Column(DataType.DATE)
+  awaitingPatientSince: Date | null;
+
+  @Column(DataType.DATE)
+  inactivityClosingAt: Date | null;
+
+  @Column(DataType.DATE)
+  inactivityNoticeSentAt: Date | null;
+
+  @Column(DataType.STRING)
+  inactivityNoticeMessageId: string | null;
+
+  @Default(false)
+  @Column
+  closedByInactivity: boolean;
+
+  @Column(DataType.INTEGER)
+  inactivityPreviousUserId: number | null;
 
   @Default(false)
   @Column

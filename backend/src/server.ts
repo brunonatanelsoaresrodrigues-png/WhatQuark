@@ -8,6 +8,10 @@ import { StartAllWhatsAppsSessions } from "./services/WbotServices/StartAllWhats
 import StartQuarkClinicIntegration, {
   StopQuarkClinicIntegration
 } from "./services/QuarkClinicServices/StartQuarkClinicIntegration";
+import {
+  StartTicketInactivityWorker,
+  StopTicketInactivityWorker
+} from "./services/TicketInactivityServices/TicketInactivityWorker";
 
 const server = app.listen(process.env.PORT, () => {
   logger.info(`Server started on port: ${process.env.PORT}`);
@@ -17,10 +21,12 @@ initIO(server);
 initRedis();
 StartAllWhatsAppsSessions();
 StartQuarkClinicIntegration();
+StartTicketInactivityWorker();
 gracefulShutdown(server, {
   timeout: 30000,
   onShutdown: async signal => {
     logger.info({ info: "Graceful shutdown started", signal });
+    await StopTicketInactivityWorker();
     await StopQuarkClinicIntegration();
     await whatsappProvider.shutdown();
     await closeRedis();

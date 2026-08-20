@@ -2,7 +2,25 @@ import { subHours } from "date-fns";
 import { Op } from "sequelize";
 import Contact from "../../models/Contact";
 import Ticket from "../../models/Ticket";
+import TicketInactivityEvent from "../../models/TicketInactivityEvent";
+import User from "../../models/User";
+import UserQueue from "../../models/UserQueue";
+import { emitTicketInactivityUpdate } from "../TicketInactivityServices/ticketEvents";
 import ShowTicketService from "./ShowTicketService";
+
+const reusablePreviousUserId = async (ticket: Ticket): Promise<number | null> => {
+  const previousUserId = ticket.inactivityPreviousUserId || ticket.userId;
+  if (!previousUserId) return null;
+
+  const user = await User.findByPk(previousUserId);
+  if (!user) return null;
+  if (!ticket.queueId) return user.id;
+
+  const belongsToQueue = await UserQueue.count({
+    where: { userId: user.id, queueId: ticket.queueId }
+  });
+  return belongsToQueue > 0 ? user.id : null;
+};
 
 const FindOrCreateTicketService = async (
   contact: Contact,
@@ -22,6 +40,45 @@ const FindOrCreateTicketService = async (
 
   if (ticket) {
     await ticket.update({ unreadMessages });
+  }
+
+  let reopenedAfterInactivity = false;
+  if (!ticket && !groupContact) {
+    ticket = await Ticket.findOne({
+      where: {
+        status: "closed",
+        closedByInactivity: true,
+        contactId: contact.id,
+        whatsappId
+      },
+      order: [["updatedAt", "DESC"]]
+    });
+
+    if (ticket) {
+      const previousUserId = await reusablePreviousUserId(ticket);
+      await ticket.update({
+        status: previousUserId ? "open" : "pending",
+        userId: previousUserId,
+        unreadMessages,
+        awaitingPatientSince: null,
+        inactivityClosingAt: null,
+        inactivityNoticeSentAt: null,
+        inactivityNoticeMessageId: null,
+        closedByInactivity: false,
+        inactivityPreviousUserId: null
+      });
+      await TicketInactivityEvent.create({
+        ticketId: ticket.id,
+        eventType: "REOPENED",
+        reason: previousUserId
+          ? "Paciente retornou; conversa devolvida ao atendente anterior"
+          : "Paciente retornou; conversa devolvida à fila",
+        userId: previousUserId,
+        messageId: null,
+        occurredAt: new Date()
+      });
+      reopenedAfterInactivity = true;
+    }
   }
 
   if (!ticket && groupContact) {
@@ -74,6 +131,10 @@ const FindOrCreateTicketService = async (
   }
 
   ticket = await ShowTicketService(ticket.id);
+
+  if (reopenedAfterInactivity) {
+    await emitTicketInactivityUpdate(ticket.id, "closed");
+  }
 
   return ticket;
 };
