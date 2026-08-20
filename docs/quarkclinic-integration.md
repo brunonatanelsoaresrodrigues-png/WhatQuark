@@ -116,6 +116,9 @@ revisar destinatário, evento e validade.
 
 compose.production.yaml e compose.lowmem.yaml já encaminham todas as variáveis.
 A inicialização executa as migrations antes de iniciar o servidor.
+O backend usa stop_grace_period de 40 segundos para parar novos trabalhos,
+aguardar mensagens do WhatsApp em processamento, salvar credenciais da sessão
+e então fechar o socket sem logout. Não reduza esse período no deploy.
 
 Para rollback de aplicação, desative a integração e volte para a imagem anterior;
 as tabelas novas podem permanecer sem afetar o WhaTicket. A migration é

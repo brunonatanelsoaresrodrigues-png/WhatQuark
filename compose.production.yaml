@@ -122,6 +122,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    stop_grace_period: 40s
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 1024m
