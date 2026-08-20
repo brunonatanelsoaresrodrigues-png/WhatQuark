@@ -1,0 +1,23 @@
+{
+  "status": "OK",
+  "page": 0,
+  "organizacao": 999,
+  "response": [
+    {
+      "id": 42001,
+      "pacienteId": 7001,
+      "nomePaciente": "Paciente Teste",
+      "dataAgendamento": "21-08-2026",
+      "horaAgendamento": "10:30:00",
+      "statusMarcacao": "AGENDADO",
+      "telefoneComDDI": "+55 11 99999-0000",
+      "clinicaId": 10,
+      "clinicaNome": "Clínica de Teste",
+      "profissionalId": 30,
+      "profissional": {
+        "id": 30,
+        "nome": "Profissional Teste"
+      }
+    }
+  ]
+}
