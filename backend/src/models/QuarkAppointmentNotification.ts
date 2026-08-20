@@ -65,7 +65,7 @@ class QuarkAppointmentNotification extends Model<QuarkAppointmentNotification> {
   messageId: string | null;
 
   @AllowNull
-  @Column
+  @Column(DataType.INTEGER)
   ticketId: number | null;
 
   @AllowNull

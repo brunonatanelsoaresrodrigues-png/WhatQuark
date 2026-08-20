@@ -22,7 +22,7 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
   appointmentId: string;
 
   @AllowNull
-  @Column
+  @Column(DataType.INTEGER)
   notificationId: number | null;
 
   @Column(DataType.STRING(16))
@@ -51,7 +51,7 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
   appliedAt: Date | null;
 
   @AllowNull
-  @Column
+  @Column(DataType.INTEGER)
   responseTimeSeconds: number | null;
 
   @AllowNull
