@@ -24,6 +24,18 @@ describe("User", () => {
     });
 
     expect(user).toHaveProperty("id");
+    expect(user).toHaveProperty("canAccessQuarkClinic", false);
+  });
+
+  it("should persist Quark Clinic access when granted", async () => {
+    const user = await CreateUserService({
+      name: faker.name.findName(),
+      email: faker.internet.email(),
+      password: faker.internet.password(),
+      canAccessQuarkClinic: true
+    });
+
+    expect(user).toHaveProperty("canAccessQuarkClinic", true);
   });
 
   it("should not be able to create a user with duplicated email", async () => {

@@ -6,6 +6,7 @@ const rules = {
 	admin: {
 		static: [
 			"drawer-admin-items:view",
+			"user-modal:editQuarkClinicAccess",
 			"tickets-manager:showall",
 			"user-modal:editProfile",
 			"user-modal:editQueues",

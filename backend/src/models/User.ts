@@ -48,6 +48,10 @@ class User extends Model<User> {
   @Column
   profile: string;
 
+  @Default(false)
+  @Column
+  canAccessQuarkClinic: boolean;
+
   @ForeignKey(() => Whatsapp)
   @Column
   whatsappId: number;

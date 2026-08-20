@@ -17,7 +17,9 @@ import {
 	FormControl,
 	TextField,
 	InputAdornment,
-	IconButton
+	IconButton,
+	FormControlLabel,
+	Switch
   } from '@material-ui/core';
 
 import { Visibility, VisibilityOff } from '@material-ui/icons';
@@ -80,7 +82,8 @@ const UserModal = ({ open, onClose, userId }) => {
 		name: "",
 		email: "",
 		password: "",
-		profile: "user"
+		profile: "user",
+		canAccessQuarkClinic: false
 	};
 
 	const { user: loggedInUser } = useContext(AuthContext);
@@ -155,7 +158,7 @@ const UserModal = ({ open, onClose, userId }) => {
 						}, 400);
 					}}
 				>
-					{({ touched, errors, isSubmitting }) => (
+					{({ touched, errors, isSubmitting, values, setFieldValue }) => (
 						<Form>
 							<DialogContent dividers>
 								<div className={classes.multFieldLine}>
@@ -263,6 +266,27 @@ const UserModal = ({ open, onClose, userId }) => {
 												))}
 											</Field>
 										</FormControl>
+									)}
+								/>
+								<Can
+									role={loggedInUser.profile}
+									perform="user-modal:editQuarkClinicAccess"
+									yes={() => (
+										<FormControlLabel
+											control={
+												<Switch
+													checked={Boolean(values.canAccessQuarkClinic)}
+													onChange={event =>
+														setFieldValue(
+															"canAccessQuarkClinic",
+															event.target.checked
+														)
+													}
+													color="primary"
+												/>
+											}
+											label="Permitir acesso ao Quark Clinic"
+										/>
 									)}
 								/>
 							</DialogContent>

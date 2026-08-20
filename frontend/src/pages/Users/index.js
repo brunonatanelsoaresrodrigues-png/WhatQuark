@@ -245,7 +245,8 @@ const Users = () => {
               </TableCell>
               <TableCell align="center">
                 {i18n.t("users.table.whatsapp")}
-              </TableCell>              
+              </TableCell>
+              <TableCell align="center">Quark Clinic</TableCell>
               <TableCell align="center">
                 {i18n.t("users.table.actions")}
               </TableCell>
@@ -260,6 +261,9 @@ const Users = () => {
                   <TableCell align="center">{user.profile}</TableCell>
                   <TableCell align="center">{user.whatsapp?.name}</TableCell>
                   <TableCell align="center">
+                    {user.canAccessQuarkClinic ? "Liberado" : "Bloqueado"}
+                  </TableCell>
+                  <TableCell align="center">
                     <IconButton
                       size="small"
                       onClick={() => handleEditUser(user)}
@@ -269,7 +273,7 @@ const Users = () => {
 
                     <IconButton
                       size="small"
-                      onClick={(e) => {
+                      onClick={() => {
                         setConfirmModalOpen(true);
                         setDeletingUser(user);
                       }}
@@ -279,7 +283,7 @@ const Users = () => {
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && <TableRowSkeleton columns={4} />}
+              {loading && <TableRowSkeleton columns={6} />}
             </>
           </TableBody>
         </Table>

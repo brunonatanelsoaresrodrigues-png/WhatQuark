@@ -16,6 +16,7 @@ import ContactPhoneOutlinedIcon from "@material-ui/icons/ContactPhoneOutlined";
 import AccountTreeOutlinedIcon from "@material-ui/icons/AccountTreeOutlined";
 import QuestionAnswerOutlinedIcon from "@material-ui/icons/QuestionAnswerOutlined";
 import AssessmentOutlinedIcon from "@material-ui/icons/AssessmentOutlined";
+import LocalHospitalOutlinedIcon from "@material-ui/icons/LocalHospitalOutlined";
 
 import { i18n } from "../translate/i18n";
 import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
@@ -27,9 +28,9 @@ function ListItemLink(props) {
 
   const renderLink = React.useMemo(
     () =>
-      React.forwardRef((itemProps, ref) => (
-        <RouterLink to={to} ref={ref} {...itemProps} />
-      )),
+      React.forwardRef(function ListItemRouterLink(itemProps, ref) {
+        return <RouterLink to={to} ref={ref} {...itemProps} />;
+      }),
     [to]
   );
 
@@ -103,6 +104,13 @@ const MainListItems = (props) => {
         primary={i18n.t("mainDrawer.listItems.quickAnswers")}
         icon={<QuestionAnswerOutlinedIcon />}
       />
+      {user.canAccessQuarkClinic && (
+        <ListItemLink
+          to="/quark-clinic"
+          primary="Quark Clinic"
+          icon={<LocalHospitalOutlinedIcon />}
+        />
+      )}
       <Can
         role={user.profile}
         perform="drawer-admin-items:view"

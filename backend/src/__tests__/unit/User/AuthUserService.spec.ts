@@ -35,6 +35,25 @@ describe("Auth", () => {
     expect(response).toHaveProperty("token");
   });
 
+  it("should include Quark Clinic access in the authenticated user", async () => {
+    const password = faker.internet.password();
+    const email = faker.internet.email();
+
+    await CreateUserService({
+      name: faker.name.findName(),
+      email,
+      password,
+      canAccessQuarkClinic: true
+    });
+
+    const response = await AuthUserService({ email, password });
+
+    expect(response.serializedUser).toHaveProperty(
+      "canAccessQuarkClinic",
+      true
+    );
+  });
+
   it("should not be able to login with not registered email", async () => {
     try {
       await AuthUserService({

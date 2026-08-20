@@ -11,6 +11,7 @@ interface Request {
   queueIds?: number[];
   profile?: string;
   whatsappId?: number;
+  canAccessQuarkClinic?: boolean;
 }
 
 interface Response {
@@ -18,6 +19,7 @@ interface Response {
   name: string;
   id: number;
   profile: string;
+  canAccessQuarkClinic: boolean;
 }
 
 const CreateUserService = async ({
@@ -26,7 +28,8 @@ const CreateUserService = async ({
   name,
   queueIds = [],
   profile = "admin",
-  whatsappId
+  whatsappId,
+  canAccessQuarkClinic = false
 }: Request): Promise<Response> => {
   const schema = Yup.object().shape({
     name: Yup.string().required().min(2),
@@ -44,11 +47,17 @@ const CreateUserService = async ({
           return !emailExists;
         }
       ),
-    password: Yup.string().required().min(5)
+    password: Yup.string().required().min(5),
+    canAccessQuarkClinic: Yup.boolean().strict()
   });
 
   try {
-    await schema.validate({ email, password, name });
+    await schema.validate({
+      email,
+      password,
+      name,
+      canAccessQuarkClinic
+    });
   } catch (err) {
     throw new AppError(err.message);
   }
@@ -59,6 +68,7 @@ const CreateUserService = async ({
       password,
       name,
       profile,
+      canAccessQuarkClinic,
       whatsappId: whatsappId ? whatsappId : null
     },
     { include: ["queues", "whatsapp"] }

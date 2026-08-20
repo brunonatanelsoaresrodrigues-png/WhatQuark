@@ -123,6 +123,7 @@ services:
       dockerfile: Dockerfile.lowmem
     environment:
       VITE_BACKEND_URL: https://api.bfontes.online
+      VITE_QUARK_CLINIC_URL: ${VITE_QUARK_CLINIC_URL:-https://ng.quarkclinic.com.br/}
     depends_on:
       - backend
     restart: unless-stopped

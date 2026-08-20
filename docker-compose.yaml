@@ -38,6 +38,7 @@ services:
     environment:
       - URL_BACKEND=backend:3000
       - REACT_APP_BACKEND_URL=${BACKEND_URL:-http://localhost}:${PROXY_PORT:-8080}/
+      - VITE_QUARK_CLINIC_URL=${VITE_QUARK_CLINIC_URL:-https://ng.quarkclinic.com.br/}
       - FRONTEND_SERVER_NAME=${FRONTEND_SERVER_NAME}
       - BACKEND_SERVER_NAME=${BACKEND_SERVER_NAME}
     volumes:

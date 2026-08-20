@@ -134,6 +134,7 @@ services:
     image: whaticket-frontend:custom-0973
     environment:
       VITE_BACKEND_URL: https://api.bfontes.online
+      VITE_QUARK_CLINIC_URL: ${VITE_QUARK_CLINIC_URL:-https://ng.quarkclinic.com.br/}
     ports:
       - "127.0.0.1:3100:80"
     depends_on:

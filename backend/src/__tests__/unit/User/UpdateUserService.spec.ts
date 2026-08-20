@@ -65,4 +65,19 @@ describe("User", () => {
       AppError
     );
   });
+
+  it("should update Quark Clinic access independently for each user", async () => {
+    const newUser = await CreateUserService({
+      name: faker.name.findName(),
+      email: faker.internet.email(),
+      password: faker.internet.password()
+    });
+
+    const updatedUser = await UpdateUserService({
+      userId: newUser.id,
+      userData: { canAccessQuarkClinic: true }
+    });
+
+    expect(updatedUser).toHaveProperty("canAccessQuarkClinic", true);
+  });
 });

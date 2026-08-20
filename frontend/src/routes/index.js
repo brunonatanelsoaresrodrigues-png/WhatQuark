@@ -14,6 +14,7 @@ import Contacts from "../pages/Contacts/";
 import QuickAnswers from "../pages/QuickAnswers/";
 import Queues from "../pages/Queues/";
 import QuarkDashboard from "../pages/QuarkDashboard/";
+import QuarkClinic from "../pages/QuarkClinic/";
 import { AuthProvider } from "../context/Auth/AuthContext";
 import { WhatsAppsProvider } from "../context/WhatsApp/WhatsAppsContext";
 import { ThemeProvider } from "../context/DarkMode";
@@ -38,6 +39,7 @@ const Routes = () => {
                 <Route exact path="/Settings" component={Settings} isPrivate />
                 <Route exact path="/Queues" component={Queues} isPrivate />
                 <Route exact path="/quark-dashboard" component={QuarkDashboard} isPrivate />
+                <Route exact path="/quark-clinic" component={QuarkClinic} isPrivate />
               </LoggedInLayout>
             </WhatsAppsProvider>
           </Switch>
