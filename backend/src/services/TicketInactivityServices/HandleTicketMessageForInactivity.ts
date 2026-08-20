@@ -24,14 +24,8 @@ const HandleTicketMessageForInactivity = async ({
     return;
   }
 
-  if (ticket.status === "open" && /\?/.test(message.body || "")) {
-    await SetTicketWaitingForPatientService({
-      ticketId: ticket.id,
-      waiting: true,
-      messageId: message.id,
-      automatic: true
-    });
-  }
+  // O início é deliberadamente manual pelo botão "Aguardar paciente".
+  // Mensagens da clínica, inclusive perguntas, nunca iniciam o cronômetro.
 };
 
 export default HandleTicketMessageForInactivity;

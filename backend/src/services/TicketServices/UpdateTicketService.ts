@@ -5,6 +5,7 @@ import Ticket from "../../models/Ticket";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import ShowTicketService from "./ShowTicketService";
+import RecordTicketEventService from "./RecordTicketEventService";
 
 interface TicketData {
   status?: string;
@@ -16,6 +17,7 @@ interface TicketData {
 interface Request {
   ticketData: TicketData;
   ticketId: string | number;
+  actorUserId?: number | null;
 }
 
 interface Response {
@@ -26,7 +28,8 @@ interface Response {
 
 const UpdateTicketService = async ({
   ticketData,
-  ticketId
+  ticketId,
+  actorUserId = null
 }: Request): Promise<Response> => {
   const { status, userId, queueId, whatsappId } = ticketData;
 
@@ -38,7 +41,8 @@ const UpdateTicketService = async ({
   }
 
   const oldStatus = ticket.status;
-  const oldUserId = ticket.user?.id;
+  const oldUserId = ticket.userId || ticket.user?.id;
+  const oldQueueId = ticket.queueId;
 
   if (oldStatus === "closed") {
     await CheckContactOpenTickets(ticket.contact.id, ticket.whatsappId);
@@ -67,6 +71,41 @@ const UpdateTicketService = async ({
   }
 
   await ticket.reload();
+
+  const newUserId = ticket.userId || null;
+  const newQueueId = ticket.queueId || null;
+  let eventType:
+    | "ACCEPTED"
+    | "TRANSFERRED"
+    | "CLOSED_BY_USER"
+    | "REOPENED"
+    | "RETURNED_TO_QUEUE"
+    | undefined;
+
+  if (oldStatus !== "closed" && ticket.status === "closed") {
+    eventType = "CLOSED_BY_USER";
+  } else if (oldStatus === "closed" && ticket.status !== "closed") {
+    eventType = "REOPENED";
+  } else if (oldUserId && !newUserId) {
+    eventType = "RETURNED_TO_QUEUE";
+  } else if (!oldUserId && newUserId) {
+    eventType = "ACCEPTED";
+  } else if (oldUserId !== newUserId || (oldQueueId || null) !== newQueueId) {
+    eventType = "TRANSFERRED";
+  }
+
+  if (eventType) {
+    await RecordTicketEventService({
+      ticketId: ticket.id,
+      eventType,
+      performedByUserId: actorUserId,
+      previousUserId: oldUserId || null,
+      newUserId,
+      previousQueueId: oldQueueId || null,
+      newQueueId,
+      metadata: { previousStatus: oldStatus, newStatus: ticket.status }
+    });
+  }
 
   const io = getIO();
 

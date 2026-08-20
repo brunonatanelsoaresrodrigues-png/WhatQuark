@@ -47,11 +47,22 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   if (medias) {
     await Promise.all(
       medias.map(async (media: Express.Multer.File) => {
-        await SendWhatsAppMedia({ media, ticket });
+        await SendWhatsAppMedia({
+          media,
+          ticket,
+          sentByUserId: Number(req.user.id),
+          origin: "HUMAN"
+        });
       })
     );
   } else {
-    await SendWhatsAppMessage({ body, ticket, quotedMsg });
+    await SendWhatsAppMessage({
+      body,
+      ticket,
+      quotedMsg,
+      sentByUserId: Number(req.user.id),
+      origin: "HUMAN"
+    });
   }
 
   return res.send();

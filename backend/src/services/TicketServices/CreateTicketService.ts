@@ -4,19 +4,22 @@ import GetDefaultWhatsApp from "../../helpers/GetDefaultWhatsApp";
 import Ticket from "../../models/Ticket";
 import User from "../../models/User";
 import ShowContactService from "../ContactServices/ShowContactService";
+import RecordTicketEventService from "./RecordTicketEventService";
 
 interface Request {
   contactId: number;
   status: string;
   userId: number;
   queueId?: number;
+  actorUserId?: number | null;
 }
 
 const CreateTicketService = async ({
   contactId,
   status,
   userId,
-  queueId
+  queueId,
+  actorUserId = null
 }: Request): Promise<Ticket> => {
   const defaultWhatsapp = await GetDefaultWhatsApp(userId);
 
@@ -42,6 +45,15 @@ const CreateTicketService = async ({
   if (!ticket) {
     throw new AppError("ERR_CREATING_TICKET");
   }
+
+  await RecordTicketEventService({
+    ticketId: ticket.id,
+    eventType: "CREATED",
+    performedByUserId: actorUserId || userId || null,
+    newUserId: userId || null,
+    newQueueId: queueId || null,
+    metadata: { source: "DASHBOARD", status }
+  });
 
   return ticket;
 };

@@ -1,17 +1,15 @@
-export const INACTIVITY_CLOSE_REASON =
-  "Sem retorno do paciente — 15 minutos";
+export const INACTIVITY_CLOSE_REASON = "Sem retorno do paciente — 15 minutos";
 
-export const DEFAULT_INACTIVITY_MESSAGE = `Olá! 😊
+export const DEFAULT_INACTIVITY_MESSAGE = `Seu atendimento será encerrado por falta de interação.
 
-Como não tivemos seu retorno nos últimos *15 minutos*, este atendimento será encerrado automaticamente.
+Caso ainda precise de ajuda, basta enviar uma nova mensagem para iniciarmos outro atendimento.
 
-Mas fique tranquilo(a): se ainda precisar de ajuda, basta enviar uma nova mensagem e retomaremos seu atendimento.
+A Essencial Saúde agradece pelo contato e permanece à disposição! 💚`;
 
-Se você estava realizando um agendamento, o horário somente estará confirmado caso tenha recebido a mensagem *“Consulta agendada com sucesso”*.
-
-A *Essencial Saúde* permanece à disposição. 💚`;
-
-const positiveInteger = (value: string | undefined, fallback: number): number => {
+const positiveInteger = (
+  value: string | undefined,
+  fallback: number
+): number => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
@@ -52,7 +50,6 @@ export const getTicketInactivityConfig = (): TicketInactivityConfig => {
     ),
     sendIntervalMinSeconds,
     sendIntervalMaxSeconds: Math.max(sendIntervalMinSeconds, configuredMax),
-    message:
-      process.env.TICKET_INACTIVITY_MESSAGE || DEFAULT_INACTIVITY_MESSAGE
+    message: process.env.TICKET_INACTIVITY_MESSAGE || DEFAULT_INACTIVITY_MESSAGE
   };
 };

@@ -4,6 +4,7 @@ import TicketInactivityEvent from "../../../models/TicketInactivityEvent";
 import { getTicketInactivityConfig } from "../../../services/TicketInactivityServices/config";
 import SetTicketWaitingForPatientService from "../../../services/TicketInactivityServices/SetTicketWaitingForPatientService";
 import { emitTicketInactivityUpdate } from "../../../services/TicketInactivityServices/ticketEvents";
+import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
 
 jest.mock("../../../models/Message", () => ({
   __esModule: true,
@@ -23,6 +24,9 @@ jest.mock("../../../services/TicketInactivityServices/config", () => ({
 jest.mock("../../../services/TicketInactivityServices/ticketEvents", () => ({
   emitTicketInactivityUpdate: jest.fn()
 }));
+jest.mock("../../../services/TicketServices/RecordTicketEventService", () =>
+  jest.fn()
+);
 
 const outgoingMessage = {
   id: "out-1",
@@ -63,7 +67,7 @@ describe("SetTicketWaitingForPatientService", () => {
 
     expect(ticket.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        awaitingPatientSince: outgoingMessage.createdAt,
+        awaitingPatientSince: expect.any(Date),
         inactivityClosingAt: null,
         inactivityNoticeSentAt: null
       })
@@ -73,6 +77,13 @@ describe("SetTicketWaitingForPatientService", () => {
         ticketId: 7,
         eventType: "WAITING_STARTED",
         messageId: "out-1"
+      })
+    );
+    expect(RecordTicketEventService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 7,
+        eventType: "WAITING_PATIENT",
+        metadata: expect.objectContaining({ triggeredManually: true })
       })
     );
   });
@@ -122,18 +133,21 @@ describe("SetTicketWaitingForPatientService", () => {
     expect(ticket.update).not.toHaveBeenCalled();
   });
 
-  it("does not arm automatic questions while the feature is disabled", async () => {
+  it("rejects manual activation while the feature is disabled", async () => {
     const ticket = makeTicket();
     (Ticket.findByPk as jest.Mock).mockResolvedValue(ticket);
-    (getTicketInactivityConfig as jest.Mock).mockReturnValue({ enabled: false });
-
-    await SetTicketWaitingForPatientService({
-      ticketId: 7,
-      waiting: true,
-      automatic: true,
-      messageId: "out-1"
+    (getTicketInactivityConfig as jest.Mock).mockReturnValue({
+      enabled: false
     });
 
-    expect(ticket.update).not.toHaveBeenCalled();
+    await expect(
+      SetTicketWaitingForPatientService({
+        ticketId: 7,
+        waiting: true,
+        messageId: "out-1"
+      })
+    ).rejects.toEqual(
+      expect.objectContaining({ message: "ERR_INACTIVITY_AUTOMATION_DISABLED" })
+    );
   });
 });

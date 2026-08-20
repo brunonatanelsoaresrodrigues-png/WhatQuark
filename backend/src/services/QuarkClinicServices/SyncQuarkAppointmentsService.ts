@@ -19,6 +19,7 @@ import {
   reminderAppointmentMessage
 } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
+import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 
 const SYNC_STATE_KEY = "appointments";
 const FINGERPRINT_VERSION = 1;
@@ -152,6 +153,14 @@ const processNewAppointment = async (
     await createDueReminder(config, snapshot, true);
   }
 
+  await RecordQuarkAppointmentEventService({
+    snapshot,
+    eventType: appointmentIsCancelled(snapshot.status)
+      ? "CANCELLED"
+      : "CREATED",
+    source: "QUARK_EXTERNAL"
+  });
+
   await QuarkAppointment.findOrCreate({
     where: { appointmentId: snapshot.appointmentId },
     defaults: valuesForPersistence(snapshot, false)
@@ -172,6 +181,23 @@ const processExistingAppointment = async (
     record.scheduleFingerprint !== snapshot.scheduleFingerprint;
   const phoneChanged = record.phone !== snapshot.phone;
   const relevantChanged = scheduleChanged || phoneChanged;
+
+  if (
+    !baselineMode &&
+    record.snapshotFingerprint !== snapshot.snapshotFingerprint
+  ) {
+    await RecordQuarkAppointmentEventService({
+      record,
+      snapshot,
+      eventType: becameCancelled
+        ? "CANCELLED"
+        : scheduleChanged
+        ? "RESCHEDULED"
+        : "UPDATED",
+      source: "QUARK_EXTERNAL",
+      metadata: { phoneChanged }
+    });
+  }
 
   if (baselineMode) {
     await record.update({

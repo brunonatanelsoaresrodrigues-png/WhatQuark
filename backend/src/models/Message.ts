@@ -12,6 +12,8 @@ import {
 } from "sequelize-typescript";
 import Contact from "./Contact";
 import Ticket from "./Ticket";
+import User from "./User";
+import { MessageOrigin } from "./MessageAttribution";
 
 @Table
 class Message extends Model<Message> {
@@ -30,6 +32,17 @@ class Message extends Model<Message> {
   @Default(false)
   @Column
   fromMe: boolean;
+
+  @ForeignKey(() => User)
+  @Column(DataType.INTEGER)
+  sentByUserId: number | null;
+
+  @BelongsTo(() => User, "sentByUserId")
+  sentByUser: User;
+
+  @Default("UNKNOWN")
+  @Column(DataType.STRING(24))
+  origin: MessageOrigin;
 
   @Column(DataType.TEXT)
   body: string;

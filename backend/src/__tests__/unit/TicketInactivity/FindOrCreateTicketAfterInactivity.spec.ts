@@ -5,6 +5,7 @@ import UserQueue from "../../../models/UserQueue";
 import FindOrCreateTicketService from "../../../services/TicketServices/FindOrCreateTicketService";
 import ShowTicketService from "../../../services/TicketServices/ShowTicketService";
 import { emitTicketInactivityUpdate } from "../../../services/TicketInactivityServices/ticketEvents";
+import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
 
 jest.mock("../../../models/Ticket", () => ({
   __esModule: true,
@@ -28,6 +29,9 @@ jest.mock("../../../services/TicketServices/ShowTicketService", () =>
 jest.mock("../../../services/TicketInactivityServices/ticketEvents", () => ({
   emitTicketInactivityUpdate: jest.fn()
 }));
+jest.mock("../../../services/TicketServices/RecordTicketEventService", () =>
+  jest.fn()
+);
 
 const makeClosedTicket = () => {
   const ticket: any = {
@@ -57,13 +61,11 @@ describe("FindOrCreateTicketService inactivity reopening", () => {
       .mockResolvedValueOnce(closedTicket);
     (User.findByPk as jest.Mock).mockResolvedValue({ id: 8 });
     (UserQueue.count as jest.Mock).mockResolvedValue(1);
-    (ShowTicketService as jest.Mock).mockImplementation(async () => closedTicket);
-
-    const result = await FindOrCreateTicketService(
-      { id: 50 } as any,
-      1,
-      1
+    (ShowTicketService as jest.Mock).mockImplementation(
+      async () => closedTicket
     );
+
+    const result = await FindOrCreateTicketService({ id: 50 } as any, 1, 1);
 
     expect(result.id).toBe(31);
     expect(closedTicket.update).toHaveBeenCalledWith(
@@ -80,6 +82,13 @@ describe("FindOrCreateTicketService inactivity reopening", () => {
       })
     );
     expect(emitTicketInactivityUpdate).toHaveBeenCalledWith(31, "closed");
+    expect(RecordTicketEventService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 31,
+        eventType: "REOPENED",
+        newUserId: 8
+      })
+    );
   });
 
   it("returns the same ticket to its queue when the previous user is unavailable", async () => {
@@ -88,7 +97,9 @@ describe("FindOrCreateTicketService inactivity reopening", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(closedTicket);
     (User.findByPk as jest.Mock).mockResolvedValue(null);
-    (ShowTicketService as jest.Mock).mockImplementation(async () => closedTicket);
+    (ShowTicketService as jest.Mock).mockImplementation(
+      async () => closedTicket
+    );
 
     await FindOrCreateTicketService({ id: 50 } as any, 1, 1);
 

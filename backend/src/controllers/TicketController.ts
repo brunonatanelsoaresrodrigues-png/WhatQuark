@@ -64,7 +64,12 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { contactId, status, userId }: TicketData = req.body;
 
-  const ticket = await CreateTicketService({ contactId, status, userId });
+  const ticket = await CreateTicketService({
+    contactId,
+    status,
+    userId,
+    actorUserId: Number(req.user.id)
+  });
 
   const io = getIO();
   io.to(ticket.status).emit("ticket", {
@@ -92,7 +97,8 @@ export const update = async (
 
   const { ticket } = await UpdateTicketService({
     ticketData,
-    ticketId
+    ticketId,
+    actorUserId: Number(req.user.id)
   });
 
   if (ticket.status === "closed") {
@@ -103,7 +109,9 @@ export const update = async (
     if (farewellMessage) {
       await SendWhatsAppMessage({
         body: formatBody(farewellMessage, ticket.contact),
-        ticket
+        ticket,
+        sentByUserId: Number(req.user.id),
+        origin: "SYSTEM"
       });
     }
   }

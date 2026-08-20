@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
@@ -30,8 +30,30 @@ const TicketActionButtons = ({ ticket }) => {
 	const history = useHistory();
 	const [anchorEl, setAnchorEl] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [remainingSeconds, setRemainingSeconds] = useState(15 * 60);
 	const ticketOptionsMenuOpen = Boolean(anchorEl);
 	const { user } = useContext(AuthContext);
+
+	useEffect(() => {
+		if (!ticket.awaitingPatientSince) {
+			setRemainingSeconds(15 * 60);
+			return undefined;
+		}
+		const updateRemaining = () => {
+			const elapsed = Math.floor(
+				(Date.now() - new Date(ticket.awaitingPatientSince).getTime()) / 1000
+			);
+			setRemainingSeconds(Math.max(0, 15 * 60 - elapsed));
+		};
+		updateRemaining();
+		const timer = setInterval(updateRemaining, 1000);
+		return () => clearInterval(timer);
+	}, [ticket.awaitingPatientSince]);
+
+	const remainingLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(
+		2,
+		"0"
+	)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
 	const handleOpenTicketOptionsMenu = e => {
 		setAnchorEl(e.currentTarget);
@@ -112,7 +134,9 @@ const TicketActionButtons = ({ ticket }) => {
 						}
 					>
 						{ticket.awaitingPatientSince
-							? i18n.t("messagesList.header.buttons.cancelWaitingPatient")
+							? i18n.t("messagesList.header.buttons.waitingPatientCountdown", {
+								remaining: remainingLabel,
+							})
 							: i18n.t("messagesList.header.buttons.waitForPatient")}
 					</ButtonWithSpinner>
 					<ButtonWithSpinner

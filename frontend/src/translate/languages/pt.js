@@ -387,7 +387,10 @@ const messages = {
             reopen: "Reabrir",
             waitForPatient: "Aguardar paciente (15 min)",
             cancelWaitingPatient: "Aguardando paciente — cancelar",
-            waitingPatientStarted: "Cronômetro de 15 minutos iniciado.",
+            waitingPatientCountdown:
+              "Aguardando paciente — {{remaining}} (cancelar)",
+            waitingPatientStarted:
+              "Cronômetro iniciado a partir da última mensagem da clínica.",
             waitingPatientCancelled: "Espera pelo paciente cancelada.",
             accept: "Aceitar",
           },

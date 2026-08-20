@@ -22,6 +22,8 @@ import UpdateTicketService from "../services/TicketServices/UpdateTicketService"
 import CreateContactService from "../services/ContactServices/CreateContactService";
 import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/HandleQuarkConfirmationReply";
 import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
+import DailyReportDelivery from "../models/DailyReportDelivery";
+import { registerMessageAttribution } from "../services/MessageServices/MessageAttributionService";
 
 import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
@@ -179,11 +181,15 @@ const handleQueueLogic = async (
     );
 
     try {
-      await whatsappProvider.sendMessage(
+      const sentMessage = await whatsappProvider.sendMessage(
         whatsappId,
         `${contactPayload.number}@c.us`,
         body
       );
+      await registerMessageAttribution(sentMessage.id, {
+        sentByUserId: null,
+        origin: "BOT"
+      });
     } catch (error) {
       logger.error("Error sending queue greeting message:", error);
     }
@@ -201,11 +207,15 @@ const handleQueueLogic = async (
     const debouncedSentMessage = debounce(
       async () => {
         try {
-          await whatsappProvider.sendMessage(
+          const sentMessage = await whatsappProvider.sendMessage(
             whatsappId,
             `${contactPayload.number}@c.us`,
             body
           );
+          await registerMessageAttribution(sentMessage.id, {
+            sentByUserId: null,
+            origin: "BOT"
+          });
         } catch (error) {
           logger.error("Error sending queue options message:", error);
         }
@@ -294,6 +304,10 @@ export const handleMessage = async (
     await ticket.update({ lastMessage: lastMessageText });
 
     const createdMessage = await CreateMessageService({ messageData });
+
+    // Respostas dos gestores aos fechamentos permanecem na conversa interna e
+    // não entram no bot, no QuarkClinic nem na automação de inatividade.
+    if (ticket.ticketType === "INTERNAL_REPORT") return;
 
     await HandleTicketMessageForInactivity({
       ticket,
@@ -384,6 +398,9 @@ export const handleMessageAck = async (
         { where: { messageId } }
       );
       if (updated > 0) emitQuarkDashboardUpdate("delivery", messageId);
+      await DailyReportDelivery.update(deliveryUpdate, {
+        where: { messageId }
+      });
     }
 
     io.to(messageToUpdate.ticketId.toString()).emit("appMessage", {

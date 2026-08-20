@@ -383,6 +383,8 @@ const messages = {
             reopen: "Reopen",
             waitForPatient: "Wait for patient (15 min)",
             cancelWaitingPatient: "Waiting for patient — cancel",
+            waitingPatientCountdown:
+              "Waiting for patient — {{remaining}} (cancel)",
             waitingPatientStarted: "The 15-minute timer has started.",
             waitingPatientCancelled: "Patient wait cancelled.",
             accept: "Accept",

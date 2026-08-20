@@ -46,7 +46,7 @@ const SendQuarkWhatsAppMessage = async (
     isGroup: false
   });
   const ticket = await FindOrCreateTicketService(contact, whatsapp.id, 0);
-  const message = await SendWhatsAppMessage({ body, ticket });
+  const message = await SendWhatsAppMessage({ body, ticket, origin: "QUARK" });
   return { messageId: message.id, ticketId: ticket.id };
 };
 

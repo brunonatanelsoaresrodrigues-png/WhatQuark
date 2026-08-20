@@ -17,6 +17,7 @@ import AccountTreeOutlinedIcon from "@material-ui/icons/AccountTreeOutlined";
 import QuestionAnswerOutlinedIcon from "@material-ui/icons/QuestionAnswerOutlined";
 import AssessmentOutlinedIcon from "@material-ui/icons/AssessmentOutlined";
 import LocalHospitalOutlinedIcon from "@material-ui/icons/LocalHospitalOutlined";
+import InsertChartOutlinedIcon from "@material-ui/icons/InsertChartOutlined";
 
 import { i18n } from "../translate/i18n";
 import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
@@ -124,6 +125,11 @@ const MainListItems = (props) => {
               to="/quark-dashboard"
               primary="Automação Quark"
               icon={<AssessmentOutlinedIcon />}
+            />
+            <ListItemLink
+              to="/daily-reports"
+              primary="Relatórios Diários"
+              icon={<InsertChartOutlinedIcon />}
             />
             <ListItemLink
               to="/users"

@@ -16,6 +16,13 @@ import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification
 import QuarkSyncState from "../models/QuarkSyncState";
 import QuarkAppointmentResponse from "../models/QuarkAppointmentResponse";
 import TicketInactivityEvent from "../models/TicketInactivityEvent";
+import MessageAttribution from "../models/MessageAttribution";
+import TicketEvent from "../models/TicketEvent";
+import QuarkAppointmentEvent from "../models/QuarkAppointmentEvent";
+import DailyReportRecipient from "../models/DailyReportRecipient";
+import DailyReportRun from "../models/DailyReportRun";
+import DailyReportDelivery from "../models/DailyReportDelivery";
+import DailyReportRecipientEvent from "../models/DailyReportRecipientEvent";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -40,7 +47,14 @@ const models = [
   QuarkAppointmentNotification,
   QuarkAppointmentResponse,
   QuarkSyncState,
-  TicketInactivityEvent
+  TicketInactivityEvent,
+  MessageAttribution,
+  TicketEvent,
+  QuarkAppointmentEvent,
+  DailyReportRecipient,
+  DailyReportRun,
+  DailyReportDelivery,
+  DailyReportRecipientEvent
 ];
 
 sequelize.addModels(models);

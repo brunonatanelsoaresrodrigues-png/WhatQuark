@@ -4,17 +4,24 @@ import Ticket from "../../models/Ticket";
 import { whatsappProvider, ProviderMessage } from "../../providers/WhatsApp";
 
 import formatBody from "../../helpers/Mustache";
+import { MessageOrigin } from "../../models/MessageAttribution";
+import { registerMessageAttribution } from "../MessageServices/MessageAttributionService";
+import { logger } from "../../utils/logger";
 
 interface Request {
   media: Express.Multer.File;
   ticket: Ticket;
   body?: string;
+  sentByUserId?: number | null;
+  origin?: MessageOrigin;
 }
 
 const SendWhatsAppMedia = async ({
   media,
   ticket,
-  body
+  body,
+  sentByUserId = null,
+  origin = "SYSTEM"
 }: Request): Promise<ProviderMessage> => {
   try {
     if (!ticket.whatsappId) {
@@ -46,6 +53,17 @@ const SendWhatsAppMedia = async ({
       chatId,
       mediaInput,
       mediaOptions
+    );
+
+    await registerMessageAttribution(sentMessage.id, {
+      sentByUserId,
+      origin
+    }).catch(error =>
+      logger.error({
+        info: "WhatsApp media sent but attribution could not be persisted",
+        messageId: sentMessage.id,
+        err: error
+      })
     );
 
     await ticket.update({ lastMessage: body || media.filename });

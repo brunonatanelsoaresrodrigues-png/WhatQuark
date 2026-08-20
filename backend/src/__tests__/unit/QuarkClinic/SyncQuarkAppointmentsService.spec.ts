@@ -26,6 +26,10 @@ jest.mock("../../../models/QuarkSyncState", () => ({
 jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
   listQuarkAppointments: jest.fn()
 }));
+jest.mock(
+  "../../../services/QuarkClinicServices/RecordQuarkAppointmentEventService",
+  () => jest.fn()
+);
 
 jest.mock("../../../services/QuarkClinicServices/notificationLedger", () => ({
   createQuarkNotificationOnce: jest.fn()

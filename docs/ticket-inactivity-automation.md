@@ -1,7 +1,8 @@
 # Encerramento por inatividade do paciente
 
-O SquadChat pode encerrar de forma acolhedora uma conversa quando a equipe fez
-uma pergunta e o paciente não respondeu em 15 minutos. O estado
+O SquadChat pode encerrar de forma acolhedora uma conversa quando a equipe
+marca manualmente que está aguardando o paciente e ele não responde em 15
+minutos. O estado
 `Aguardando paciente` é um marcador secundário: o ticket permanece `open`, na
 mesma fila e com o mesmo atendente enquanto o cronômetro corre.
 
@@ -9,9 +10,10 @@ mesma fila e com o mesmo atendente enquanto o cronômetro corre.
 
 - Somente tickets individuais, abertos e cuja última mensagem seja da clínica
   podem entrar em `Aguardando paciente`.
-- Mensagens de texto da clínica que contêm `?` iniciam o cronômetro
-  automaticamente. O atendente também pode usar o botão **Aguardar paciente
-  (15 min)** para mensagens sem ponto de interrogação, áudio ou imagem.
+- O cronômetro nunca começa automaticamente. O atendente deve clicar no botão
+  **Aguardar paciente (15 min)** e a última mensagem precisa ser da clínica.
+- Os 15 minutos são contados a partir do clique, não da data da última
+  mensagem.
 - Qualquer mensagem recebida do paciente cancela a espera, independentemente
   de ser texto, áudio, imagem, documento ou localização.
 - O worker confirma novamente a última mensagem antes de enviar o aviso e
@@ -26,7 +28,16 @@ mesma fila e com o mesmo atendente enquanto o cronômetro corre.
   ticket retorna pendente para a mesma fila.
 - Início, cancelamento, encerramento e reabertura são gravados em
   `TicketInactivityEvents`. O encerramento usa o motivo exato
-  `Sem retorno do paciente — 15 minutos`.
+`Sem retorno do paciente — 15 minutos`.
+
+A mensagem padrão enviada antes da resolução é:
+
+> Seu atendimento será encerrado por falta de interação.
+>
+> Caso ainda precise de ajuda, basta enviar uma nova mensagem para iniciarmos
+> outro atendimento.
+>
+> A Essencial Saúde agradece pelo contato e permanece à disposição! 💚
 
 ## Configuração
 
@@ -39,7 +50,7 @@ TICKET_INACTIVITY_SEND_INTERVAL_MIN_SECONDS=15
 TICKET_INACTIVITY_SEND_INTERVAL_MAX_SECONDS=45
 ```
 
-`TICKET_INACTIVITY_ENABLED=false` impede novos cronômetros automáticos e
+`TICKET_INACTIVITY_ENABLED=false` impede o acionamento de novos cronômetros e
 mantém o worker parado. A migration não cria cronômetros para tickets antigos;
 por isso não há encerramento em massa na primeira ativação.
 

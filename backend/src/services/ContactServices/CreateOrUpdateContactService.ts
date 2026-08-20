@@ -16,6 +16,7 @@ interface Request {
   email?: string;
   profilePicUrl?: string;
   extraInfo?: ExtraInfo[];
+  isInternal?: boolean;
 }
 
 const emitContact = (action: "update" | "create", contact: Contact) => {
@@ -31,7 +32,8 @@ const CreateOrUpdateContactService = async ({
   profilePicUrl,
   isGroup,
   email = "",
-  extraInfo = []
+  extraInfo = [],
+  isInternal = false
 }: Request): Promise<Contact> => {
   const number = isGroup ? rawNumber : rawNumber.replace(/[^0-9]/g, "");
   if (!number && !lid) throw new Error("Either number or lid must be provided");
@@ -54,7 +56,9 @@ const CreateOrUpdateContactService = async ({
 
     await contactByNumber.update({
       lid: contactByLid.lid,
-      profilePicUrl
+      profilePicUrl,
+      isInternal:
+        contactByNumber.isInternal || contactByLid.isInternal || isInternal
     });
 
     logger.info({
@@ -71,7 +75,8 @@ const CreateOrUpdateContactService = async ({
   if (contactByNumber) {
     await contactByNumber.update({
       lid: lid || contactByNumber.lid,
-      profilePicUrl
+      profilePicUrl,
+      isInternal: contactByNumber.isInternal || isInternal
     });
 
     emitContact("update", contactByNumber);
@@ -82,7 +87,8 @@ const CreateOrUpdateContactService = async ({
   if (contactByLid) {
     await contactByLid.update({
       number: number || contactByLid.number,
-      profilePicUrl
+      profilePicUrl,
+      isInternal: contactByLid.isInternal || isInternal
     });
 
     emitContact("update", contactByLid);
@@ -96,6 +102,7 @@ const CreateOrUpdateContactService = async ({
     profilePicUrl,
     email,
     isGroup,
+    isInternal,
     extraInfo
   });
 

@@ -7,6 +7,7 @@ import { logger } from "../../utils/logger";
 import { getQuarkConfig } from "./config";
 import { confirmQuarkAppointment } from "./QuarkClinicClient";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
+import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 
 interface Request {
   appointmentId: string;
@@ -98,6 +99,13 @@ const ConfirmQuarkAppointmentFromDashboardService = async ({
       502
     );
   }
+
+  await RecordQuarkAppointmentEventService({
+    record: appointment,
+    eventType: "CONFIRMED",
+    source: "QUARK_DASHBOARD",
+    newStatus: "CONFIRMADO"
+  });
 
   await appointment
     .update({

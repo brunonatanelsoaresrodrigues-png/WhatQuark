@@ -16,6 +16,7 @@ import {
   confirmQuarkAppointment
 } from "./QuarkClinicClient";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
+import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 
 interface Request {
   body: string;
@@ -56,7 +57,8 @@ const sendAppointmentOptions = async (
 
   await SendWhatsAppMessage({
     body: `Encontramos mais de uma consulta aguardando confirmação:\n\n${options}\n\nResponda *SIM 1* ou *NÃO 1*, trocando o número pela consulta desejada.`,
-    ticket
+    ticket,
+    origin: "QUARK"
   });
 };
 
@@ -74,7 +76,8 @@ const sendAlreadyApplied = async (
         : `Esta consulta já está cancelada no QuarkClinic: ${appointmentDescription(
             appointment
           )}.`,
-    ticket
+    ticket,
+    origin: "QUARK"
   });
 };
 
@@ -138,7 +141,8 @@ const HandleQuarkConfirmationReply = async ({
   if (claimed === 0) {
     await SendWhatsAppMessage({
       body: "Esta resposta já está sendo processada. Aguarde a confirmação por alguns instantes.",
-      ticket
+      ticket,
+      origin: "QUARK"
     });
     return true;
   }
@@ -184,12 +188,24 @@ const HandleQuarkConfirmationReply = async ({
   try {
     if (reply.choice === 1) {
       await confirmQuarkAppointment(config, appointment.appointmentId);
+      await RecordQuarkAppointmentEventService({
+        record: appointment,
+        eventType: "CONFIRMED",
+        source: "PATIENT_WHATSAPP",
+        newStatus: "CONFIRMADO"
+      });
       await appointment.update({ status: "CONFIRMADO" });
       successBody = `✅ Consulta confirmada com sucesso no QuarkClinic!\n\n${appointmentDescription(
         appointment
       )}\n${ARRIVAL_ORDER_NOTICE}`;
     } else {
       await cancelQuarkAppointment(config, appointment.appointmentId);
+      await RecordQuarkAppointmentEventService({
+        record: appointment,
+        eventType: "CANCELLED",
+        source: "PATIENT_WHATSAPP",
+        newStatus: "CANCELADO"
+      });
       await appointment.update({ status: "CANCELADO" });
       await QuarkAppointmentNotification.update(
         {
@@ -235,7 +251,8 @@ const HandleQuarkConfirmationReply = async ({
     });
     await SendWhatsAppMessage({
       body: "Não foi possível processar sua resposta agora. Nossa equipe foi avisada; tente novamente em alguns minutos.",
-      ticket
+      ticket,
+      origin: "QUARK"
     }).catch(sendError =>
       logger.error({
         info: "Could not send QuarkClinic reply failure notice",
@@ -264,7 +281,11 @@ const HandleQuarkConfirmationReply = async ({
       );
   }
 
-  await SendWhatsAppMessage({ body: successBody, ticket }).catch(error =>
+  await SendWhatsAppMessage({
+    body: successBody,
+    ticket,
+    origin: "QUARK"
+  }).catch(error =>
     logger.error({
       info: "QuarkClinic decision was applied but acknowledgement failed",
       appointmentId: appointment.appointmentId,

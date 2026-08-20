@@ -7,8 +7,11 @@ import User from "../../models/User";
 import UserQueue from "../../models/UserQueue";
 import { emitTicketInactivityUpdate } from "../TicketInactivityServices/ticketEvents";
 import ShowTicketService from "./ShowTicketService";
+import RecordTicketEventService from "./RecordTicketEventService";
 
-const reusablePreviousUserId = async (ticket: Ticket): Promise<number | null> => {
+const reusablePreviousUserId = async (
+  ticket: Ticket
+): Promise<number | null> => {
   const previousUserId = ticket.inactivityPreviousUserId || ticket.userId;
   if (!previousUserId) return null;
 
@@ -26,15 +29,19 @@ const FindOrCreateTicketService = async (
   contact: Contact,
   whatsappId: number,
   unreadMessages: number,
-  groupContact?: Contact
+  groupContact?: Contact,
+  requestedTicketType?: "PATIENT" | "INTERNAL_REPORT"
 ): Promise<Ticket> => {
+  const ticketType =
+    requestedTicketType || (contact.isInternal ? "INTERNAL_REPORT" : "PATIENT");
   let ticket = await Ticket.findOne({
     where: {
       status: {
         [Op.or]: ["open", "pending"]
       },
       contactId: groupContact ? groupContact.id : contact.id,
-      whatsappId: whatsappId
+      whatsappId: whatsappId,
+      ticketType
     }
   });
 
@@ -49,7 +56,8 @@ const FindOrCreateTicketService = async (
         status: "closed",
         closedByInactivity: true,
         contactId: contact.id,
-        whatsappId
+        whatsappId,
+        ticketType
       },
       order: [["updatedAt", "DESC"]]
     });
@@ -77,6 +85,15 @@ const FindOrCreateTicketService = async (
         messageId: null,
         occurredAt: new Date()
       });
+      await RecordTicketEventService({
+        ticketId: ticket.id,
+        eventType: "REOPENED",
+        performedByUserId: null,
+        previousUserId: ticket.inactivityPreviousUserId || null,
+        newUserId: previousUserId,
+        newQueueId: ticket.queueId || null,
+        metadata: { source: "PATIENT_MESSAGE", afterInactivity: true }
+      });
       reopenedAfterInactivity = true;
     }
   }
@@ -85,7 +102,8 @@ const FindOrCreateTicketService = async (
     ticket = await Ticket.findOne({
       where: {
         contactId: groupContact.id,
-        whatsappId: whatsappId
+        whatsappId: whatsappId,
+        ticketType
       },
       order: [["updatedAt", "DESC"]]
     });
@@ -106,7 +124,8 @@ const FindOrCreateTicketService = async (
           [Op.between]: [+subHours(new Date(), 2), +new Date()]
         },
         contactId: contact.id,
-        whatsappId: whatsappId
+        whatsappId: whatsappId,
+        ticketType
       },
       order: [["updatedAt", "DESC"]]
     });
@@ -126,7 +145,17 @@ const FindOrCreateTicketService = async (
       status: "pending",
       isGroup: !!groupContact,
       unreadMessages,
-      whatsappId
+      whatsappId,
+      ticketType
+    });
+    await RecordTicketEventService({
+      ticketId: ticket.id,
+      eventType: "CREATED",
+      newQueueId: ticket.queueId || null,
+      metadata: {
+        source: ticketType === "INTERNAL_REPORT" ? "DAILY_REPORT" : "WHATSAPP",
+        status: "pending"
+      }
     });
   }
 

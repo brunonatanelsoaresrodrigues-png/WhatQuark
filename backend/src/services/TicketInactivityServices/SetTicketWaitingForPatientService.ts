@@ -4,21 +4,20 @@ import Ticket from "../../models/Ticket";
 import TicketInactivityEvent from "../../models/TicketInactivityEvent";
 import { getTicketInactivityConfig } from "./config";
 import { emitTicketInactivityUpdate } from "./ticketEvents";
+import RecordTicketEventService from "../TicketServices/RecordTicketEventService";
 
 interface Request {
   ticketId: number | string;
   waiting: boolean;
   userId?: number | null;
   messageId?: string | null;
-  automatic?: boolean;
 }
 
 const SetTicketWaitingForPatientService = async ({
   ticketId,
   waiting,
   userId,
-  messageId,
-  automatic = false
+  messageId
 }: Request): Promise<Ticket> => {
   const config = getTicketInactivityConfig();
   const ticket = await Ticket.findByPk(ticketId);
@@ -30,7 +29,6 @@ const SetTicketWaitingForPatientService = async ({
 
   if (waiting) {
     if (!config.enabled) {
-      if (automatic) return ticket;
       throw new AppError("ERR_INACTIVITY_AUTOMATION_DISABLED", 503);
     }
     if (ticket.status !== "open") {
@@ -48,7 +46,9 @@ const SetTicketWaitingForPatientService = async ({
       throw new AppError("ERR_INACTIVITY_LAST_MESSAGE_NOT_FROM_CLINIC", 400);
     }
 
-    const startedAt = lastMessage.createdAt || new Date();
+    // O prazo começa no clique do atendente, não na hora em que a última
+    // mensagem foi enviada. Isso garante sempre 15 minutos completos.
+    const startedAt = new Date();
     await ticket.update({
       awaitingPatientSince: startedAt,
       inactivityClosingAt: null,
@@ -64,6 +64,14 @@ const SetTicketWaitingForPatientService = async ({
       userId: userId || ticket.userId || null,
       messageId: lastMessage.id,
       occurredAt: new Date()
+    });
+    await RecordTicketEventService({
+      ticketId: ticket.id,
+      eventType: "WAITING_PATIENT",
+      performedByUserId: userId || ticket.userId || null,
+      newUserId: ticket.userId || null,
+      newQueueId: ticket.queueId || null,
+      metadata: { triggeredManually: true, messageId: lastMessage.id }
     });
   } else {
     if (!ticket.awaitingPatientSince && !ticket.inactivityClosingAt) {
@@ -84,6 +92,17 @@ const SetTicketWaitingForPatientService = async ({
       userId: userId || ticket.userId || null,
       messageId: messageId || null,
       occurredAt: new Date()
+    });
+    await RecordTicketEventService({
+      ticketId: ticket.id,
+      eventType: "WAITING_CANCELLED",
+      performedByUserId: userId || ticket.userId || null,
+      newUserId: ticket.userId || null,
+      newQueueId: ticket.queueId || null,
+      metadata: {
+        triggeredManually: Boolean(userId),
+        messageId: messageId || null
+      }
     });
   }
 

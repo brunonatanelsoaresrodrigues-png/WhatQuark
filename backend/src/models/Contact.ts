@@ -44,6 +44,10 @@ class Contact extends Model<Contact> {
   @Column
   isGroup: boolean;
 
+  @Default(false)
+  @Column
+  isInternal: boolean;
+
   @CreatedAt
   createdAt: Date;
 

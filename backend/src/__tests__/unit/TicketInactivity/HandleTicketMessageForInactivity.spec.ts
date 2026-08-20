@@ -19,18 +19,13 @@ const ticket = (overrides: Record<string, unknown> = {}) =>
 describe("HandleTicketMessageForInactivity", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("automatically starts waiting after a clinic question", async () => {
+  it("does not start automatically after a clinic question", async () => {
     await HandleTicketMessageForInactivity({
       ticket: ticket(),
       message: { id: "question", fromMe: true, body: "Posso ajudar?" } as any
     });
 
-    expect(SetTicketWaitingForPatientService).toHaveBeenCalledWith({
-      ticketId: 10,
-      waiting: true,
-      messageId: "question",
-      automatic: true
-    });
+    expect(SetTicketWaitingForPatientService).not.toHaveBeenCalled();
   });
 
   it("does not start waiting after an informational clinic message", async () => {

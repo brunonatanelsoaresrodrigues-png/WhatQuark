@@ -23,6 +23,10 @@ jest.mock("../../../services/QuarkClinicServices/config", () => ({
 jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
   confirmQuarkAppointment: jest.fn()
 }));
+jest.mock(
+  "../../../services/QuarkClinicServices/RecordQuarkAppointmentEventService",
+  () => jest.fn()
+);
 jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
   emitQuarkDashboardUpdate: jest.fn()
 }));

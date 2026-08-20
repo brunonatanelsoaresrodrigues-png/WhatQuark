@@ -15,6 +15,7 @@ import {
   TicketInactivityConfig
 } from "./config";
 import { emitTicketInactivityUpdate } from "./ticketEvents";
+import RecordTicketEventService from "../TicketServices/RecordTicketEventService";
 
 let workerTimer: NodeJS.Timeout | undefined;
 let workerStopped = true;
@@ -80,15 +81,14 @@ const recoverStuckClaims = async (
 const claimDueTicket = async (
   config: TicketInactivityConfig
 ): Promise<Ticket | undefined> => {
-  const dueBefore = new Date(
-    Date.now() - config.timeoutMinutes * 60 * 1000
-  );
+  const dueBefore = new Date(Date.now() - config.timeoutMinutes * 60 * 1000);
 
   return sequelize.transaction(async transaction => {
     const ticket = await Ticket.findOne({
       where: {
         status: "open",
         isGroup: false,
+        ticketType: "PATIENT",
         awaitingPatientSince: { [Op.lte]: dueBefore },
         inactivityClosingAt: null
       },
@@ -220,6 +220,17 @@ export const finalizeClosure = async (
       },
       { transaction }
     );
+    await RecordTicketEventService({
+      ticketId,
+      eventType: "CLOSED_BY_INACTIVITY",
+      performedByUserId: null,
+      previousUserId,
+      newUserId: previousUserId,
+      previousQueueId: ticket.queueId || null,
+      newQueueId: ticket.queueId || null,
+      metadata: { reason: INACTIVITY_CLOSE_REASON, noticeMessageId },
+      transaction
+    });
     return true;
   });
 
@@ -284,7 +295,8 @@ const processTicket = async (
   if (!ticket.inactivityNoticeSentAt) {
     const sentMessage = await SendWhatsAppMessage({
       body: config.message,
-      ticket
+      ticket,
+      origin: "INACTIVITY"
     });
     noticeMessageId = sentMessage.id;
     await Ticket.update(

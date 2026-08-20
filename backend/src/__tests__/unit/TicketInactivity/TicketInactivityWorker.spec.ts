@@ -4,6 +4,7 @@ import Ticket from "../../../models/Ticket";
 import TicketInactivityEvent from "../../../models/TicketInactivityEvent";
 import { INACTIVITY_CLOSE_REASON } from "../../../services/TicketInactivityServices/config";
 import { finalizeClosure } from "../../../services/TicketInactivityServices/TicketInactivityWorker";
+import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
 
 jest.mock("../../../database", () => ({
   __esModule: true,
@@ -44,6 +45,9 @@ jest.mock("../../../services/TicketServices/ShowTicketService", () =>
 jest.mock("../../../services/TicketInactivityServices/ticketEvents", () => ({
   emitTicketInactivityUpdate: jest.fn()
 }));
+jest.mock("../../../services/TicketServices/RecordTicketEventService", () =>
+  jest.fn()
+);
 
 const transaction = { LOCK: { UPDATE: "UPDATE" } };
 const makeTicket = () => ({
@@ -109,6 +113,13 @@ describe("TicketInactivityWorker finalization", () => {
         messageId: "notice-1"
       }),
       { transaction }
+    );
+    expect(RecordTicketEventService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 20,
+        eventType: "CLOSED_BY_INACTIVITY",
+        transaction
+      })
     );
   });
 });

@@ -43,6 +43,10 @@ jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
   confirmQuarkAppointment: jest.fn(),
   cancelQuarkAppointment: jest.fn()
 }));
+jest.mock(
+  "../../../services/QuarkClinicServices/RecordQuarkAppointmentEventService",
+  () => jest.fn()
+);
 
 jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
   jest.fn()

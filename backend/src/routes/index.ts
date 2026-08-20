@@ -12,6 +12,7 @@ import queueRoutes from "./queueRoutes";
 import quickAnswerRoutes from "./quickAnswerRoutes";
 import apiRoutes from "./apiRoutes";
 import quarkDashboardRoutes from "./quarkDashboardRoutes";
+import dailyReportRoutes from "./dailyReportRoutes";
 
 const routes = Router();
 
@@ -26,6 +27,7 @@ routes.use(whatsappSessionRoutes);
 routes.use(queueRoutes);
 routes.use(quickAnswerRoutes);
 routes.use(quarkDashboardRoutes);
+routes.use(dailyReportRoutes);
 routes.use("/api/messages", apiRoutes);
 
 export default routes;

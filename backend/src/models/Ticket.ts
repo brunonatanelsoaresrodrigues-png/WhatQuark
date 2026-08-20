@@ -58,6 +58,10 @@ class Ticket extends Model<Ticket> {
   @Column
   isGroup: boolean;
 
+  @Default("PATIENT")
+  @Column(DataType.STRING(32))
+  ticketType: "PATIENT" | "INTERNAL_REPORT";
+
   @CreatedAt
   createdAt: Date;
 
