@@ -14,9 +14,10 @@ os serviços internos de envio do WhaTicket.
   silenciosa. Nenhum agendamento que já existia vira disparo em massa.
 - Se a linha de base falhar, seu estado permanece BASELINING. A retomada
   continua silenciosa e só muda para ACTIVE depois de todas as janelas.
-- Depois da baseline, um novo agendamento gera CREATED; alterações de data,
-  hora, profissional, unidade, procedimento ou telefone geram RESCHEDULED ou
-  UPDATED; status de cancelamento gera CANCELLED.
+- Depois da baseline, novos agendamentos, alterações e cancelamentos continuam
+  sendo sincronizados e auditados, mas não geram mensagem automática imediata.
+  O contato automático com o paciente fica restrito aos lembretes de 24h e 2h;
+  lembretes manuais continuam dependendo de uma ação explícita no painel.
 - Agendamentos anteriores ao dia atual são ignorados. A ausência isolada de um
   registro na resposta não é interpretada como cancelamento.
 - Lembretes usam QUARK_REMINDER_HOURS. O lembrete principal de 24 horas das
@@ -97,9 +98,9 @@ ignorado pelo Git. Não coloque tokens em Compose versionado, testes ou logs.
     QUARK_DEFAULT_COUNTRY_CODE=55
     QUARK_CLINIC_ADDRESS=
     QUARK_REMINDER_HOURS=24,2
-    QUARK_SEND_INTERVAL_MIN_SECONDS=15
-    QUARK_SEND_INTERVAL_MAX_SECONDS=45
-    QUARK_MAX_MESSAGES_PER_HOUR=100
+    QUARK_SEND_INTERVAL_MIN_SECONDS=60
+    QUARK_SEND_INTERVAL_MAX_SECONDS=180
+    QUARK_MAX_MESSAGES_PER_HOUR=30
     QUARK_QUIET_HOURS_START=20:00
     QUARK_QUIET_HOURS_END=08:00
     QUARK_MAX_RETRY_ATTEMPTS=5
@@ -118,6 +119,11 @@ itens de outros números permanecem pendentes.
 
 O horário silencioso usa QUARK_TIMEZONE. O container também recebe
 TZ=America/Sao_Paulo; mantenha ambos coerentes.
+
+O intervalo variável distribui a carga entre 60 e 180 segundos, e o teto móvel
+de 30 mensagens por hora limita rajadas. Esses controles são de segurança
+operacional; não substituem consentimento do paciente nem tornam envio em massa
+compatível com as políticas do WhatsApp.
 
 QUARK_CLINIC_ADDRESS completa a mensagem com o endereço da unidade. A API de
 agendamentos informa o nome da clínica, mas não retorna seu endereço. Deixe a

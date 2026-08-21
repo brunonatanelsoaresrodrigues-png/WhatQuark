@@ -1,4 +1,5 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../../models/QuarkSyncState";
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
@@ -12,6 +13,13 @@ jest.mock("../../../models/QuarkAppointment", () => ({
   default: {
     findAll: jest.fn(),
     findOrCreate: jest.fn()
+  }
+}));
+
+jest.mock("../../../models/QuarkAppointmentNotification", () => ({
+  __esModule: true,
+  default: {
+    update: jest.fn()
   }
 }));
 
@@ -107,6 +115,7 @@ describe("SyncQuarkAppointmentsService", () => {
     jest.clearAllMocks();
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
     (QuarkAppointmentRecipient.update as jest.Mock).mockResolvedValue([0]);
+    (QuarkAppointmentNotification.update as jest.Mock).mockResolvedValue([0]);
     (QuarkAppointmentRecipient.findOrCreate as jest.Mock).mockResolvedValue([
       { update: jest.fn().mockResolvedValue(undefined) },
       true
@@ -131,7 +140,18 @@ describe("SyncQuarkAppointmentsService", () => {
     );
   });
 
-  it("creates one reschedule outbox when an appointment from the baseline changes", async () => {
+  it("does not contact a patient when a distant appointment first appears after baseline", async () => {
+    mockSyncState("ACTIVE");
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([appointment()]);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([]);
+    (QuarkAppointment.findOrCreate as jest.Mock).mockResolvedValue([{}, true]);
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+  });
+
+  it("records a distant reschedule without contacting the patient", async () => {
     mockSyncState("ACTIVE");
     const currentDto = appointment();
     const currentSnapshot = buildAppointmentSnapshot(currentDto, config);
@@ -155,13 +175,12 @@ describe("SyncQuarkAppointmentsService", () => {
     await SyncQuarkAppointmentsService(config);
 
     expect(listQuarkAppointments).toHaveBeenCalledTimes(1);
-    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
-    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
-      "42",
-      expect.stringMatching(/^changed:.*:to:[a-f0-9]{16}$/),
-      "RESCHEDULED",
-      expect.objectContaining({ phone: "5511999990000" }),
-      "PENDING"
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+    expect(QuarkAppointmentNotification.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "SUPPRESSED" }),
+      expect.objectContaining({
+        where: expect.objectContaining({ appointmentId: "42" })
+      })
     );
     expect(record.update).toHaveBeenCalledTimes(1);
   });

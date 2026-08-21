@@ -1,6 +1,7 @@
 import { hostname } from "os";
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../models/QuarkSyncState";
 import { logger } from "../../utils/logger";
@@ -14,12 +15,7 @@ import {
 import { QuarkConfig } from "./config";
 import { listQuarkAppointments } from "./QuarkClinicClient";
 import { createQuarkNotificationOnce } from "./notificationLedger";
-import {
-  cancelledAppointmentMessage,
-  changedAppointmentMessage,
-  newAppointmentMessage,
-  reminderAppointmentMessage
-} from "./messageTemplates";
+import { reminderAppointmentMessage } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 import { dueReminder } from "./reminderTiming";
@@ -146,6 +142,26 @@ const syncRecipients = async (snapshot: AppointmentSnapshot): Promise<void> => {
   }
 };
 
+const suppressQueuedNotifications = async (
+  appointmentId: string,
+  reason: string
+): Promise<void> => {
+  await QuarkAppointmentNotification.update(
+    {
+      status: "SUPPRESSED",
+      processingStartedAt: null,
+      workerId: null,
+      lastError: reason
+    },
+    {
+      where: {
+        appointmentId,
+        status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
+      }
+    }
+  );
+};
+
 const createDueReminder = async (
   config: QuarkConfig,
   snapshot: AppointmentSnapshot,
@@ -183,16 +199,6 @@ const processNewAppointment = async (
     return;
   }
 
-  if (!appointmentIsCancelled(snapshot.status)) {
-    await createOutbox(
-      snapshot,
-      "created",
-      "CREATED",
-      newAppointmentMessage(snapshot, config.clinicAddress)
-    );
-    await createDueReminder(config, snapshot, true);
-  }
-
   await RecordQuarkAppointmentEventService({
     snapshot,
     eventType: appointmentIsCancelled(snapshot.status)
@@ -205,6 +211,11 @@ const processNewAppointment = async (
     where: { appointmentId: snapshot.appointmentId },
     defaults: valuesForPersistence(snapshot, false)
   });
+
+  // Encontrar um registro novo na sincronização não significa que o paciente
+  // deve ser contatado imediatamente. O único envio automático de confirmação
+  // acontece quando a consulta entra em uma janela de lembrete configurada.
+  await createDueReminder(config, snapshot);
 };
 
 const processExistingAppointment = async (
@@ -261,23 +272,13 @@ const processExistingAppointment = async (
     return;
   }
 
-  if (becameCancelled) {
-    await createOutbox(
-      snapshot,
-      `cancelled:${snapshot.snapshotFingerprint.slice(0, 24)}`,
-      "CANCELLED",
-      cancelledAppointmentMessage(snapshot)
+  if (becameCancelled || relevantChanged) {
+    await suppressQueuedNotifications(
+      snapshot.appointmentId,
+      becameCancelled
+        ? "Appointment was cancelled before delivery"
+        : "Appointment details changed before delivery"
     );
-  } else if (relevantChanged && !appointmentIsCancelled(snapshot.status)) {
-    await createOutbox(
-      snapshot,
-      `changed:${snapshot.snapshotFingerprint.slice(0, 24)}`,
-      scheduleChanged ? "RESCHEDULED" : "UPDATED",
-      changedAppointmentMessage(snapshot, config.clinicAddress)
-    );
-    await createDueReminder(config, snapshot, true);
-  } else {
-    await createDueReminder(config, snapshot);
   }
 
   await record.update({
@@ -296,6 +297,11 @@ const processExistingAppointment = async (
         ? null
         : record.confirmationRequestedAt
   });
+
+  // Alterações continuam auditadas acima, mas não geram mensagens imediatas.
+  // Se a nova data já estiver na janela de 24h/2h, um lembrete com a impressão
+  // digital atualizada será enfileirado aqui.
+  await createDueReminder(config, snapshot);
 };
 
 const fetchSnapshots = async (

@@ -55,9 +55,9 @@ export const getQuarkConfig = (): QuarkConfig => {
     .sort((a, b) => a - b);
 
   const sendIntervalMinMs =
-    positiveNumber(process.env.QUARK_SEND_INTERVAL_MIN_SECONDS, 15) * 1000;
+    positiveNumber(process.env.QUARK_SEND_INTERVAL_MIN_SECONDS, 60) * 1000;
   const configuredMaxMs =
-    positiveNumber(process.env.QUARK_SEND_INTERVAL_MAX_SECONDS, 45) * 1000;
+    positiveNumber(process.env.QUARK_SEND_INTERVAL_MAX_SECONDS, 180) * 1000;
   if (configuredMaxMs < sendIntervalMinMs) {
     throw new Error(
       "QUARK_SEND_INTERVAL_MAX_SECONDS must be greater than or equal to QUARK_SEND_INTERVAL_MIN_SECONDS"
@@ -123,7 +123,7 @@ export const getQuarkConfig = (): QuarkConfig => {
       15000
     ),
     maxMessagesPerHour: Math.floor(
-      positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 100)
+      positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 30)
     ),
     quietHoursStart,
     quietHoursEnd,

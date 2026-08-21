@@ -10,6 +10,10 @@ import { QuarkOutboxPayload } from "./notificationLedger";
 import { quietHoursDelayMs, randomSendIntervalMs } from "./workerTiming";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import { weekdayInTimezone } from "./reminderTiming";
+import {
+  appointmentStillMatchesNotification,
+  quarkNotificationCanBeSent
+} from "./notificationPolicy";
 
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
 let workerTimer: NodeJS.Timeout | undefined;
@@ -119,6 +123,16 @@ const processNotification = async (
   notification: QuarkAppointmentNotification
 ): Promise<void> => {
   try {
+    if (!quarkNotificationCanBeSent(notification.eventType)) {
+      await notification.update({
+        status: "SUPPRESSED",
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Blocked by reminder-only outbound policy"
+      });
+      return;
+    }
+
     const newerNotification = await QuarkAppointmentNotification.findOne({
       where: {
         appointmentId: notification.appointmentId,
@@ -141,6 +155,28 @@ const processNotification = async (
 
     const payload = parsePayload(notification);
     if (!payload.phone) throw new Error("QUARK_PERMANENT_INVALID_PHONE");
+
+    const currentAppointment = await QuarkAppointment.findOne({
+      where: { appointmentId: notification.appointmentId },
+      attributes: ["status", "scheduledAt"]
+    });
+    if (
+      !currentAppointment ||
+      !appointmentStillMatchesNotification(
+        currentAppointment.status,
+        currentAppointment.scheduledAt,
+        payload.validUntil
+      )
+    ) {
+      await notification.update({
+        status: "SUPPRESSED",
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Appointment is no longer scheduled as notified"
+      });
+      return;
+    }
+
     if (
       payload.validUntil &&
       new Date(payload.validUntil).getTime() <= Date.now()
