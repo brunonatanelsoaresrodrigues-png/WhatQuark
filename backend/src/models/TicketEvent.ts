@@ -23,7 +23,11 @@ export type TicketEventType =
   | "CLOSED_BY_USER"
   | "CLOSED_BY_INACTIVITY"
   | "REOPENED"
-  | "RETURNED_TO_QUEUE";
+  | "RETURNED_TO_QUEUE"
+  | "INTAKE_STARTED"
+  | "INTAKE_COMPLETED"
+  | "INTAKE_PAUSED"
+  | "INTAKE_RESTARTED";
 
 @Table({ tableName: "TicketEvents" })
 class TicketEvent extends Model<TicketEvent> {

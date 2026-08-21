@@ -7,6 +7,7 @@ export interface QuarkOutboxPayload {
   body: string;
   requestsConfirmation: boolean;
   validUntil: string | null;
+  sendOnlyOnWeekday?: number;
 }
 
 export const createQuarkNotificationOnce = async (

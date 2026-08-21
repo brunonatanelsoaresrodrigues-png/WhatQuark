@@ -9,6 +9,7 @@ import SendQuarkWhatsAppMessage from "./SendQuarkWhatsAppMessage";
 import { QuarkOutboxPayload } from "./notificationLedger";
 import { quietHoursDelayMs, randomSendIntervalMs } from "./workerTiming";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
+import { weekdayInTimezone } from "./reminderTiming";
 
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
 let workerTimer: NodeJS.Timeout | undefined;
@@ -149,6 +150,20 @@ const processNotification = async (
         processingStartedAt: null,
         workerId: null,
         lastError: "Notification expired after the appointment time"
+      });
+      return;
+    }
+
+    if (
+      payload.sendOnlyOnWeekday !== undefined &&
+      weekdayInTimezone(new Date(), config.timezone) !==
+        payload.sendOnlyOnWeekday
+    ) {
+      await notification.update({
+        status: "SUPPRESSED",
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Notification expired outside its permitted weekday"
       });
       return;
     }

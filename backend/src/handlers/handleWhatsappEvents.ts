@@ -24,6 +24,10 @@ import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/Handle
 import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import { registerMessageAttribution } from "../services/MessageServices/MessageAttributionService";
+import PatientIntakeService, {
+  patientIntakeOwnsNumericInput
+} from "../services/PatientIntakeServices/PatientIntakeService";
+import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
 
 import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
@@ -269,7 +273,9 @@ export const handleMessage = async (
       contact,
       contextPayload.whatsappId,
       contextPayload.unreadMessages,
-      groupContact
+      groupContact,
+      undefined,
+      !processedMessage.fromMe
     );
 
     const messageData: any = {
@@ -320,10 +326,51 @@ export const handleMessage = async (
       })
     );
 
+    if (processedMessage.fromMe && createdMessage.origin === "HUMAN") {
+      await PausePatientIntakeService(
+        ticket,
+        createdMessage.sentByUserId
+      ).catch(error =>
+        logger.error({
+          info: "Could not pause patient intake after a human message",
+          ticketId: ticket.id,
+          err: error
+        })
+      );
+      return;
+    }
+
     await processVcardMessage(processedMessage);
 
+    let handledByIntake = false;
+    let showQueueMenu = false;
+    const patientAutomationEligible =
+      !contextPayload.groupContact && !processedMessage.fromMe;
+    const textualConfirmationReply = /^(sim|n[aã]o)\b/i.test(
+      processedMessage.body.trim()
+    );
+    const intakeOwnsInput = patientIntakeOwnsNumericInput(ticket.intakeStatus);
+
+    if (
+      patientAutomationEligible &&
+      intakeOwnsInput &&
+      !textualConfirmationReply &&
+      !ticket.queue &&
+      !ticket.userId &&
+      whatsapp.queues.length >= 1
+    ) {
+      const intakeResult = await PatientIntakeService(
+        ticket,
+        processedMessage.body
+      );
+      handledByIntake = intakeResult.handled;
+      showQueueMenu = intakeResult.showQueueMenu;
+    }
+
     const handledByQuark =
-      !contextPayload.groupContact && !processedMessage.fromMe
+      patientAutomationEligible &&
+      !handledByIntake &&
+      (!intakeOwnsInput || textualConfirmationReply)
         ? await HandleQuarkConfirmationReply({
             body: processedMessage.body,
             phone: contact.number,
@@ -334,9 +381,33 @@ export const handleMessage = async (
 
     if (
       !handledByQuark &&
+      !handledByIntake &&
       !ticket.queue &&
       !contextPayload.groupContact &&
       !processedMessage.fromMe &&
+      !ticket.userId &&
+      whatsapp.queues.length >= 1
+    ) {
+      const intakeResult = await PatientIntakeService(
+        ticket,
+        processedMessage.body
+      );
+      handledByIntake = intakeResult.handled;
+      showQueueMenu = intakeResult.showQueueMenu;
+    }
+
+    if (showQueueMenu) {
+      await handleQueueLogic(
+        contextPayload.whatsappId,
+        "",
+        ticket,
+        contactPayload
+      );
+    } else if (
+      !handledByQuark &&
+      !handledByIntake &&
+      !ticket.queue &&
+      patientAutomationEligible &&
       !ticket.userId &&
       whatsapp.queues.length >= 1
     ) {

@@ -30,7 +30,8 @@ const FindOrCreateTicketService = async (
   whatsappId: number,
   unreadMessages: number,
   groupContact?: Contact,
-  requestedTicketType?: "PATIENT" | "INTERNAL_REPORT"
+  requestedTicketType?: "PATIENT" | "INTERNAL_REPORT",
+  reactivateIntake = false
 ): Promise<Ticket> => {
   const ticketType =
     requestedTicketType || (contact.isInternal ? "INTERNAL_REPORT" : "PATIENT");
@@ -131,11 +132,31 @@ const FindOrCreateTicketService = async (
     });
 
     if (ticket) {
+      const previousQueueId = ticket.queueId || null;
       await ticket.update({
         status: "pending",
         userId: null,
-        unreadMessages
+        queueId: reactivateIntake ? null : ticket.queueId,
+        unreadMessages,
+        ...(reactivateIntake
+          ? {
+              intakeStatus: null,
+              intakeReason: null,
+              intakeStartedAt: null,
+              intakeCompletedAt: null,
+              intakePausedAt: null
+            }
+          : {})
       });
+      if (reactivateIntake) {
+        await RecordTicketEventService({
+          ticketId: ticket.id,
+          eventType: "INTAKE_RESTARTED",
+          previousQueueId,
+          newQueueId: null,
+          metadata: { source: "PATIENT_MESSAGE", afterManualResolution: true }
+        });
+      }
     }
   }
 

@@ -9,6 +9,8 @@ import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import DeleteWhatsAppMessage from "../services/WbotServices/DeleteWhatsAppMessage";
 import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
+import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
+import { logger } from "../utils/logger";
 
 type IndexQuery = {
   pageNumber: string;
@@ -43,6 +45,14 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   const ticket = await ShowTicketService(ticketId);
 
   SetTicketMessagesAsRead(ticket);
+
+  await PausePatientIntakeService(ticket, Number(req.user.id)).catch(error =>
+    logger.error({
+      info: "Could not pause patient intake before a human message",
+      ticketId: ticket.id,
+      err: error
+    })
+  );
 
   if (medias) {
     await Promise.all(

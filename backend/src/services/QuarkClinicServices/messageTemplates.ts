@@ -69,12 +69,13 @@ export const cancelledAppointmentMessage = (
 export const reminderAppointmentMessage = (
   appointment: AppointmentSnapshot,
   hours: number,
-  clinicAddress = ""
+  clinicAddress = "",
+  mondayAdvance = false
 ): string =>
   `*Lembrete: sua consulta é ${
-    hours <= 2 ? "hoje" : "amanhã"
+    mondayAdvance ? "na segunda-feira" : hours <= 2 ? "hoje" : "amanhã"
   }.*\n\n${appointmentDetails(
-  appointment,
+    appointment,
     clinicAddress
   )}${confirmationOptions}`;
 

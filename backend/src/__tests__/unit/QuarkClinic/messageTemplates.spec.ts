@@ -49,6 +49,13 @@ describe("QuarkClinic message templates", () => {
     );
   });
 
+  it("identifies an advanced Monday reminder without saying tomorrow", () => {
+    const body = reminderAppointmentMessage(snapshot, 24, "", true);
+
+    expect(body).toContain("sua consulta é na segunda-feira");
+    expect(body).not.toContain("sua consulta é amanhã");
+  });
+
   it("creates a manual confirmation reminder without guessing the day", () => {
     const body = manualReminderAppointmentMessage(snapshot);
 

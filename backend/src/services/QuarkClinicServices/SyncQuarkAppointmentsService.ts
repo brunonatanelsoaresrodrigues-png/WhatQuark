@@ -22,6 +22,7 @@ import {
 } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
+import { dueReminder } from "./reminderTiming";
 
 const SYNC_STATE_KEY = "appointments";
 const FINGERPRINT_VERSION = 2;
@@ -85,7 +86,8 @@ const createOutbox = async (
   notificationKey: string,
   eventType: string,
   body: string,
-  status: "PENDING" | "SUPPRESSED" = "PENDING"
+  status: "PENDING" | "SUPPRESSED" = "PENDING",
+  sendOnlyOnWeekday?: number
 ): Promise<boolean> => {
   let created = false;
   for (const recipient of snapshot.phones) {
@@ -100,7 +102,8 @@ const createOutbox = async (
         requestsConfirmation: appointmentCanBeConfirmed(snapshot.status),
         validUntil: snapshot.scheduledAt
           ? snapshot.scheduledAt.toISOString()
-          : null
+          : null,
+        sendOnlyOnWeekday
       },
       status
     );
@@ -143,32 +146,25 @@ const syncRecipients = async (snapshot: AppointmentSnapshot): Promise<void> => {
   }
 };
 
-const dueReminderHours = (
-  config: QuarkConfig,
-  snapshot: AppointmentSnapshot
-): number | undefined => {
-  if (!snapshot.scheduledAt || !appointmentCanBeConfirmed(snapshot.status)) {
-    return undefined;
-  }
-  const minutesUntil =
-    (snapshot.scheduledAt.getTime() - Date.now()) / (60 * 1000);
-  if (minutesUntil <= 0) return undefined;
-  return config.reminderHours.find(hours => minutesUntil <= hours * 60);
-};
-
 const createDueReminder = async (
   config: QuarkConfig,
   snapshot: AppointmentSnapshot,
   suppress = false
 ): Promise<void> => {
-  const hours = dueReminderHours(config, snapshot);
-  if (!hours) return;
+  const reminder = dueReminder(config, snapshot);
+  if (!reminder) return;
   await createOutbox(
     snapshot,
-    `reminder:${hours}:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+    `reminder:${reminder.hours}:${snapshot.scheduleFingerprint.slice(0, 24)}`,
     "REMINDER",
-    reminderAppointmentMessage(snapshot, hours, config.clinicAddress),
-    suppress ? "SUPPRESSED" : "PENDING"
+    reminderAppointmentMessage(
+      snapshot,
+      reminder.hours,
+      config.clinicAddress,
+      reminder.mondayAdvance
+    ),
+    suppress ? "SUPPRESSED" : "PENDING",
+    reminder.sendOnlyOnWeekday
   );
 };
 

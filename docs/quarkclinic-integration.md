@@ -19,9 +19,14 @@ os serviços internos de envio do WhaTicket.
   UPDATED; status de cancelamento gera CANCELLED.
 - Agendamentos anteriores ao dia atual são ignorados. A ausência isolada de um
   registro na resposta não é interpretada como cancelamento.
-- Lembretes usam QUARK_REMINDER_HOURS. Lembretes que já estariam vencidos na
-  baseline e lembretes coincidentes com uma mensagem de criação/alteração são
-  suprimidos para evitar mensagens em sequência.
+- Lembretes usam QUARK_REMINDER_HOURS. O lembrete principal de 24 horas das
+  consultas de segunda-feira é antecipado para a sexta-feira anterior, a partir
+  do fim do horário silencioso. Ele só pode ser entregue na própria sexta; se a
+  fila estiver indisponível até o fim do dia, será suprimido em vez de ser
+  enviado no sábado ou no domingo. Os demais lembretes mantêm a antecedência
+  normal. Lembretes que já estariam vencidos na baseline e lembretes
+  coincidentes com uma mensagem de criação/alteração são suprimidos para evitar
+  mensagens em sequência.
 - Respostas SIM/1 e NÃO/2 são aplicadas ao agendamento futuro pendente do
   número que respondeu. Quando o mesmo telefone tem mais de uma consulta
   pendente, o sistema pede SIM 1, NÃO 1, SIM 2 ou NÃO 2 e não escolhe
