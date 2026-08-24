@@ -15,7 +15,10 @@ import {
 import { QuarkConfig } from "./config";
 import { listQuarkAppointments } from "./QuarkClinicClient";
 import { createQuarkNotificationOnce } from "./notificationLedger";
-import { reminderAppointmentMessage } from "./messageTemplates";
+import {
+  changedAppointmentMessage,
+  reminderAppointmentMessage
+} from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 import { dueReminder } from "./reminderTiming";
@@ -298,9 +301,20 @@ const processExistingAppointment = async (
         : record.confirmationRequestedAt
   });
 
-  // Alterações continuam auditadas acima, mas não geram mensagens imediatas.
-  // Se a nova data já estiver na janela de 24h/2h, um lembrete com a impressão
-  // digital atualizada será enfileirado aqui.
+  if (scheduleChanged && !becameCancelled) {
+    // A remarcação já comunica os dados atuais da consulta. Se ela coincidir
+    // com uma janela de lembrete, grave esse lembrete como suprimido antes do
+    // aviso de alteração para evitar duas mensagens em sequência.
+    await createDueReminder(config, snapshot, true);
+    await createOutbox(
+      snapshot,
+      `rescheduled:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+      "RESCHEDULED",
+      changedAppointmentMessage(snapshot, config.clinicAddress)
+    );
+    return;
+  }
+
   await createDueReminder(config, snapshot);
 };
 

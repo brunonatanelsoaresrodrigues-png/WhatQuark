@@ -1,6 +1,7 @@
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
+  changedAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
   reminderAppointmentMessage
@@ -64,5 +65,22 @@ describe("QuarkClinic message templates", () => {
     expect(body).toContain("SIM para confirmar");
     expect(body).not.toContain("sua consulta é amanhã");
     expect(body).not.toContain("sua consulta é hoje");
+  });
+
+  it("asks for confirmation after rescheduling a scheduled appointment", () => {
+    const body = changedAppointmentMessage(snapshot);
+
+    expect(body).toContain("Aviso de alteração de agendamento");
+    expect(body).toContain("21/08/2026 às 16:00");
+    expect(body).toContain("SIM para confirmar");
+  });
+
+  it("does not request another confirmation for an already-confirmed appointment", () => {
+    const confirmedSnapshot = { ...snapshot, status: "CONFIRMADO" };
+    const body = changedAppointmentMessage(confirmedSnapshot);
+
+    expect(body).toContain("Aviso de alteração de agendamento");
+    expect(body).not.toContain("SIM para confirmar");
+    expect(body).not.toContain("NÃO para cancelar");
   });
 });

@@ -138,6 +138,9 @@ const processNotification = async (
         appointmentId: notification.appointmentId,
         recipientPhone: notification.recipientPhone,
         id: { [Op.gt]: notification.id },
+        ...(notification.eventType === "RESCHEDULED"
+          ? { eventType: "RESCHEDULED" }
+          : {}),
         status: {
           [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY", "SENT"]
         }
@@ -165,7 +168,8 @@ const processNotification = async (
       !appointmentStillMatchesNotification(
         currentAppointment.status,
         currentAppointment.scheduledAt,
-        payload.validUntil
+        payload.validUntil,
+        notification.eventType
       )
     ) {
       await notification.update({

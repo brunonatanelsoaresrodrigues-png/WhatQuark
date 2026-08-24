@@ -15,9 +15,11 @@ os serviços internos de envio do WhaTicket.
 - Se a linha de base falhar, seu estado permanece BASELINING. A retomada
   continua silenciosa e só muda para ACTIVE depois de todas as janelas.
 - Depois da baseline, novos agendamentos, alterações e cancelamentos continuam
-  sendo sincronizados e auditados, mas não geram mensagem automática imediata.
-  O contato automático com o paciente fica restrito aos lembretes de 24h e 2h;
-  lembretes manuais continuam dependendo de uma ação explícita no painel.
+  sendo sincronizados e auditados. Remarcações de data, horário, profissional,
+  procedimento ou clínica geram um aviso automático imediato com os dados
+  atualizados. Novos agendamentos e cancelamentos não geram mensagem imediata.
+  Lembretes de 24h e 2h continuam ativos; lembretes manuais dependem de uma
+  ação explícita no painel.
 - Agendamentos anteriores ao dia atual são ignorados. A ausência isolada de um
   registro na resposta não é interpretada como cancelamento.
 - Lembretes usam QUARK_REMINDER_HOURS. O lembrete principal de 24 horas das

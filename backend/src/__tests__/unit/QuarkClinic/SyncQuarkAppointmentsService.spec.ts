@@ -151,7 +151,7 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 
-  it("records a distant reschedule without contacting the patient", async () => {
+  it("queues an immediate, idempotent message for a distant reschedule", async () => {
     mockSyncState("ACTIVE");
     const currentDto = appointment();
     const currentSnapshot = buildAppointmentSnapshot(currentDto, config);
@@ -175,7 +175,20 @@ describe("SyncQuarkAppointmentsService", () => {
     await SyncQuarkAppointmentsService(config);
 
     expect(listQuarkAppointments).toHaveBeenCalledTimes(1);
-    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
+    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
+      "42",
+      expect.stringMatching(/^rescheduled:[a-f0-9]{24}:to:[a-f0-9]{16}$/),
+      "RESCHEDULED",
+      expect.objectContaining({
+        phone: "5511999990000",
+        patientName: "Paciente Teste",
+        body: expect.stringContaining("Aviso de alteração de agendamento"),
+        requestsConfirmation: true,
+        validUntil: currentSnapshot.scheduledAt?.toISOString()
+      }),
+      "PENDING"
+    );
     expect(QuarkAppointmentNotification.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "SUPPRESSED" }),
       expect.objectContaining({

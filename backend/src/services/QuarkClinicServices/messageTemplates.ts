@@ -1,5 +1,6 @@
 import {
   AppointmentSnapshot,
+  appointmentCanBeConfirmed,
   formatAppointmentDateTime
 } from "./appointmentUtils";
 
@@ -54,7 +55,9 @@ export const changedAppointmentMessage = (
   `*Aviso de alteração de agendamento.*\n\n${appointmentDetails(
     appointment,
     clinicAddress
-  )}${confirmationOptions}`;
+  )}${
+    appointmentCanBeConfirmed(appointment.status) ? confirmationOptions : ""
+  }`;
 
 export const cancelledAppointmentMessage = (
   appointment: AppointmentSnapshot
