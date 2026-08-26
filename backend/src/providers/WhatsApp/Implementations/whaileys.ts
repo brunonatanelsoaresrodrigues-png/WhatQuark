@@ -35,6 +35,7 @@ import NodeCache from "node-cache";
 
 import Whatsapp from "../../../models/Whatsapp";
 import Message from "../../../models/Message";
+import WppKey from "../../../models/WppKey";
 import { getIO } from "../../../libs/socket";
 import { logger } from "../../../utils/logger";
 import AppError from "../../../errors/AppError";
@@ -176,34 +177,37 @@ const msgCache = {
 
 const clearSessionKeys = async (sessionId: number): Promise<void> => {
   const client = getRedisClient();
-  if (!client) return;
 
   try {
-    const match = `wpp:${sessionId}:*`;
+    if (client) {
+      const match = `wpp:${sessionId}:*`;
 
-    const scanAndDelete = async (cursor: string): Promise<void> => {
-      const [nextCursor, keys] = await client.scan(
-        cursor,
-        "MATCH",
-        match,
-        "COUNT",
-        100
-      );
+      const scanAndDelete = async (cursor: string): Promise<void> => {
+        const [nextCursor, keys] = await client.scan(
+          cursor,
+          "MATCH",
+          match,
+          "COUNT",
+          100
+        );
 
-      if (keys.length > 0) {
-        await client.del(keys);
-      }
+        if (keys.length > 0) {
+          await client.del(keys);
+        }
 
-      if (nextCursor !== "0") {
-        await scanAndDelete(nextCursor);
-      }
-    };
+        if (nextCursor !== "0") {
+          await scanAndDelete(nextCursor);
+        }
+      };
 
-    await scanAndDelete("0");
+      await scanAndDelete("0");
+    }
 
-    logger.info({ info: "Cleared Redis session keys", sessionId });
+    await WppKey.destroy({ where: { connectionId: sessionId } });
+
+    logger.info({ info: "Cleared persisted session keys", sessionId });
   } catch (err) {
-    logger.error({ info: "Error clearing Redis session keys", sessionId, err });
+    logger.error({ info: "Error clearing persisted session keys", sessionId, err });
   }
 };
 
@@ -926,7 +930,18 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   const sessionId = whatsapp.id;
   const io = getIO();
 
-  const { state } = await useSessionAuthState(whatsapp);
+  let { state } = await useSessionAuthState(whatsapp);
+
+  // A stored credential with registered=false can no longer reconnect and
+  // otherwise leaves the connection permanently DISCONNECTED. Preserve valid
+  // registered sessions, but reset this stale state so a fresh QR is emitted.
+  if (whatsapp.session && state.creds.registered === false) {
+    logger.warn({ info: "Resetting stale unregistered session", sessionId });
+    await clearSessionKeys(sessionId);
+    await whatsapp.update({ session: "", qrcode: "", status: "OPENING" });
+    ({ state } = await useSessionAuthState(whatsapp));
+  }
+
   const store = makeInMemoryStore({ logger: whaileyLogger });
   stores.set(sessionId, store);
 
@@ -1108,6 +1123,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         await whatsapp.update({
           status: "DISCONNECTED",
           qrcode: "",
+          session: "",
           retries: 0
         });
 
@@ -1131,6 +1147,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         await whatsapp.update({
           status: "DISCONNECTED",
           qrcode: "",
+          session: "",
           retries: 0
         });
 
@@ -1142,7 +1159,10 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
           });
         }
 
+        await clearSessionKeys(sessionId);
         await removeSession(sessionId);
+
+        logger.warn({ info: "Session was logged out", sessionId });
 
         return;
       }
