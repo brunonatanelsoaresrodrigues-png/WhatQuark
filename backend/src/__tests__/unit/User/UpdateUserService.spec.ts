@@ -43,7 +43,9 @@ describe("User", () => {
       email: faker.internet.email()
     };
 
-    expect(UpdateUserService({ userId, userData })).rejects.toBeInstanceOf(
+    await expect(
+      UpdateUserService({ userId, userData })
+    ).rejects.toBeInstanceOf(
       AppError
     );
   });
@@ -61,7 +63,9 @@ describe("User", () => {
       email: "test.worgn.email"
     };
 
-    expect(UpdateUserService({ userId, userData })).rejects.toBeInstanceOf(
+    await expect(
+      UpdateUserService({ userId, userData })
+    ).rejects.toBeInstanceOf(
       AppError
     );
   });
