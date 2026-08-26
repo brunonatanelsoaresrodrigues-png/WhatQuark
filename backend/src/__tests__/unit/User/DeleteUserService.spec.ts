@@ -4,6 +4,11 @@ import CreateUserService from "../../../services/UserServices/CreateUserService"
 import DeleteUserService from "../../../services/UserServices/DeleteUserService";
 import { disconnect, truncate } from "../../utils/database";
 
+// This suite exercises user deletion without open tickets. Avoid loading the
+// WhatsApp transport graph through UpdateTicketService; Jest 26 cannot resolve
+// the node:fs/promises import used by the current optional wwebjs dependency.
+jest.mock("../../../helpers/UpdateDeletedUserOpenTicketsStatus", () => jest.fn());
+
 describe("User", () => {
   beforeEach(async () => {
     await truncate();
