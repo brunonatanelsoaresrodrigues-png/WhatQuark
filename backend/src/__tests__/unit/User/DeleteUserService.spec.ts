@@ -24,12 +24,12 @@ describe("User", () => {
       password: faker.internet.password()
     });
 
-    expect(DeleteUserService(id)).resolves.not.toThrow();
+    await expect(DeleteUserService(id)).resolves.not.toThrow();
   });
 
   it("to throw an error if tries to delete a non existing user", async () => {
-    expect(DeleteUserService(faker.random.number())).rejects.toBeInstanceOf(
-      AppError
-    );
+    await expect(
+      DeleteUserService(faker.random.number())
+    ).rejects.toBeInstanceOf(AppError);
   });
 });
