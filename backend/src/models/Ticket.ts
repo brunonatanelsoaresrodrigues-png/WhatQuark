@@ -77,6 +77,12 @@ class Ticket extends Model<Ticket> {
   @Column(DataType.DATE)
   intakePausedAt: Date | null;
 
+  @Column(DataType.TEXT)
+  intakeContext: string | null;
+
+  @Column(DataType.DATE)
+  intakeContextExpiresAt: Date | null;
+
   @CreatedAt
   createdAt: Date;
 

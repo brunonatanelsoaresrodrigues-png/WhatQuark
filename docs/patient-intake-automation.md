@@ -52,3 +52,22 @@ O fluxo registra somente estado, motivo e horários operacionais no ticket. Os
 eventos `INTAKE_STARTED`, `INTAKE_COMPLETED`, `INTAKE_PAUSED` e
 `INTAKE_RESTARTED` permitem auditar o comportamento sem copiar as respostas
 livres do paciente para os metadados de auditoria.
+
+## Profissionais e horários do QuarkClinic
+
+Para marcação e consulta de disponibilidade, a especialidade e a forma de
+pagamento são coletadas antes da escolha do profissional. O bot consulta os
+profissionais e agendas ativos do QuarkClinic, agrupa agendas repetidas pelo
+identificador do profissional e apresenta uma lista numérica.
+
+Depois da escolha, o bot consulta o endpoint de horários livres por agenda e
+data. São mostradas até cinco datas e oito horários por página. `MAIS` navega
+entre páginas de horários, `0` retorna uma etapa e `MENU` volta ao menu inicial.
+Antes de uma criação automática, a vaga é consultada novamente.
+
+O rascunho da triagem é criptografado e expira por padrão em quatro horas. Ele
+é removido ao concluir o fluxo ou quando um atendente assume a conversa. A
+disponibilidade é ativada por
+`PATIENT_INTAKE_QUARK_AVAILABILITY_ENABLED`; a criação efetiva no Quark exige
+`PATIENT_INTAKE_QUARK_BOOKING_ENABLED=true` e permanece desabilitada até a
+validação controlada dos vínculos de agenda, procedimento, convênio e unidade.

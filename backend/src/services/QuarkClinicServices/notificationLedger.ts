@@ -18,6 +18,9 @@ export const createQuarkNotificationOnce = async (
   status: "PENDING" | "SUPPRESSED" = "PENDING"
 ): Promise<boolean> => {
   try {
+    const validUntil = payload.validUntil
+      ? new Date(payload.validUntil)
+      : undefined;
     await QuarkAppointmentNotification.create({
       appointmentId,
       notificationKey,
@@ -27,6 +30,8 @@ export const createQuarkNotificationOnce = async (
       status,
       attempts: 0,
       nextAttemptAt: new Date(),
+      priorityAt:
+        validUntil && Number.isFinite(validUntil.getTime()) ? validUntil : null,
       processingStartedAt: null,
       workerId: null,
       sentAt: null,

@@ -48,6 +48,15 @@ export const newAppointmentMessage = (
 ): string =>
   `${appointmentDetails(appointment, clinicAddress)}${confirmationOptions}`;
 
+export const recoveredAppointmentMessage = (
+  appointment: AppointmentSnapshot,
+  clinicAddress = ""
+): string =>
+  `*Confirmação do seu agendamento.*\n\n${appointmentDetails(
+    appointment,
+    clinicAddress
+  )}${confirmationOptions}`;
+
 export const changedAppointmentMessage = (
   appointment: AppointmentSnapshot,
   clinicAddress = ""
@@ -62,12 +71,12 @@ export const changedAppointmentMessage = (
 export const cancelledAppointmentMessage = (
   appointment: AppointmentSnapshot
 ): string =>
-  `Caro(a) Paciente _${safeValue(
+  `*Consulta cancelada.*\n\nCaro(a) Paciente _${safeValue(
     appointment.patientName,
     "Paciente"
   )}_, seu agendamento de ${appointmentLine(
     appointment
-  )} foi cancelado. Em caso de dúvida, fale com a nossa equipe.`;
+  )} foi cancelado. Se precisar realizar um novo agendamento, fale com a nossa equipe.`;
 
 export const reminderAppointmentMessage = (
   appointment: AppointmentSnapshot,

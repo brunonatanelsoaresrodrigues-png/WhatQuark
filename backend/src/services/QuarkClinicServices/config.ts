@@ -23,11 +23,13 @@ export interface QuarkConfig {
   syncHorizonDays: number;
   requestTimeoutMs: number;
   maxMessagesPerHour: number;
+  maxRecoveryMessagesPerHour: number;
   quietHoursStart: string;
   quietHoursEnd: string;
   maxRetryAttempts: number;
   processingTimeoutMs: number;
   workerPollIntervalMs: number;
+  recipientCooldownMs: number;
   timezone: string;
   clinicAddress: string;
   dryRun: boolean;
@@ -125,6 +127,9 @@ export const getQuarkConfig = (): QuarkConfig => {
     maxMessagesPerHour: Math.floor(
       positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 30)
     ),
+    maxRecoveryMessagesPerHour: Math.floor(
+      positiveNumber(process.env.QUARK_MAX_RECOVERY_MESSAGES_PER_HOUR, 5)
+    ),
     quietHoursStart,
     quietHoursEnd,
     maxRetryAttempts: Math.floor(
@@ -136,6 +141,10 @@ export const getQuarkConfig = (): QuarkConfig => {
       1000,
     workerPollIntervalMs:
       positiveNumber(process.env.QUARK_WORKER_POLL_INTERVAL_SECONDS, 5) * 1000,
+    recipientCooldownMs:
+      positiveNumber(process.env.QUARK_RECIPIENT_COOLDOWN_MINUTES, 15) *
+      60 *
+      1000,
     timezone,
     clinicAddress: (process.env.QUARK_CLINIC_ADDRESS || "").trim(),
     dryRun: process.env.QUARK_DRY_RUN !== "false",

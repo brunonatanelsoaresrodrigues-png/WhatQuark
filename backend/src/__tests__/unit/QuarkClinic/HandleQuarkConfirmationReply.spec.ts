@@ -1,8 +1,9 @@
+import { Op } from "sequelize";
 import QuarkAppointment from "../../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
 import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
-import { Op } from "sequelize";
+import Message from "../../../models/Message";
 import HandleQuarkConfirmationReply from "../../../services/QuarkClinicServices/HandleQuarkConfirmationReply";
 import {
   cancelQuarkAppointment,
@@ -21,7 +22,7 @@ jest.mock("../../../models/QuarkAppointment", () => ({
 
 jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
-  default: { findOne: jest.fn(), update: jest.fn() }
+  default: { findAll: jest.fn(), findOne: jest.fn(), update: jest.fn() }
 }));
 
 jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
@@ -32,6 +33,11 @@ jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
 jest.mock("../../../models/QuarkAppointmentResponse", () => ({
   __esModule: true,
   default: { create: jest.fn() }
+}));
+
+jest.mock("../../../models/Message", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn() }
 }));
 
 jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
@@ -62,6 +68,7 @@ jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
 const appointment = (id: number, hour: number) => ({
   id,
   appointmentId: String(id),
+  patientName: `Paciente ${id}`,
   snapshot: JSON.stringify({ profissionalNome: `Profissional ${id}` }),
   scheduledAt: new Date(2099, 0, 1, hour, 0),
   update: jest.fn().mockResolvedValue(undefined)
@@ -70,6 +77,7 @@ const appointment = (id: number, hour: number) => ({
 describe("HandleQuarkConfirmationReply", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([]);
     (QuarkAppointmentRecipient.findAll as jest.Mock).mockResolvedValue([]);
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
     (QuarkAppointment.update as jest.Mock).mockResolvedValue([1]);
@@ -82,6 +90,7 @@ describe("HandleQuarkConfirmationReply", () => {
       id: 1,
       update: jest.fn().mockResolvedValue(undefined)
     });
+    (Message.findOne as jest.Mock).mockResolvedValue(null);
     (SendWhatsAppMessage as jest.Mock).mockResolvedValue({});
   });
 
@@ -133,8 +142,7 @@ describe("HandleQuarkConfirmationReply", () => {
       whatsappId: 1
     });
 
-    const where = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0]
-      .where;
+    const { where } = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0];
     expect(where[Op.or]).toContainEqual({
       appointmentId: { [Op.in]: ["10"] }
     });
@@ -145,6 +153,100 @@ describe("HandleQuarkConfirmationReply", () => {
     expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
       expect.objectContaining({ recipientPhone: "5585988880000" })
     );
+  });
+
+  it("confirms from the ticket that received the reminder even when the old phone mapping is inactive", async () => {
+    const pending = appointment(10, 9);
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([
+      { appointmentId: "10" }
+    ]);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
+
+    await HandleQuarkConfirmationReply({
+      body: "1",
+      phone: "5585988880000",
+      ticket: { id: 321 } as any,
+      whatsappId: 1
+    });
+
+    const { where } = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0];
+    expect(where[Op.or]).toContainEqual({
+      appointmentId: { [Op.in]: ["10"] }
+    });
+    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
+      expect.any(Object),
+      "10"
+    );
+  });
+
+  it("uses a reply quoted to the exact reminder as confirmation context", async () => {
+    const pending = appointment(10, 9);
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([
+      {
+        id: 99,
+        appointmentId: "10",
+        messageId: "reminder-10",
+        sentAt: new Date()
+      }
+    ]);
+    (Message.findOne as jest.Mock).mockResolvedValue({ id: "human-message" });
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
+
+    await expect(
+      HandleQuarkConfirmationReply({
+        body: "1",
+        phone: "5585988880000",
+        ticket: { id: 321 } as any,
+        whatsappId: 1,
+        message: {
+          id: "patient-reply",
+          quotedMsgId: "reminder-10",
+          createdAt: new Date()
+        } as any
+      })
+    ).resolves.toBe(true);
+
+    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
+      expect.any(Object),
+      "10"
+    );
+    const { where } = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0];
+    expect(where).toEqual(
+      expect.objectContaining({
+        appointmentId: { [Op.in]: ["10"] }
+      })
+    );
+    expect(where[Op.or]).toBeUndefined();
+  });
+
+  it("does not treat an unrelated short reply to an attendant as a Quark decision", async () => {
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([
+      {
+        id: 99,
+        appointmentId: "10",
+        messageId: "reminder-10",
+        sentAt: new Date()
+      }
+    ]);
+    (Message.findOne as jest.Mock).mockResolvedValue({ id: "human-message" });
+
+    await expect(
+      HandleQuarkConfirmationReply({
+        body: "sim",
+        phone: "5585988880000",
+        ticket: { id: 321 } as any,
+        whatsappId: 1,
+        message: {
+          id: "patient-reply",
+          quotedMsgId: null,
+          createdAt: new Date()
+        } as any
+      })
+    ).resolves.toBe(false);
+
+    expect(QuarkAppointment.findAll).not.toHaveBeenCalled();
+    expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+    expect(cancelQuarkAppointment).not.toHaveBeenCalled();
   });
 
   it("asks for an appointment number when the phone has multiple pending appointments", async () => {
@@ -162,7 +264,9 @@ describe("HandleQuarkConfirmationReply", () => {
 
     expect(confirmQuarkAppointment).not.toHaveBeenCalled();
     expect(SendWhatsAppMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ body: expect.stringContaining("SIM 1") })
+      expect.objectContaining({
+        body: expect.stringMatching(/Paciente 10[\s\S]*Paciente 20[\s\S]*SIM 1/)
+      })
     );
   });
 

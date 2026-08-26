@@ -10,6 +10,7 @@ import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import formatBody from "../helpers/Mustache";
 import SetTicketWaitingForPatientService from "../services/TicketInactivityServices/SetTicketWaitingForPatientService";
+import EnsureTicketDeletionPermissionService from "../services/TicketServices/EnsureTicketDeletionPermissionService";
 
 type IndexQuery = {
   searchParam: string;
@@ -17,6 +18,7 @@ type IndexQuery = {
   status: string;
   date: string;
   showAll: string;
+  assignee: string;
   withUnreadMessages: string;
   queueIds: string;
 };
@@ -35,6 +37,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     date,
     searchParam,
     showAll,
+    assignee,
     queueIds: queueIdsStringified,
     withUnreadMessages
   } = req.query as IndexQuery;
@@ -53,6 +56,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     status,
     date,
     showAll,
+    assignee,
     userId,
     queueIds,
     withUnreadMessages
@@ -144,6 +148,8 @@ export const remove = async (
   res: Response
 ): Promise<Response> => {
   const { ticketId } = req.params;
+
+  await EnsureTicketDeletionPermissionService(req.user.id);
 
   const ticket = await DeleteTicketService(ticketId);
 

@@ -176,6 +176,14 @@ const MainListItems = (props) => {
           className={classes.item}
         />
       )}
+      {(user.profile === "admin" || user.canAccessQuarkClinic) && (
+        <ListItemLink
+          to="/quark-dashboard"
+          primary="Automação Quark"
+          icon={<AssessmentOutlinedIcon />}
+          className={classes.item}
+        />
+      )}
       <Can
         role={user.profile}
         perform="drawer-admin-items:view"
@@ -185,12 +193,6 @@ const MainListItems = (props) => {
             <ListSubheader className={classes.subheader} disableSticky>
               {i18n.t("mainDrawer.listItems.administration")}
             </ListSubheader>
-            <ListItemLink
-              to="/quark-dashboard"
-              primary="Automação Quark"
-              icon={<AssessmentOutlinedIcon />}
-              className={classes.item}
-            />
             <ListItemLink
               to="/daily-reports"
               primary="Relatórios Diários"

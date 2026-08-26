@@ -144,7 +144,9 @@ const FindOrCreateTicketService = async (
               intakeReason: null,
               intakeStartedAt: null,
               intakeCompletedAt: null,
-              intakePausedAt: null
+              intakePausedAt: null,
+              intakeContext: null,
+              intakeContextExpiresAt: null
             }
           : {})
       });

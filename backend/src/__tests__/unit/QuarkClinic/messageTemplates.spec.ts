@@ -1,6 +1,7 @@
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
+  cancelledAppointmentMessage,
   changedAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
@@ -82,5 +83,17 @@ describe("QuarkClinic message templates", () => {
     expect(body).toContain("Aviso de alteração de agendamento");
     expect(body).not.toContain("SIM para confirmar");
     expect(body).not.toContain("NÃO para cancelar");
+  });
+
+  it("notifies a cancellation without asking for confirmation", () => {
+    const cancelledSnapshot = { ...snapshot, status: "CANCELADO" };
+    const body = cancelledAppointmentMessage(cancelledSnapshot);
+
+    expect(body).toContain("Consulta cancelada");
+    expect(body).toContain("CLAUDESON NASCIMENTO DA SILVA");
+    expect(body).toContain("21/08/2026 às 16:00");
+    expect(body).toContain("ASDRUBAL PEREZ SOTO");
+    expect(body).toContain("novo agendamento");
+    expect(body).not.toContain("SIM para confirmar");
   });
 });

@@ -10,7 +10,11 @@ const activeStatuses = new Set([
   "AWAITING_PROFESSIONAL_PREFERENCE",
   "AWAITING_PROFESSIONAL_NAME",
   "AWAITING_PAYMENT",
-  "AWAITING_INSURANCE"
+  "AWAITING_INSURANCE",
+  "AWAITING_AVAILABILITY_DATE",
+  "AWAITING_AVAILABILITY_TIME",
+  "AWAITING_BOOKING_CONFIRMATION",
+  "BOOKING_PROCESSING"
 ]);
 
 const PausePatientIntakeService = async (
@@ -22,7 +26,9 @@ const PausePatientIntakeService = async (
 
   await ticket.update({
     intakeStatus: "PAUSED_HUMAN",
-    intakePausedAt: new Date()
+    intakePausedAt: new Date(),
+    intakeContext: null,
+    intakeContextExpiresAt: null
   });
   await RecordTicketEventService({
     ticketId: ticket.id,

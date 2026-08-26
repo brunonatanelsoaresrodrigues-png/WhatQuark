@@ -41,19 +41,24 @@ const messages = {
         },
         messages: {
           inAttendance: {
-            title: "In Service"
+            title: "In Service",
           },
           waiting: {
-            title: "Waiting"
+            title: "Waiting",
           },
           closed: {
-            title: "Closed"
-          }
-        }
+            title: "Closed",
+          },
+        },
       },
       connections: {
         title: "Connections",
         toasts: {
+          historySyncStarted:
+            "History synchronization started without disconnecting WhatsApp.",
+          historySyncCompleted:
+            "History synchronized: {{count}} messages recovered.",
+          historySyncFailed: "History synchronization could not be completed.",
           deleted: "WhatsApp connection deleted sucessfully!",
         },
         confirmationModal: {
@@ -63,6 +68,8 @@ const messages = {
           disconnectMessage: "Are you sure? You'll need to read QR Code again.",
         },
         buttons: {
+          syncHistory: "Sync history",
+          syncingHistory: "Syncing {{current}}/{{total}}",
           add: "Add WhatsApp",
           disconnect: "Disconnect",
           tryAgain: "Try Again",
@@ -207,6 +214,7 @@ const messages = {
           password: "Password",
           profile: "Profile",
           whatsapp: "Default Connection",
+          viewOtherAgentsTickets: "Allow viewing other agents' conversations",
         },
         buttons: {
           okAdd: "Add",
@@ -225,6 +233,11 @@ const messages = {
       },
       ticketsQueueSelect: {
         placeholder: "Queues",
+      },
+      ticketsAssigneeSelect: {
+        all: "All agents",
+        me: "Assigned to me",
+        unassigned: "Unassigned",
       },
       tickets: {
         toasts: {
@@ -346,6 +359,7 @@ const messages = {
           email: "Email",
           profile: "Profile",
           whatsapp: "Default Connection",
+          otherAgents: "Other agents",
           actions: "Actions",
         },
         buttons: {
@@ -392,7 +406,8 @@ const messages = {
         },
       },
       messagesInput: {
-        placeholderOpen: "Type a message or press ''/'' to use the registered quick responses",
+        placeholderOpen:
+          "Type a message or press ''/'' to use the registered quick responses",
         placeholderClosed: "Reopen or accept this ticket to send a message.",
         signMessage: "Sign",
       },
@@ -431,6 +446,14 @@ const messages = {
         },
       },
       backendErrors: {
+        ERR_HISTORY_SYNC_REQUIRES_CONNECTED_WHATSAPP:
+          "Connect WhatsApp before syncing history.",
+        ERR_HISTORY_SYNC_NOT_SUPPORTED:
+          "This provider does not support history synchronization.",
+        ERR_HISTORY_SYNC_TIMEOUT:
+          "WhatsApp took too long to respond to history synchronization.",
+        ERR_HISTORY_SYNC_UNAVAILABLE:
+          "The phone did not answer history requests. Try again in a few minutes.",
         ERR_NO_OTHER_WHATSAPP:
           "There must be at lest one default WhatsApp connection.",
         ERR_NO_DEF_WAPP_FOUND:

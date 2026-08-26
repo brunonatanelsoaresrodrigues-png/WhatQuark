@@ -9,6 +9,10 @@ import {
   StartQuarkNotificationWorker,
   StopQuarkNotificationWorker
 } from "./QuarkNotificationWorker";
+import {
+  StartQuarkConfirmationReplyReconciler,
+  StopQuarkConfirmationReplyReconciler
+} from "./QuarkConfirmationReplyReconciler";
 
 let timer: NodeJS.Timeout | undefined;
 let running = false;
@@ -61,6 +65,7 @@ const StartQuarkClinicIntegration = (): void => {
         err: error
       })
     );
+    StartQuarkConfirmationReplyReconciler();
     timer = setTimeout(() => triggerSync(config), config.startupDelayMs);
     timer.unref();
   } catch (error) {
@@ -75,6 +80,7 @@ export const StopQuarkClinicIntegration = async (): Promise<void> => {
   started = false;
   if (timer) clearTimeout(timer);
   timer = undefined;
+  await StopQuarkConfirmationReplyReconciler();
   await StopQuarkNotificationWorker();
   if (activeSync) await activeSync;
 };

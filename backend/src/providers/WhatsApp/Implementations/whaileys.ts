@@ -34,6 +34,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import NodeCache from "node-cache";
 
 import Whatsapp from "../../../models/Whatsapp";
+import Message from "../../../models/Message";
 import { getIO } from "../../../libs/socket";
 import { logger } from "../../../utils/logger";
 import AppError from "../../../errors/AppError";
@@ -47,7 +48,10 @@ import {
   SendMediaOptions,
   ProviderContact,
   MessageType,
-  MessageAck
+  MessageAck,
+  HistorySyncCursor,
+  HistorySyncProgress,
+  HistorySyncResult
 } from "../types";
 import { WhatsappProvider } from "../whatsappProvider";
 import { sleep } from "../../../utils/sleep";
@@ -824,6 +828,50 @@ const getMessageData = async (
   };
 };
 
+const getHistoryMessageData = async (
+  msg: WAMessage,
+  wbot: Session,
+  contactCache: Map<string, ContactPayload>
+): Promise<{
+  messagePayload: MessagePayload;
+  contactPayload: ContactPayload;
+  contextPayload: WhatsappContextPayload;
+  mediaPayload: MediaPayload | undefined;
+}> => {
+  const remoteJid = msg.key.remoteJid || "";
+  const isGroup = isJidGroup(remoteJid);
+  const contactJid =
+    !msg.key.fromMe && isGroup && msg.key.participant
+      ? msg.key.participant
+      : remoteJid;
+
+  let contactPayload = contactCache.get(contactJid);
+  if (!contactPayload) {
+    contactPayload = await convertToContactPayload(contactJid, msg, wbot);
+    contactCache.set(contactJid, contactPayload);
+  }
+
+  let groupContact: ContactPayload | undefined;
+  if (isGroup) {
+    groupContact = contactCache.get(remoteJid);
+    if (!groupContact) {
+      groupContact = await convertToContactPayload(remoteJid, msg, wbot);
+      contactCache.set(remoteJid, groupContact);
+    }
+  }
+
+  return {
+    messagePayload: convertToMessagePayload(msg),
+    contactPayload,
+    contextPayload: {
+      whatsappId: wbot.id,
+      unreadMessages: 0,
+      groupContact
+    },
+    mediaPayload: await convertToMediaPayload(msg, wbot)
+  };
+};
+
 const getWbot = (sessionId: number): Session => {
   const wbot = sessions.get(sessionId);
 
@@ -1536,6 +1584,192 @@ const fetchChatMessages = async (
   }));
 };
 
+const requestHistoryPage = async (
+  wbot: Session,
+  cursor: HistorySyncCursor,
+  count: number
+): Promise<WAMessage[]> =>
+  new Promise<WAMessage[]>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      wbot.ev.off("messages.pdo-response", onResponse);
+      clearTimeout(timeout);
+    };
+    const finish = (messages: WAMessage[]) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(messages);
+    };
+    const onResponse = ({ messages }: { messages: WAMessage[] }) => {
+      finish(messages || []);
+    };
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new AppError("ERR_HISTORY_SYNC_TIMEOUT", 504));
+    }, 15_000);
+
+    wbot.ev.on("messages.pdo-response", onResponse);
+    wbot
+      .fetchMessageHistory(
+        count,
+        {
+          remoteJid: cursor.chatId,
+          id: cursor.oldestMessageId,
+          fromMe: cursor.oldestMessageFromMe
+        },
+        cursor.oldestMessageTimestampMs
+      )
+      .catch(error => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      });
+  });
+
+const syncHistory = async (
+  sessionId: number,
+  cursors: HistorySyncCursor[],
+  onProgress?: (progress: HistorySyncProgress) => void
+): Promise<HistorySyncResult> => {
+  const wbot = getWbot(sessionId);
+  const pageSize = 50;
+  const maxPagesPerChat = 100;
+  const contactCache = new Map<string, ContactPayload>();
+  const progress: HistorySyncResult = {
+    totalChats: cursors.length,
+    processedChats: 0,
+    importedMessages: 0,
+    duplicateMessages: 0,
+    failedMessages: 0,
+    failedChats: 0,
+    limitedChats: 0
+  };
+  let consecutiveChatFailures = 0;
+
+  for (const initialCursor of cursors) {
+    let cursor = initialCursor;
+    let reachedEnd = false;
+    let chatFailed = false;
+
+    try {
+      for (let page = 0; page < maxPagesPerChat; page += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const messages = await requestHistoryPage(wbot, cursor, pageSize);
+        if (messages.length === 0) {
+          reachedEnd = true;
+          break;
+        }
+
+        const sortedMessages = [...messages].sort(
+          (left, right) =>
+            Number(left.messageTimestamp || 0) -
+            Number(right.messageTimestamp || 0)
+        );
+
+        for (const message of sortedMessages) {
+          if (
+            !message.message ||
+            !message.key.id ||
+            !shouldHandleMessage(message)
+          ) {
+            continue;
+          }
+          try {
+            // Evita baixar mídias e consultar contatos de mensagens que já
+            // estão persistidas. A segunda verificação no handler protege a
+            // pequena janela de concorrência entre esta leitura e o upsert.
+            // eslint-disable-next-line no-await-in-loop
+            const existingMessage = await Message.findByPk(message.key.id, {
+              attributes: ["id"]
+            });
+            if (existingMessage) {
+              progress.duplicateMessages += 1;
+              continue;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            const data = await getHistoryMessageData(
+              message,
+              wbot,
+              contactCache
+            );
+            // eslint-disable-next-line no-await-in-loop
+            const result = await handleMessage(
+              data.messagePayload,
+              data.contactPayload,
+              data.contextPayload,
+              data.mediaPayload,
+              { historySync: true }
+            );
+            if (result === "created") progress.importedMessages += 1;
+            if (result === "duplicate") progress.duplicateMessages += 1;
+          } catch (error) {
+            progress.failedMessages += 1;
+            logger.error({
+              info: "Could not import historical WhatsApp message",
+              sessionId,
+              messageId: message.key.id,
+              err: error
+            });
+          }
+        }
+
+        const oldestMessage = messages.reduce((oldest, message) =>
+          Number(message.messageTimestamp || 0) <
+          Number(oldest.messageTimestamp || 0)
+            ? message
+            : oldest
+        );
+        const oldestId = oldestMessage.key.id;
+        if (!oldestId || oldestId === cursor.oldestMessageId) {
+          reachedEnd = true;
+          break;
+        }
+
+        cursor = {
+          chatId: oldestMessage.key.remoteJid || cursor.chatId,
+          oldestMessageId: oldestId,
+          oldestMessageFromMe: Boolean(oldestMessage.key.fromMe),
+          oldestMessageTimestampMs:
+            Number(oldestMessage.messageTimestamp || 0) * 1000
+        };
+
+        if (messages.length < pageSize) {
+          reachedEnd = true;
+          break;
+        }
+      }
+    } catch (error) {
+      chatFailed = true;
+      progress.failedChats += 1;
+      consecutiveChatFailures += 1;
+      logger.warn({
+        info: "WhatsApp history request failed for chat",
+        sessionId,
+        chatId: cursor.chatId,
+        err: error
+      });
+      if (consecutiveChatFailures >= 3) {
+        throw new AppError("ERR_HISTORY_SYNC_UNAVAILABLE", 503);
+      }
+    }
+
+    if (!chatFailed) consecutiveChatFailures = 0;
+    if (!reachedEnd) progress.limitedChats += 1;
+    progress.processedChats += 1;
+    onProgress?.(progress);
+
+    // Mantém a sincronização leve para não disputar recursos com mensagens ao vivo.
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(250);
+  }
+
+  return progress;
+};
+
 export const WhaileysProvider: WhatsappProvider = {
   init,
   removeSession,
@@ -1548,5 +1782,6 @@ export const WhaileysProvider: WhatsappProvider = {
   getProfilePicUrl,
   getContacts,
   sendSeen,
-  fetchChatMessages
+  fetchChatMessages,
+  syncHistory
 };

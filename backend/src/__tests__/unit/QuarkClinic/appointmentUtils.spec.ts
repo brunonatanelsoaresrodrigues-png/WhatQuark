@@ -23,11 +23,13 @@ const config: QuarkConfig = {
   syncHorizonDays: 365,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
+  maxRecoveryMessagesPerHour: 5,
   quietHoursStart: "20:00",
   quietHoursEnd: "08:00",
   maxRetryAttempts: 5,
   processingTimeoutMs: 600000,
   workerPollIntervalMs: 5000,
+  recipientCooldownMs: 15 * 60 * 1000,
   timezone: "America/Sao_Paulo",
   clinicAddress: "",
   dryRun: true,
@@ -94,17 +96,25 @@ describe("QuarkClinic appointment helpers", () => {
     expect(parsed?.getMinutes()).toBe(35);
   });
 
-  it("accepts only reply choices 1 and 2 at the start of a message", () => {
+  it("accepts numeric choices and the confirmation button label", () => {
     expect(parseConfirmationChoice("1")).toBe(1);
     expect(parseConfirmationChoice("2 - cancelar")).toBe(2);
     expect(parseConfirmationChoice("12")).toBeNull();
-    expect(parseConfirmationChoice("confirmar")).toBeNull();
+    expect(parseConfirmationChoice("confirmar")).toBe(1);
   });
 
   it("accepts unambiguous SIM and NÃO replies with an optional appointment number", () => {
     expect(parseConfirmationReply("SIM")).toEqual({ choice: 1 });
     expect(parseConfirmationReply("Sim, confirmo")).toEqual({ choice: 1 });
     expect(parseConfirmationReply("NÃO")).toEqual({ choice: 2 });
+    expect(parseConfirmationReply("Confirmar consulta")).toEqual({
+      choice: 1
+    });
+    expect(parseConfirmationReply("Confirmo")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("Comfirmo")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("Cancelar consulta")).toEqual({
+      choice: 2
+    });
     expect(parseConfirmationReply("nao 2")).toEqual({
       choice: 2,
       appointmentOption: 2

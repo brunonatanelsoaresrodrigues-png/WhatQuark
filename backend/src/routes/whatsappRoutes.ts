@@ -11,6 +11,18 @@ whatsappRoutes.post("/whatsapp/", isAuth, WhatsAppController.store);
 
 whatsappRoutes.get("/whatsapp/:whatsappId", isAuth, WhatsAppController.show);
 
+whatsappRoutes.get(
+  "/whatsapp/:whatsappId/history-sync",
+  isAuth,
+  WhatsAppController.historySyncStatus
+);
+
+whatsappRoutes.post(
+  "/whatsapp/:whatsappId/history-sync",
+  isAuth,
+  WhatsAppController.syncHistory
+);
+
 whatsappRoutes.put("/whatsapp/:whatsappId", isAuth, WhatsAppController.update);
 
 whatsappRoutes.delete(

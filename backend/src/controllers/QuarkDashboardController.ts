@@ -2,18 +2,26 @@ import { Request, Response } from "express";
 import AppError from "../errors/AppError";
 import {
   getQuarkDashboardBreakdown,
+  getQuarkDashboardCalendarDays,
   getQuarkDashboardSummary,
   getQuarkDashboardTimeseries,
   listQuarkDashboardAppointments
 } from "../services/QuarkClinicServices/QuarkDashboardService";
 import EnqueueManualQuarkReminderService from "../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
 import ConfirmQuarkAppointmentFromDashboardService from "../services/QuarkClinicServices/ConfirmQuarkAppointmentFromDashboardService";
+import EnsureQuarkAutomationAccessService from "../services/QuarkClinicServices/EnsureQuarkAutomationAccessService";
 
 const ensureAdmin = (req: Request): void => {
   if (req.user.profile !== "admin") {
     throw new AppError("ERR_NO_PERMISSION", 403);
   }
 };
+
+const ensureViewAccess = async (req: Request): Promise<void> =>
+  EnsureQuarkAutomationAccessService({
+    userId: req.user.id,
+    profile: req.user.profile
+  });
 
 const filtersFrom = (req: Request) => ({
   from: typeof req.query.from === "string" ? req.query.from : undefined,
@@ -37,7 +45,7 @@ const filtersFrom = (req: Request) => ({
 });
 
 export const summary = async (req: Request, res: Response): Promise<Response> => {
-  ensureAdmin(req);
+  await ensureViewAccess(req);
   return res.json(await getQuarkDashboardSummary(filtersFrom(req)));
 };
 
@@ -45,7 +53,7 @@ export const timeseries = async (
   req: Request,
   res: Response
 ): Promise<Response> => {
-  ensureAdmin(req);
+  await ensureViewAccess(req);
   return res.json(await getQuarkDashboardTimeseries(filtersFrom(req)));
 };
 
@@ -53,7 +61,7 @@ export const breakdown = async (
   req: Request,
   res: Response
 ): Promise<Response> => {
-  ensureAdmin(req);
+  await ensureViewAccess(req);
   return res.json(await getQuarkDashboardBreakdown(filtersFrom(req)));
 };
 
@@ -61,8 +69,16 @@ export const appointments = async (
   req: Request,
   res: Response
 ): Promise<Response> => {
-  ensureAdmin(req);
+  await ensureViewAccess(req);
   return res.json(await listQuarkDashboardAppointments(filtersFrom(req)));
+};
+
+export const calendarDays = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  await ensureViewAccess(req);
+  return res.json(await getQuarkDashboardCalendarDays(filtersFrom(req)));
 };
 
 export const enqueueReminder = async (

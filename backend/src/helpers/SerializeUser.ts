@@ -8,6 +8,7 @@ interface SerializedUser {
   email: string;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canViewOtherAgentsTickets: boolean;
   queues: Queue[];
   whatsapp: Whatsapp;
 }
@@ -19,6 +20,7 @@ export const SerializeUser = (user: User): SerializedUser => {
     email: user.email,
     profile: user.profile,
     canAccessQuarkClinic: user.canAccessQuarkClinic,
+    canViewOtherAgentsTickets: user.canViewOtherAgentsTickets,
     queues: user.queues,
     whatsapp: user.whatsapp
   };

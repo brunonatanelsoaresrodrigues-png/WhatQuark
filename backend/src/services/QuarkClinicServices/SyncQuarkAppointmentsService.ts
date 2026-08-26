@@ -16,7 +16,10 @@ import { QuarkConfig } from "./config";
 import { listQuarkAppointments } from "./QuarkClinicClient";
 import { createQuarkNotificationOnce } from "./notificationLedger";
 import {
+  cancelledAppointmentMessage,
   changedAppointmentMessage,
+  newAppointmentMessage,
+  recoveredAppointmentMessage,
   reminderAppointmentMessage
 } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
@@ -24,7 +27,15 @@ import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventSer
 import { dueReminder } from "./reminderTiming";
 
 const SYNC_STATE_KEY = "appointments";
-const FINGERPRINT_VERSION = 2;
+const FINGERPRINT_VERSION = 3;
+const COVERAGE_NOTIFICATION_VERSION = 3;
+const COVERING_NOTIFICATION_STATUSES = [
+  "PENDING",
+  "PROCESSING",
+  "FAILED_RETRY",
+  "SENT"
+];
+const COVERAGE_DEAD_LETTER_RETRY_MS = 6 * 60 * 60 * 1000;
 const syncWorkerId = `${hostname()}-${process.pid}`.slice(0, 64);
 
 const pad = (value: number): string =>
@@ -190,9 +201,10 @@ const createDueReminder = async (
 const processNewAppointment = async (
   config: QuarkConfig,
   snapshot: AppointmentSnapshot,
-  baselineMode: boolean
+  baselineMode: boolean,
+  safeDiscoveryMode: boolean
 ): Promise<void> => {
-  if (baselineMode) {
+  if (baselineMode || safeDiscoveryMode) {
     const [, created] = await QuarkAppointment.findOrCreate({
       where: { appointmentId: snapshot.appointmentId },
       defaults: valuesForPersistence(snapshot, true)
@@ -215,10 +227,31 @@ const processNewAppointment = async (
     defaults: valuesForPersistence(snapshot, false)
   });
 
-  // Encontrar um registro novo na sincronização não significa que o paciente
-  // deve ser contatado imediatamente. O único envio automático de confirmação
-  // acontece quando a consulta entra em uma janela de lembrete configurada.
-  await createDueReminder(config, snapshot);
+  // A consulta pode ter sido criada e cancelada entre duas varreduras. Como o
+  // baseline completo já foi importado, uma consulta cancelada vista pela
+  // primeira vez em modo ativo é um evento novo, não um cancelamento antigo.
+  if (appointmentIsCancelled(snapshot.status)) {
+    await createOutbox(
+      snapshot,
+      `cancelled:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+      "CANCELLED",
+      cancelledAppointmentMessage(snapshot)
+    );
+    return;
+  }
+
+  if (!appointmentCanBeConfirmed(snapshot.status)) return;
+
+  // Se a consulta foi criada já dentro de uma janela de lembrete, registre esse
+  // lembrete como suprimido. A confirmação de criação abaixo já contém todos os
+  // dados e as opções SIM/NÃO, evitando duas mensagens seguidas ao paciente.
+  await createDueReminder(config, snapshot, true);
+  await createOutbox(
+    snapshot,
+    `created:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+    "CREATED",
+    newAppointmentMessage(snapshot, config.clinicAddress)
+  );
 };
 
 const processExistingAppointment = async (
@@ -242,9 +275,7 @@ const processExistingAppointment = async (
   const phoneListChanged =
     JSON.stringify(storedPhones) !==
     JSON.stringify(snapshot.phones.map(item => item.phone));
-  const phoneChanged =
-    record.phone !== snapshot.phone ||
-    (record.fingerprintVersion >= FINGERPRINT_VERSION && phoneListChanged);
+  const phoneChanged = record.phone !== snapshot.phone || phoneListChanged;
   const relevantChanged = scheduleChanged || phoneChanged;
 
   if (
@@ -300,6 +331,16 @@ const processExistingAppointment = async (
         ? null
         : record.confirmationRequestedAt
   });
+
+  if (becameCancelled) {
+    await createOutbox(
+      snapshot,
+      `cancelled:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+      "CANCELLED",
+      cancelledAppointmentMessage(snapshot)
+    );
+    return;
+  }
 
   if (scheduleChanged && !becameCancelled) {
     // A remarcação já comunica os dados atuais da consulta. Se ela coincidir
@@ -361,7 +402,8 @@ const fetchSnapshots = async (
 const processSnapshots = async (
   config: QuarkConfig,
   snapshots: AppointmentSnapshot[],
-  baselineMode: boolean
+  baselineMode: boolean,
+  safeDiscoveryMode = false
 ): Promise<void> => {
   const ids = snapshots.map(snapshot => snapshot.appointmentId);
   const existingRecords = ids.length
@@ -378,9 +420,185 @@ const processSnapshots = async (
     if (record) {
       await processExistingAppointment(config, record, snapshot, baselineMode);
     } else {
-      await processNewAppointment(config, snapshot, baselineMode);
+      await processNewAppointment(
+        config,
+        snapshot,
+        baselineMode,
+        safeDiscoveryMode
+      );
     }
     await syncRecipients(snapshot);
+  }
+
+  const persistedCount = ids.length
+    ? await QuarkAppointment.count({
+        where: { appointmentId: { [Op.in]: ids } }
+      })
+    : 0;
+  if (persistedCount !== ids.length) {
+    throw new Error(
+      `QuarkClinic persistence coverage mismatch: fetched=${ids.length}, persisted=${persistedCount}`
+    );
+  }
+};
+
+const notificationCoversSnapshot = (
+  notification: QuarkAppointmentNotification,
+  snapshot: AppointmentSnapshot
+): boolean => {
+  try {
+    const payload = JSON.parse(notification.payload) as {
+      phone?: string | null;
+      validUntil?: string | null;
+      requestsConfirmation?: boolean;
+    };
+    const scheduledAt = snapshot.scheduledAt?.toISOString() || null;
+    return (
+      payload.requestsConfirmation === true &&
+      payload.validUntil === scheduledAt &&
+      !!payload.phone &&
+      snapshot.phones.some(recipient => recipient.phone === payload.phone)
+    );
+  } catch {
+    return false;
+  }
+};
+
+const deadLetterCanBeRetried = (
+  notification: QuarkAppointmentNotification,
+  now: number
+): boolean => {
+  const error = notification.lastError || "";
+  const permanentlyUnsendable =
+    error.includes("QUARK_PERMANENT_INVALID_PHONE") ||
+    error.includes("ERR_NUMBER_NOT_ON_WHATSAPP") ||
+    error.includes("Unexpected outbox payload");
+  return (
+    !permanentlyUnsendable &&
+    notification.updatedAt.getTime() <= now - COVERAGE_DEAD_LETTER_RETRY_MS
+  );
+};
+
+const ensureNotificationCoverage = async (
+  config: QuarkConfig,
+  snapshots: AppointmentSnapshot[]
+): Promise<void> => {
+  const now = Date.now();
+  const confirmable = snapshots.filter(
+    snapshot =>
+      appointmentCanBeConfirmed(snapshot.status) &&
+      !!snapshot.scheduledAt &&
+      snapshot.scheduledAt.getTime() > now
+  );
+  const withPhone = confirmable.filter(snapshot => snapshot.phones.length > 0);
+  const withoutPhone = confirmable.length - withPhone.length;
+  const ids = withPhone.map(snapshot => snapshot.appointmentId);
+  const notifications = ids.length
+    ? await QuarkAppointmentNotification.findAll({
+        where: {
+          appointmentId: { [Op.in]: ids },
+          status: {
+            [Op.in]: [...COVERING_NOTIFICATION_STATUSES, "DEAD_LETTER"]
+          }
+        },
+        attributes: [
+          "appointmentId",
+          "eventType",
+          "recipientPhone",
+          "payload",
+          "status",
+          "lastError",
+          "updatedAt",
+          "notificationKey"
+        ]
+      })
+    : [];
+  const snapshotsById = new Map(
+    withPhone.map(snapshot => [snapshot.appointmentId, snapshot])
+  );
+  const covered = new Set<string>();
+  const deadLettersByAppointment = new Map<
+    string,
+    QuarkAppointmentNotification[]
+  >();
+
+  notifications.forEach(notification => {
+    const snapshot = snapshotsById.get(notification.appointmentId);
+    if (!snapshot || !notificationCoversSnapshot(notification, snapshot)) {
+      return;
+    }
+    if (COVERING_NOTIFICATION_STATUSES.includes(notification.status)) {
+      covered.add(notification.appointmentId);
+      return;
+    }
+    if (
+      notification.status === "DEAD_LETTER" &&
+      notification.notificationKey.startsWith(
+        `coverage-recovery:${COVERAGE_NOTIFICATION_VERSION}:`
+      )
+    ) {
+      const current =
+        deadLettersByAppointment.get(notification.appointmentId) || [];
+      current.push(notification);
+      deadLettersByAppointment.set(notification.appointmentId, current);
+    }
+  });
+
+  const uncovered = withPhone
+    .filter(snapshot => !covered.has(snapshot.appointmentId))
+    .sort(
+      (left, right) =>
+        (left.scheduledAt?.getTime() || Number.MAX_SAFE_INTEGER) -
+        (right.scheduledAt?.getTime() || Number.MAX_SAFE_INTEGER)
+    );
+  let created = 0;
+  let revived = 0;
+  let unresolved = 0;
+  for (const snapshot of uncovered) {
+    const notificationCreated = await createOutbox(
+      snapshot,
+      `coverage-recovery:${COVERAGE_NOTIFICATION_VERSION}:${snapshot.scheduleFingerprint.slice(
+        0,
+        24
+      )}`,
+      "COVERAGE_RECOVERY",
+      recoveredAppointmentMessage(snapshot, config.clinicAddress)
+    );
+    if (notificationCreated) {
+      created += 1;
+      continue;
+    }
+
+    const retryableDeadLetters = (
+      deadLettersByAppointment.get(snapshot.appointmentId) || []
+    ).filter(notification => deadLetterCanBeRetried(notification, now));
+    if (retryableDeadLetters.length === 0) {
+      unresolved += 1;
+      continue;
+    }
+    for (const notification of retryableDeadLetters) {
+      await notification.update({
+        status: "FAILED_RETRY",
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Requeued by appointment coverage audit"
+      });
+    }
+    revived += 1;
+  }
+
+  if (created > 0 || revived > 0 || withoutPhone > 0 || unresolved > 0) {
+    logger[withoutPhone > 0 || unresolved > 0 ? "error" : "warn"]({
+      info: "QuarkClinic appointment notification coverage repaired",
+      confirmableAppointments: confirmable.length,
+      alreadyCovered: covered.size,
+      recoveryAppointmentsQueued: created,
+      deadLetterAppointmentsRequeued: revived,
+      appointmentsWithoutPhone: withoutPhone,
+      unresolvedAppointments: unresolved
+    });
   }
 };
 
@@ -430,18 +648,28 @@ export const SyncQuarkAppointmentsService = async (
   }
 
   const baselineMode = state.status !== "ACTIVE";
+  const coverageRepairMode =
+    !baselineMode &&
+    Number(state.fingerprintVersion || 1) < FINGERPRINT_VERSION;
   const today = startOfToday();
   let count = 0;
 
   try {
     const firstSweep = await fetchSnapshots(config, today);
-    await processSnapshots(config, firstSweep, baselineMode);
+    await processSnapshots(
+      config,
+      firstSweep,
+      baselineMode,
+      coverageRepairMode
+    );
     count = firstSweep.length;
 
     if (baselineMode) {
       const verificationSweep = await fetchSnapshots(config, today);
       await processSnapshots(config, verificationSweep, true);
       count = verificationSweep.length;
+    } else {
+      await ensureNotificationCoverage(config, firstSweep);
     }
 
     await state.update({
@@ -459,6 +687,7 @@ export const SyncQuarkAppointmentsService = async (
       info: "QuarkClinic appointments synchronized",
       count,
       baselineMode,
+      coverageRepairMode,
       horizonDays: config.syncHorizonDays
     });
     emitQuarkDashboardUpdate("sync", SYNC_STATE_KEY);

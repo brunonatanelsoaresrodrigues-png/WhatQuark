@@ -3,6 +3,9 @@ import {
   ProviderMessage,
   ProviderMediaInput,
   ProviderContact,
+  HistorySyncCursor,
+  HistorySyncProgress,
+  HistorySyncResult,
   SendMessageOptions,
   SendMediaOptions
 } from "./types";
@@ -41,6 +44,11 @@ export interface WhatsappProvider {
     chatId: string,
     limit: number
   ): Promise<ProviderMessage[]>;
+  syncHistory(
+    sessionId: number,
+    cursors: HistorySyncCursor[],
+    onProgress?: (progress: HistorySyncProgress) => void
+  ): Promise<HistorySyncResult>;
 }
 
 const provider = process.env.WHATSAPP_PROVIDER || "wwebjs";

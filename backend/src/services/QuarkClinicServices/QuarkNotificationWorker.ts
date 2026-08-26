@@ -1,5 +1,5 @@
 import { hostname } from "os";
-import { Op } from "sequelize";
+import { literal, Op } from "sequelize";
 import sequelize from "../../database";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointment from "../../models/QuarkAppointment";
@@ -14,11 +14,19 @@ import {
   appointmentStillMatchesNotification,
   quarkNotificationCanBeSent
 } from "./notificationPolicy";
+import { quarkWhatsAppIsConnected } from "./QuarkWhatsAppConnectionGuard";
 
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
+const DISCONNECTED_ERROR = "QUARK_TEMPORARY_WHATSAPP_DISCONNECTED";
+const DISCONNECTED_POLL_INTERVAL_MS = 30 * 1000;
 let workerTimer: NodeJS.Timeout | undefined;
 let workerStopped = true;
 let activeWorkerRun: Promise<void> | undefined;
+let lastWhatsAppConnected: boolean | undefined;
+let connectionPauseLogged = false;
+
+export const quarkNotificationFamilyKey = (notificationKey: string): string =>
+  notificationKey.replace(/:to:[^:]+$/, "");
 
 const triggerWorker = (config: QuarkConfig, delay: number): void => {
   workerTimer = setTimeout(() => {
@@ -29,16 +37,30 @@ const triggerWorker = (config: QuarkConfig, delay: number): void => {
   workerTimer.unref();
 };
 
-const claimNextNotification = async (): Promise<
-  QuarkAppointmentNotification | undefined
-> =>
+const claimNextNotification = async (
+  recoveryQuotaReached: boolean
+): Promise<QuarkAppointmentNotification | undefined> =>
   sequelize.transaction(async transaction => {
     const notification = await QuarkAppointmentNotification.findOne({
       where: {
         status: { [Op.in]: ["PENDING", "FAILED_RETRY"] },
-        nextAttemptAt: { [Op.lte]: new Date() }
+        nextAttemptAt: { [Op.lte]: new Date() },
+        ...(recoveryQuotaReached
+          ? { eventType: { [Op.ne]: "COVERAGE_RECOVERY" } }
+          : {})
       },
-      order: [["createdAt", "ASC"]],
+      order: [
+        [literal("CASE WHEN `priorityAt` IS NULL THEN 1 ELSE 0 END"), "ASC"],
+        ["priorityAt", "ASC"],
+        [
+          literal(
+            "CASE `eventType` WHEN 'CANCELLED' THEN 0 WHEN 'REMINDER' THEN 1 WHEN 'MANUAL_REMINDER' THEN 2 WHEN 'RESCHEDULED' THEN 3 WHEN 'CREATED' THEN 4 WHEN 'COVERAGE_RECOVERY' THEN 5 ELSE 6 END"
+          ),
+          "ASC"
+        ],
+        ["createdAt", "ASC"],
+        ["id", "ASC"]
+      ],
       transaction,
       lock: transaction.LOCK.UPDATE,
       skipLocked: true
@@ -107,6 +129,43 @@ const hourlyLimitReached = async (config: QuarkConfig): Promise<boolean> => {
   return count >= config.maxMessagesPerHour;
 };
 
+const recoveryHourlyLimitReached = async (
+  config: QuarkConfig
+): Promise<boolean> => {
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  const count = await QuarkAppointmentNotification.count({
+    where: {
+      eventType: "COVERAGE_RECOVERY",
+      status: "SENT",
+      sentAt: { [Op.gte]: since }
+    }
+  });
+  return (
+    count >=
+    Math.min(config.maxRecoveryMessagesPerHour, config.maxMessagesPerHour)
+  );
+};
+
+export const recoverDisconnectedNotifications = async (): Promise<number> => {
+  const [count] = await QuarkAppointmentNotification.update(
+    {
+      status: "FAILED_RETRY",
+      attempts: 0,
+      nextAttemptAt: new Date(),
+      processingStartedAt: null,
+      workerId: null,
+      lastError: "Requeued after WhatsApp reconnection"
+    },
+    {
+      where: {
+        status: "DEAD_LETTER",
+        lastError: DISCONNECTED_ERROR
+      }
+    }
+  );
+  return count;
+};
+
 const parsePayload = (notification: QuarkAppointmentNotification) => {
   const payload = JSON.parse(notification.payload) as QuarkOutboxPayload;
   if (
@@ -118,7 +177,63 @@ const parsePayload = (notification: QuarkAppointmentNotification) => {
   return payload;
 };
 
-const processNotification = async (
+const suppressIfFamilyAlreadySent = async (
+  notification: QuarkAppointmentNotification
+): Promise<boolean> => {
+  const familyKey = quarkNotificationFamilyKey(notification.notificationKey);
+  const sentSibling = await QuarkAppointmentNotification.findOne({
+    where: {
+      appointmentId: notification.appointmentId,
+      id: { [Op.ne]: notification.id },
+      notificationKey: { [Op.like]: `${familyKey}:to:%` },
+      status: "SENT"
+    },
+    attributes: ["id"]
+  });
+  if (!sentSibling) return false;
+
+  await notification.update({
+    status: "SUPPRESSED",
+    processingStartedAt: null,
+    workerId: null,
+    lastError: "Same appointment notification already sent to another phone"
+  });
+  return true;
+};
+
+const deferForRecipientCooldown = async (
+  config: QuarkConfig,
+  notification: QuarkAppointmentNotification,
+  phone: string
+): Promise<boolean> => {
+  const since = new Date(Date.now() - config.recipientCooldownMs);
+  const recent = await QuarkAppointmentNotification.findOne({
+    where: {
+      recipientPhone: phone,
+      status: "SENT",
+      sentAt: { [Op.gte]: since }
+    },
+    attributes: ["sentAt"],
+    order: [["sentAt", "DESC"]]
+  });
+  if (!recent?.sentAt) return false;
+
+  await notification.update({
+    status: "PENDING",
+    nextAttemptAt: new Date(
+      Math.max(
+        Date.now() + 1000,
+        recent.sentAt.getTime() + config.recipientCooldownMs
+      )
+    ),
+    processingStartedAt: null,
+    workerId: null,
+    lastError: "Deferred by per-recipient anti-spam cooldown"
+  });
+  return true;
+};
+
+export const processNotification = async (
   config: QuarkConfig,
   notification: QuarkAppointmentNotification
 ): Promise<void> => {
@@ -132,6 +247,8 @@ const processNotification = async (
       });
       return;
     }
+
+    if (await suppressIfFamilyAlreadySent(notification)) return;
 
     const newerNotification = await QuarkAppointmentNotification.findOne({
       where: {
@@ -182,6 +299,7 @@ const processNotification = async (
     }
 
     if (
+      notification.eventType !== "CANCELLED" &&
       payload.validUntil &&
       new Date(payload.validUntil).getTime() <= Date.now()
     ) {
@@ -222,6 +340,10 @@ const processNotification = async (
       return;
     }
 
+    if (await deferForRecipientCooldown(config, notification, payload.phone)) {
+      return;
+    }
+
     const sentMessage = await SendQuarkWhatsAppMessage(
       config,
       payload.phone,
@@ -237,6 +359,23 @@ const processNotification = async (
       messageId: sentMessage.messageId,
       ticketId: sentMessage.ticketId
     });
+    const familyKey = quarkNotificationFamilyKey(notification.notificationKey);
+    await QuarkAppointmentNotification.update(
+      {
+        status: "SUPPRESSED",
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Same appointment notification sent to another phone"
+      },
+      {
+        where: {
+          appointmentId: notification.appointmentId,
+          id: { [Op.ne]: notification.id },
+          notificationKey: { [Op.like]: `${familyKey}:to:%` },
+          status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
+        }
+      }
+    );
     if (payload.requestsConfirmation) {
       await QuarkAppointment.update(
         {
@@ -254,8 +393,29 @@ const processNotification = async (
     });
     emitQuarkDashboardUpdate("notification", notification.id);
   } catch (error) {
-    const attempts = notification.attempts + 1;
     const lastError = sanitizeError(error);
+    if (lastError === DISCONNECTED_ERROR) {
+      lastWhatsAppConnected = false;
+      await notification.update({
+        status: "PENDING",
+        attempts: notification.attempts,
+        nextAttemptAt: new Date(Date.now() + DISCONNECTED_POLL_INTERVAL_MS),
+        processingStartedAt: null,
+        workerId: null,
+        lastError
+      });
+      if (!connectionPauseLogged) {
+        logger.error({
+          info: "QuarkClinic notification queue paused because WhatsApp is disconnected",
+          whatsappId: config.whatsappId || "default"
+        });
+        connectionPauseLogged = true;
+      }
+      emitQuarkDashboardUpdate("notification", notification.id);
+      return;
+    }
+
+    const attempts = notification.attempts + 1;
     const deadLetter =
       isPermanentError(lastError) || attempts >= config.maxRetryAttempts;
     await notification.update({
@@ -281,23 +441,61 @@ const processNotification = async (
   }
 };
 
+export const runQuarkNotificationWorkerCycle = async (
+  config: QuarkConfig
+): Promise<number> => {
+  let nextDelay = config.workerPollIntervalMs;
+
+  const connected = await quarkWhatsAppIsConnected(config);
+  if (!connected) {
+    lastWhatsAppConnected = false;
+    if (!connectionPauseLogged) {
+      logger.error({
+        info: "QuarkClinic notification queue paused because WhatsApp is disconnected",
+        whatsappId: config.whatsappId || "default"
+      });
+      connectionPauseLogged = true;
+    }
+    return DISCONNECTED_POLL_INTERVAL_MS;
+  }
+
+  if (lastWhatsAppConnected !== true) {
+    const recovered = await recoverDisconnectedNotifications();
+    logger.warn({
+      info: "QuarkClinic notification queue resumed after WhatsApp reconnection",
+      whatsappId: config.whatsappId || "default",
+      disconnectedDeadLettersRequeued: recovered
+    });
+  }
+  lastWhatsAppConnected = true;
+  connectionPauseLogged = false;
+
+  const quietDelay = quietHoursDelayMs(config);
+  if (quietDelay > 0) {
+    return Math.min(quietDelay, 15 * 60 * 1000);
+  }
+  if (await hourlyLimitReached(config)) {
+    return 60 * 1000;
+  }
+
+  const recoveryQuotaReached = await recoveryHourlyLimitReached(config);
+  const notification = await claimNextNotification(recoveryQuotaReached);
+  if (notification) {
+    await processNotification(config, notification);
+    nextDelay = randomSendIntervalMs(config);
+  } else if (recoveryQuotaReached) {
+    nextDelay = 60 * 1000;
+  }
+
+  return nextDelay;
+};
+
 const runWorker = async (config: QuarkConfig): Promise<void> => {
   if (workerStopped) return;
   let nextDelay = config.workerPollIntervalMs;
 
   try {
-    const quietDelay = quietHoursDelayMs(config);
-    if (quietDelay > 0) {
-      nextDelay = Math.min(quietDelay, 15 * 60 * 1000);
-    } else if (await hourlyLimitReached(config)) {
-      nextDelay = 60 * 1000;
-    } else {
-      const notification = await claimNextNotification();
-      if (notification) {
-        await processNotification(config, notification);
-        nextDelay = randomSendIntervalMs(config);
-      }
-    }
+    nextDelay = await runQuarkNotificationWorkerCycle(config);
   } catch (error) {
     logger.error({
       info: "QuarkClinic notification worker failed",
@@ -322,6 +520,8 @@ export const StartQuarkNotificationWorker = async (
   if (!workerStopped) return;
 
   workerStopped = false;
+  lastWhatsAppConnected = undefined;
+  connectionPauseLogged = false;
   await recoverStuckNotifications(config);
   triggerWorker(config, 1000);
 };

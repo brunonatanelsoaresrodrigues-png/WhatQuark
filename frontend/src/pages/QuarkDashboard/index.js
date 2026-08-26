@@ -1,7 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Box,
   Button,
+  ButtonGroup,
   Chip,
   CircularProgress,
   Container,
@@ -37,12 +45,21 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { addDays, format } from "date-fns";
-import { useHistory } from "react-router-dom";
+import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  format,
+  parseISO,
+  startOfMonth,
+} from "date-fns";
+import { Redirect, useHistory } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../services/api";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
+import { AuthContext } from "../../context/Auth/AuthContext";
+import QuarkAppointmentsCalendar from "../../components/QuarkAppointmentsCalendar";
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -83,6 +100,14 @@ const useStyles = makeStyles((theme) => ({
   sectionTitle: {
     padding: theme.spacing(2),
     paddingBottom: 0,
+  },
+  sectionHeader: {
+    padding: theme.spacing(2),
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: theme.spacing(1),
   },
   syncText: {
     color: theme.palette.text.secondary,
@@ -164,7 +189,7 @@ const MetricCard = ({ label, value, color }) => (
   </Paper>
 );
 
-const QuarkDashboard = () => {
+const QuarkDashboardContent = ({ canManage }) => {
   const classes = useStyles();
   const theme = useTheme();
   const history = useHistory();
@@ -177,6 +202,15 @@ const QuarkDashboard = () => {
   });
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  const [viewMode, setViewMode] = useState(() =>
+    window.localStorage.getItem("quarkAppointmentsView") === "table"
+      ? "table"
+      : "calendar"
+  );
+  const [visibleMonth, setVisibleMonth] = useState(startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState(isoDate(new Date()));
+  const [dayPage, setDayPage] = useState(0);
+  const [dayPageSize, setDayPageSize] = useState(25);
   const [summary, setSummary] = useState(null);
   const [timeseries, setTimeseries] = useState([]);
   const [breakdown, setBreakdown] = useState({
@@ -184,9 +218,13 @@ const QuarkDashboard = () => {
     professionals: [],
   });
   const [appointments, setAppointments] = useState({ rows: [], total: 0 });
+  const [calendarDays, setCalendarDays] = useState([]);
+  const [dayAppointments, setDayAppointments] = useState({ rows: [], total: 0 });
+  const [loadingDayAppointments, setLoadingDayAppointments] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sendingReminder, setSendingReminder] = useState(null);
   const [confirmingAppointment, setConfirmingAppointment] = useState(null);
+  const dayRequestRef = useRef(0);
 
   const params = useMemo(
     () => ({ from: filters.from, to: filters.to }),
@@ -196,7 +234,13 @@ const QuarkDashboard = () => {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const [summaryResult, timeseriesResult, breakdownResult, rowsResult] =
+      const [
+        summaryResult,
+        timeseriesResult,
+        breakdownResult,
+        rowsResult,
+        calendarResult,
+      ] =
         await Promise.all([
           api.get("/quark/dashboard/summary", { params }),
           api.get("/quark/dashboard/timeseries", { params }),
@@ -211,11 +255,20 @@ const QuarkDashboard = () => {
               pageSize,
             },
           }),
+          api.get("/quark/dashboard/calendar-days", {
+            params: {
+              ...params,
+              status: filters.status || undefined,
+              messageStatus: filters.messageStatus || undefined,
+              responseStatus: filters.responseStatus || undefined,
+            },
+          }),
         ]);
       setSummary(summaryResult.data);
       setTimeseries(timeseriesResult.data);
       setBreakdown(breakdownResult.data);
       setAppointments(rowsResult.data);
+      setCalendarDays(calendarResult.data);
     } catch (error) {
       toastError(error);
     } finally {
@@ -230,27 +283,121 @@ const QuarkDashboard = () => {
     params,
   ]);
 
+  const loadSelectedDay = useCallback(async () => {
+    if (viewMode !== "calendar" || !selectedDay) return;
+
+    const requestId = dayRequestRef.current + 1;
+    dayRequestRef.current = requestId;
+    setLoadingDayAppointments(true);
+    try {
+      const { data } = await api.get("/quark/dashboard/appointments", {
+        params: {
+          from: selectedDay,
+          to: selectedDay,
+          status: filters.status || undefined,
+          messageStatus: filters.messageStatus || undefined,
+          responseStatus: filters.responseStatus || undefined,
+          page: dayPage + 1,
+          pageSize: dayPageSize,
+        },
+      });
+      if (dayRequestRef.current === requestId) {
+        setDayAppointments(data);
+      }
+    } catch (error) {
+      if (dayRequestRef.current === requestId) {
+        toastError(error);
+      }
+    } finally {
+      if (dayRequestRef.current === requestId) {
+        setLoadingDayAppointments(false);
+      }
+    }
+  }, [
+    dayPage,
+    dayPageSize,
+    filters.messageStatus,
+    filters.responseStatus,
+    filters.status,
+    selectedDay,
+    viewMode,
+  ]);
+
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    loadSelectedDay();
+  }, [loadSelectedDay]);
+
+  useEffect(() => {
+    const fromDate = parseISO(filters.from);
+    setVisibleMonth(startOfMonth(fromDate));
+    if (selectedDay < filters.from || selectedDay > filters.to) {
+      setSelectedDay(filters.from);
+      setDayPage(0);
+    }
+  }, [filters.from, filters.to, selectedDay]);
 
   useEffect(() => {
     const socket = openSocket();
     let timer;
     socket.on("quarkDashboard", () => {
       clearTimeout(timer);
-      timer = setTimeout(loadDashboard, 700);
+      timer = setTimeout(() => {
+        loadDashboard();
+        loadSelectedDay();
+      }, 700);
     });
     return () => {
       clearTimeout(timer);
       socket.disconnect();
     };
-  }, [loadDashboard]);
+  }, [loadDashboard, loadSelectedDay]);
 
   const changeFilter = (event) => {
     const { name, value } = event.target;
+    if ((name === "from" || name === "to") && !value) return;
     setPage(0);
-    setFilters((current) => ({ ...current, [name]: value }));
+    setFilters((current) => {
+      const next = { ...current, [name]: value };
+      if (name === "from" && value > current.to) next.to = value;
+      if (name === "to" && value < current.from) next.from = value;
+      return next;
+    });
+  };
+
+  const changeViewMode = (mode) => {
+    setViewMode(mode);
+    window.localStorage.setItem("quarkAppointmentsView", mode);
+  };
+
+  const selectCalendarDay = (day) => {
+    setSelectedDay(day);
+    setDayPage(0);
+  };
+
+  const changeCalendarMonth = (amount) => {
+    const nextMonth = addMonths(visibleMonth, amount);
+    const from = isoDate(startOfMonth(nextMonth));
+    const to = isoDate(endOfMonth(nextMonth));
+    setVisibleMonth(startOfMonth(nextMonth));
+    setSelectedDay(from);
+    setDayPage(0);
+    setPage(0);
+    setFilters((current) => ({ ...current, from, to }));
+  };
+
+  const showTodayInCalendar = () => {
+    const today = new Date();
+    const from = isoDate(today);
+    const to = isoDate(addDays(today, 30));
+    setVisibleMonth(startOfMonth(today));
+    setSelectedDay(from);
+    setDayPage(0);
+    setPage(0);
+    setFilters((current) => ({ ...current, from, to }));
   };
 
   const sendReminder = async (row) => {
@@ -267,6 +414,7 @@ const QuarkDashboard = () => {
           : "Lembrete adicionado à fila. O envio seguirá o intervalo automático."
       );
       await loadDashboard();
+      await loadSelectedDay();
     } catch (error) {
       toastError(error);
     } finally {
@@ -316,12 +464,94 @@ const QuarkDashboard = () => {
       );
       toast.success("Consulta confirmada com sucesso no Quark.");
       await loadDashboard();
+      await loadSelectedDay();
     } catch (error) {
       toastError(error);
     } finally {
       setConfirmingAppointment(null);
     }
   };
+
+  const renderAppointmentActions = (row) => (
+    <div className={classes.actions}>
+      {canManage && (
+        <>
+          <Tooltip
+            title={
+              reminderDisabledReason(row) ||
+              "Enviar mensagem para confirmar a consulta"
+            }
+          >
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                startIcon={
+                  sendingReminder === row.appointmentId ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <NotificationsActiveIcon />
+                  )
+                }
+                disabled={
+                  Boolean(reminderDisabledReason(row)) ||
+                  sendingReminder !== null ||
+                  confirmingAppointment !== null
+                }
+                onClick={() => sendReminder(row)}
+              >
+                {Number(row.manualReminderToday)
+                  ? "Solicitado hoje"
+                  : "Enviar lembrete"}
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip
+            title={
+              confirmDisabledReason(row) ||
+              "Confirmar esta consulta diretamente no Quark"
+            }
+          >
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                color="primary"
+                startIcon={
+                  confirmingAppointment === row.appointmentId ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <CheckCircleOutlineIcon />
+                  )
+                }
+                disabled={
+                  Boolean(confirmDisabledReason(row)) ||
+                  confirmingAppointment !== null ||
+                  sendingReminder !== null
+                }
+                onClick={() => confirmAppointment(row)}
+              >
+                Confirmar no Quark
+              </Button>
+            </span>
+          </Tooltip>
+        </>
+      )}
+      {row.ticketId && (
+        <Tooltip title="Abrir a conversa deste paciente">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<ChatBubbleOutlineIcon />}
+            onClick={() => history.push(`/tickets/${row.ticketId}`)}
+          >
+            Conversa
+          </Button>
+        </Tooltip>
+      )}
+    </div>
+  );
 
   if (loading && !summary) {
     return (
@@ -538,10 +768,49 @@ const QuarkDashboard = () => {
       </Grid>
 
       <Paper className={classes.section}>
-        <Typography variant="h6" className={classes.sectionTitle}>
-          Consultas e notificações
-        </Typography>
-        <TableContainer>
+        <div className={classes.sectionHeader}>
+          <Typography variant="h6">Consultas e notificações</Typography>
+          <ButtonGroup size="small" color="primary">
+            <Button
+              variant={viewMode === "table" ? "contained" : "outlined"}
+              onClick={() => changeViewMode("table")}
+            >
+              Tabela
+            </Button>
+            <Button
+              variant={viewMode === "calendar" ? "contained" : "outlined"}
+              onClick={() => changeViewMode("calendar")}
+            >
+              Calendário
+            </Button>
+          </ButtonGroup>
+        </div>
+        {viewMode === "calendar" ? (
+          <QuarkAppointmentsCalendar
+            calendarDays={calendarDays}
+            visibleMonth={visibleMonth}
+            rangeFrom={filters.from}
+            rangeTo={filters.to}
+            selectedDay={selectedDay}
+            onSelectDay={selectCalendarDay}
+            onPreviousMonth={() => changeCalendarMonth(-1)}
+            onNextMonth={() => changeCalendarMonth(1)}
+            onToday={showTodayInCalendar}
+            appointments={dayAppointments}
+            loadingAppointments={loadingDayAppointments}
+            page={dayPage}
+            pageSize={dayPageSize}
+            onChangePage={setDayPage}
+            onChangePageSize={(value) => {
+              setDayPageSize(value);
+              setDayPage(0);
+            }}
+            statusLabels={statusLabels}
+            renderActions={renderAppointmentActions}
+          />
+        ) : (
+          <>
+            <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -621,82 +890,7 @@ const QuarkDashboard = () => {
                       : "—"}
                   </TableCell>
                   <TableCell>
-                    <div className={classes.actions}>
-                      <Tooltip
-                        title={
-                          reminderDisabledReason(row) ||
-                          "Enviar mensagem para confirmar a consulta"
-                        }
-                      >
-                        <span>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="primary"
-                            startIcon={
-                              sendingReminder === row.appointmentId ? (
-                                <CircularProgress size={16} />
-                              ) : (
-                                <NotificationsActiveIcon />
-                              )
-                            }
-                            disabled={
-                              Boolean(reminderDisabledReason(row)) ||
-                              sendingReminder !== null ||
-                              confirmingAppointment !== null
-                            }
-                            onClick={() => sendReminder(row)}
-                          >
-                            {Number(row.manualReminderToday)
-                              ? "Solicitado hoje"
-                              : "Enviar lembrete"}
-                          </Button>
-                        </span>
-                      </Tooltip>
-                      <Tooltip
-                        title={
-                          confirmDisabledReason(row) ||
-                          "Confirmar esta consulta diretamente no Quark"
-                        }
-                      >
-                        <span>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="primary"
-                            startIcon={
-                              confirmingAppointment === row.appointmentId ? (
-                                <CircularProgress size={16} color="inherit" />
-                              ) : (
-                                <CheckCircleOutlineIcon />
-                              )
-                            }
-                            disabled={
-                              Boolean(confirmDisabledReason(row)) ||
-                              confirmingAppointment !== null ||
-                              sendingReminder !== null
-                            }
-                            onClick={() => confirmAppointment(row)}
-                          >
-                            Confirmar no Quark
-                          </Button>
-                        </span>
-                      </Tooltip>
-                      {row.ticketId && (
-                        <Tooltip title="Abrir a conversa deste paciente">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<ChatBubbleOutlineIcon />}
-                            onClick={() =>
-                              history.push(`/tickets/${row.ticketId}`)
-                            }
-                          >
-                            Conversa
-                          </Button>
-                        </Tooltip>
-                      )}
-                    </div>
+                    {renderAppointmentActions(row)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -709,20 +903,22 @@ const QuarkDashboard = () => {
               )}
             </TableBody>
           </Table>
-        </TableContainer>
-        <TablePagination
-          component="div"
-          count={appointments.total || 0}
-          page={page}
-          onChangePage={(_, nextPage) => setPage(nextPage)}
-          rowsPerPage={pageSize}
-          onChangeRowsPerPage={(event) => {
-            setPageSize(Number(event.target.value));
-            setPage(0);
-          }}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          labelRowsPerPage="Linhas por página"
-        />
+            </TableContainer>
+            <TablePagination
+              component="div"
+              count={appointments.total || 0}
+              page={page}
+              onChangePage={(_, nextPage) => setPage(nextPage)}
+              rowsPerPage={pageSize}
+              onChangeRowsPerPage={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage="Linhas por página"
+            />
+          </>
+        )}
       </Paper>
 
       <Paper className={classes.section}>
@@ -764,6 +960,17 @@ const QuarkDashboard = () => {
       </Paper>
     </Container>
   );
+};
+
+const QuarkDashboard = () => {
+  const { user } = useContext(AuthContext);
+  const canManage = user?.profile === "admin";
+
+  if (!canManage && !user?.canAccessQuarkClinic) {
+    return <Redirect to="/tickets" />;
+  }
+
+  return <QuarkDashboardContent canManage={canManage} />;
 };
 
 export default QuarkDashboard;

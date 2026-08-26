@@ -83,7 +83,8 @@ const UserModal = ({ open, onClose, userId }) => {
 		email: "",
 		password: "",
 		profile: "user",
-		canAccessQuarkClinic: false
+		canAccessQuarkClinic: false,
+		canViewOtherAgentsTickets: false
 	};
 
 	const { user: loggedInUser } = useContext(AuthContext);
@@ -251,6 +252,27 @@ const UserModal = ({ open, onClose, userId }) => {
 								<Can
 									role={loggedInUser.profile}
 									perform="user-modal:editQueues"
+									yes={() => (
+										<FormControlLabel
+											control={
+												<Switch
+													checked={Boolean(values.canViewOtherAgentsTickets)}
+													onChange={event =>
+														setFieldValue(
+															"canViewOtherAgentsTickets",
+															event.target.checked
+														)
+													}
+													color="primary"
+												/>
+											}
+											label={i18n.t("userModal.form.viewOtherAgentsTickets")}
+										/>
+									)}
+								/>
+								<Can
+									role={loggedInUser.profile}
+									perform="user-modal:editQueues"
 									yes={() => (!loading &&
 										<FormControl variant="outlined" margin="dense" className={classes.maxWidth} fullWidth>
 											<InputLabel>{i18n.t("userModal.form.whatsapp")}</InputLabel>
@@ -285,7 +307,7 @@ const UserModal = ({ open, onClose, userId }) => {
 													color="primary"
 												/>
 											}
-											label="Permitir acesso ao Quark Clinic"
+											label="Permitir acesso ao Quark Clinic e à Automação Quark"
 										/>
 									)}
 								/>

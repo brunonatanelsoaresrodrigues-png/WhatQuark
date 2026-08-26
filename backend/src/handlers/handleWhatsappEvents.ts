@@ -21,6 +21,7 @@ import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService
 import UpdateTicketService from "../services/TicketServices/UpdateTicketService";
 import CreateContactService from "../services/ContactServices/CreateContactService";
 import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/HandleQuarkConfirmationReply";
+import { parseConfirmationReply } from "../services/QuarkClinicServices/appointmentUtils";
 import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import { registerMessageAttribution } from "../services/MessageServices/MessageAttributionService";
@@ -69,6 +70,12 @@ export interface WhatsappContextPayload {
   unreadMessages: number;
   groupContact?: ContactPayload;
 }
+
+export interface HandleMessageOptions {
+  historySync?: boolean;
+}
+
+export type HandleMessageResult = "created" | "duplicate" | "ignored";
 
 const makeRandomId = (length: number): string => {
   let result = "";
@@ -236,17 +243,26 @@ export const handleMessage = async (
   messagePayload: MessagePayload,
   contactPayload: ContactPayload,
   contextPayload: WhatsappContextPayload,
-  mediaPayload?: MediaPayload
-): Promise<void> => {
+  mediaPayload?: MediaPayload,
+  options: HandleMessageOptions = {}
+): Promise<HandleMessageResult> => {
   try {
     const processedMessage = processLocationMessage(messagePayload);
+
+    if (options.historySync) {
+      const existingMessage = await Message.findByPk(processedMessage.id, {
+        attributes: ["id"]
+      });
+      if (existingMessage) return "duplicate";
+    }
 
     const contact = await CreateOrUpdateContactService({
       name: contactPayload.name,
       number: contactPayload.number,
       lid: contactPayload.lid,
       profilePicUrl: contactPayload.profilePicUrl,
-      isGroup: contactPayload.isGroup
+      isGroup: contactPayload.isGroup,
+      emitEvent: !options.historySync
     });
 
     let groupContact: Contact | undefined;
@@ -256,27 +272,58 @@ export const handleMessage = async (
         number: contextPayload.groupContact.number,
         lid: contextPayload.groupContact.lid,
         profilePicUrl: contextPayload.groupContact.profilePicUrl,
-        isGroup: contextPayload.groupContact.isGroup
+        isGroup: contextPayload.groupContact.isGroup,
+        emitEvent: !options.historySync
       });
     }
 
     const whatsapp = await ShowWhatsAppService(contextPayload.whatsappId);
     if (
+      !options.historySync &&
       contextPayload.unreadMessages === 0 &&
       whatsapp.farewellMessage &&
       formatBody(whatsapp.farewellMessage, contact) === processedMessage.body
     ) {
-      return;
+      return "ignored";
     }
 
-    const ticket = await FindOrCreateTicketService(
-      contact,
-      contextPayload.whatsappId,
-      contextPayload.unreadMessages,
-      groupContact,
-      undefined,
-      !processedMessage.fromMe
-    );
+    let ticket: Ticket;
+    if (options.historySync) {
+      ticket = (await Ticket.findOne({
+        where: {
+          contactId: groupContact ? groupContact.id : contact.id,
+          whatsappId: contextPayload.whatsappId,
+          ticketType: "PATIENT"
+        },
+        order: [["updatedAt", "DESC"]]
+      })) as Ticket;
+
+      if (!ticket) {
+        ticket = await Ticket.create({
+          contactId: groupContact ? groupContact.id : contact.id,
+          status: "pending",
+          isGroup: Boolean(groupContact),
+          unreadMessages: 0,
+          whatsappId: contextPayload.whatsappId,
+          ticketType: "PATIENT"
+        });
+      }
+    } else {
+      ticket = await FindOrCreateTicketService(
+        contact,
+        contextPayload.whatsappId,
+        contextPayload.unreadMessages,
+        groupContact,
+        undefined,
+        !processedMessage.fromMe
+      );
+    }
+
+    const timestampMs =
+      processedMessage.timestamp > 10_000_000_000
+        ? processedMessage.timestamp
+        : processedMessage.timestamp * 1000;
+    const historicalCreatedAt = new Date(timestampMs);
 
     const messageData: any = {
       id: processedMessage.id,
@@ -287,7 +334,16 @@ export const handleMessage = async (
       read: processedMessage.fromMe,
       mediaType: processedMessage.type,
       quotedMsgId: processedMessage.quotedMsgId,
-      ack: processedMessage.ack !== undefined ? processedMessage.ack : 0
+      ack: processedMessage.ack !== undefined ? processedMessage.ack : 0,
+      ...(options.historySync && !Number.isNaN(historicalCreatedAt.getTime())
+        ? { createdAt: historicalCreatedAt }
+        : {}),
+      ...(options.historySync
+        ? {
+            sentByUserId: null,
+            origin: processedMessage.fromMe ? "UNKNOWN" : "PATIENT"
+          }
+        : {})
     };
 
     if (mediaPayload && processedMessage.hasMedia) {
@@ -296,6 +352,11 @@ export const handleMessage = async (
       messageData.body = processedMessage.body || filename;
       const [mediaType] = mediaPayload.mimetype.split("/");
       messageData.mediaType = mediaType;
+    }
+
+    if (options.historySync) {
+      await CreateMessageService({ messageData, emitEvent: false });
+      return "created";
     }
 
     let lastMessageText = "";
@@ -313,7 +374,7 @@ export const handleMessage = async (
 
     // Respostas dos gestores aos fechamentos permanecem na conversa interna e
     // não entram no bot, no QuarkClinic nem na automação de inatividade.
-    if (ticket.ticketType === "INTERNAL_REPORT") return;
+    if (ticket.ticketType === "INTERNAL_REPORT") return "created";
 
     await HandleTicketMessageForInactivity({
       ticket,
@@ -337,7 +398,7 @@ export const handleMessage = async (
           err: error
         })
       );
-      return;
+      return "created";
     }
 
     await processVcardMessage(processedMessage);
@@ -346,15 +407,15 @@ export const handleMessage = async (
     let showQueueMenu = false;
     const patientAutomationEligible =
       !contextPayload.groupContact && !processedMessage.fromMe;
-    const textualConfirmationReply = /^(sim|n[aã]o)\b/i.test(
-      processedMessage.body.trim()
+    const confirmationReplyInput = Boolean(
+      parseConfirmationReply(processedMessage.body)
     );
     const intakeOwnsInput = patientIntakeOwnsNumericInput(ticket.intakeStatus);
 
     if (
       patientAutomationEligible &&
       intakeOwnsInput &&
-      !textualConfirmationReply &&
+      !confirmationReplyInput &&
       !ticket.queue &&
       !ticket.userId &&
       whatsapp.queues.length >= 1
@@ -370,12 +431,13 @@ export const handleMessage = async (
     const handledByQuark =
       patientAutomationEligible &&
       !handledByIntake &&
-      (!intakeOwnsInput || textualConfirmationReply)
+      (!intakeOwnsInput || confirmationReplyInput)
         ? await HandleQuarkConfirmationReply({
             body: processedMessage.body,
             phone: contact.number,
             ticket,
-            whatsappId: contextPayload.whatsappId
+            whatsappId: contextPayload.whatsappId,
+            message: createdMessage
           })
         : false;
 
@@ -418,6 +480,7 @@ export const handleMessage = async (
         contactPayload
       );
     }
+    return "created";
   } catch (err) {
     Sentry.captureException(err);
     logger.error({
@@ -428,6 +491,8 @@ export const handleMessage = async (
       contextPayload,
       mediaPayload
     });
+    if (options.historySync) throw err;
+    return "ignored";
   }
 };
 

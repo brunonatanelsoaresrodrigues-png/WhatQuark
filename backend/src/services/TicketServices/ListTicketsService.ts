@@ -1,4 +1,4 @@
-import { Op, fn, where, col, Filterable, Includeable } from "sequelize";
+import { Op, fn, where, col, Includeable, WhereOptions } from "sequelize";
 import { startOfDay, endOfDay, parseISO } from "date-fns";
 
 import Ticket from "../../models/Ticket";
@@ -7,6 +7,9 @@ import Message from "../../models/Message";
 import Queue from "../../models/Queue";
 import ShowUserService from "../UserServices/ShowUserService";
 import Whatsapp from "../../models/Whatsapp";
+import ResolveTicketAssigneeFilterService, {
+  TicketAssigneeFilter
+} from "./ResolveTicketAssigneeFilterService";
 
 interface Request {
   searchParam?: string;
@@ -14,6 +17,7 @@ interface Request {
   status?: string;
   date?: string;
   showAll?: string;
+  assignee?: string;
   userId: string;
   withUnreadMessages?: string;
   queueIds: number[];
@@ -25,6 +29,18 @@ interface Response {
   hasMore: boolean;
 }
 
+export const buildTicketAssigneeCondition = (
+  filter: TicketAssigneeFilter,
+  requesterUserId: string | number
+): WhereOptions | undefined => {
+  if (filter.mode === "all") return undefined;
+  if (filter.mode === "unassigned") return { userId: null };
+  if (filter.mode === "user") return { userId: filter.userId };
+  return {
+    [Op.or]: [{ userId: requesterUserId }, { status: "pending" }]
+  };
+};
+
 const ListTicketsService = async ({
   searchParam = "",
   pageNumber = "1",
@@ -32,12 +48,27 @@ const ListTicketsService = async ({
   status,
   date,
   showAll,
+  assignee,
   userId,
   withUnreadMessages
 }: Request): Promise<Response> => {
-  let whereCondition: Filterable["where"] = {
-    [Op.or]: [{ userId }, { status: "pending" }],
-    queueId: { [Op.or]: [queueIds, null] }
+  const assigneeFilter = await ResolveTicketAssigneeFilterService({
+    requesterUserId: userId,
+    requestedAssignee: assignee,
+    legacyShowAll: showAll
+  });
+
+  const andConditions: WhereOptions[] = [
+    { queueId: { [Op.or]: [queueIds, null] } }
+  ];
+  const assigneeCondition = buildTicketAssigneeCondition(
+    assigneeFilter,
+    userId
+  );
+  if (assigneeCondition) andConditions.push(assigneeCondition);
+
+  let whereCondition: WhereOptions = {
+    [Op.and]: andConditions
   };
   let includeCondition: Includeable[];
 
@@ -58,10 +89,6 @@ const ListTicketsService = async ({
       attributes: ["name"]
     }
   ];
-
-  if (showAll === "true") {
-    whereCondition = { queueId: { [Op.or]: [queueIds, null] } };
-  }
 
   if (status) {
     whereCondition = {
@@ -93,21 +120,28 @@ const ListTicketsService = async ({
 
     whereCondition = {
       ...whereCondition,
-      [Op.or]: [
+      [Op.and]: [
+        ...andConditions,
         {
-          "$contact.name$": where(
-            fn("LOWER", col("contact.name")),
-            "LIKE",
-            `%${sanitizedSearchParam}%`
-          )
-        },
-        { "$contact.number$": { [Op.like]: `%${sanitizedSearchParam}%` } },
-        {
-          "$message.body$": where(
-            fn("LOWER", col("body")),
-            "LIKE",
-            `%${sanitizedSearchParam}%`
-          )
+          [Op.or]: [
+            {
+              "$contact.name$": where(
+                fn("LOWER", col("contact.name")),
+                "LIKE",
+                `%${sanitizedSearchParam}%`
+              )
+            },
+            {
+              "$contact.number$": { [Op.like]: `%${sanitizedSearchParam}%` }
+            },
+            {
+              "$message.body$": where(
+                fn("LOWER", col("body")),
+                "LIKE",
+                `%${sanitizedSearchParam}%`
+              )
+            }
+          ]
         }
       ]
     };
@@ -115,6 +149,7 @@ const ListTicketsService = async ({
 
   if (date) {
     whereCondition = {
+      ...whereCondition,
       createdAt: {
         [Op.between]: [+startOfDay(parseISO(date)), +endOfDay(parseISO(date))]
       }
@@ -126,7 +161,7 @@ const ListTicketsService = async ({
     const userQueueIds = user.queues.map(queue => queue.id);
 
     whereCondition = {
-      [Op.or]: [{ userId }, { status: "pending" }],
+      ...whereCondition,
       queueId: { [Op.or]: [userQueueIds, null] },
       unreadMessages: { [Op.gt]: 0 }
     };

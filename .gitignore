@@ -4,3 +4,8 @@ ssl/
 .wwebjs_auth
 .wwebjs_cache
 .idea
+
+# Local deployment bundles
+.deploy-*.tar
+.deploy-*/
+deploy-*.tar

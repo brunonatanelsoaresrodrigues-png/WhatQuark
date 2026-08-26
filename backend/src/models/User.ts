@@ -52,6 +52,10 @@ class User extends Model<User> {
   @Column
   canAccessQuarkClinic: boolean;
 
+  @Default(false)
+  @Column
+  canViewOtherAgentsTickets: boolean;
+
   @ForeignKey(() => Whatsapp)
   @Column
   whatsappId: number;

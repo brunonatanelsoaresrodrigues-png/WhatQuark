@@ -13,6 +13,7 @@ interface SerializedUser {
   email: string;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canViewOtherAgentsTickets: boolean;
   queues: Queue[];
 }
 

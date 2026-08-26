@@ -3,6 +3,7 @@ import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkAppointmentResponse from "../../models/QuarkAppointmentResponse";
+import Message from "../../models/Message";
 import Ticket from "../../models/Ticket";
 import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
@@ -24,6 +25,7 @@ interface Request {
   phone: string;
   ticket: Ticket;
   whatsappId: number;
+  message?: Message;
 }
 
 interface StoredSnapshot {
@@ -34,6 +36,7 @@ const ARRIVAL_ORDER_NOTICE = "Atendimento por ordem de chegada";
 
 const appointmentDescription = (appointment: QuarkAppointment): string => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
+  const patientName = appointment.patientName?.trim() || "Paciente";
   let professional = "profissional a confirmar";
   try {
     const snapshot = JSON.parse(appointment.snapshot) as StoredSnapshot;
@@ -41,7 +44,9 @@ const appointmentDescription = (appointment: QuarkAppointment): string => {
   } catch {
     // The minimal date/time description remains safe for legacy rows.
   }
-  return `${date}${time ? ` às ${time}` : ""} com ${professional}`;
+  return `${patientName} — ${date}${
+    time ? ` às ${time}` : ""
+  } com ${professional}`;
 };
 
 const sendAppointmentOptions = async (
@@ -86,7 +91,8 @@ const HandleQuarkConfirmationReply = async ({
   body,
   phone,
   ticket,
-  whatsappId
+  whatsappId,
+  message
 }: Request): Promise<boolean> => {
   if (!isQuarkIntegrationEnabled()) return false;
 
@@ -99,18 +105,68 @@ const HandleQuarkConfirmationReply = async ({
   const normalizedPhone = normalizeQuarkPhone(phone, "", true);
   if (!normalizedPhone) return false;
 
+  // A sent reminder is the strongest proof that this ticket/phone may answer
+  // for an appointment. Quark can replace a patient's current phone after the
+  // reminder was sent, deactivating the former recipient mapping; the patient
+  // who received the reminder must still be able to confirm from that ticket.
+  const sentNotifications = await QuarkAppointmentNotification.findAll({
+    where: {
+      status: "SENT",
+      [Op.or]: [{ ticketId: ticket.id }, { recipientPhone: normalizedPhone }]
+    },
+    order: [["sentAt", "DESC"]]
+  });
+
+  // A short reply such as "sim", "1", "nao" or "2" is only a Quark
+  // decision when it answers the exact reminder. This prevents an unrelated
+  // reply to an attendant or to the intake bot from changing an appointment.
+  let contextualNotifications = sentNotifications;
+  if (message) {
+    const previousOutbound = await Message.findOne({
+      where: {
+        ticketId: ticket.id,
+        fromMe: true,
+        createdAt: { [Op.lt]: message.createdAt }
+      },
+      order: [
+        ["createdAt", "DESC"],
+        ["id", "DESC"]
+      ]
+    });
+    const contextualMessageIds = new Set(
+      [message.quotedMsgId, previousOutbound?.id].filter(Boolean)
+    );
+    contextualNotifications = sentNotifications.filter(notification => {
+      const notificationMessageId = notification.messageId;
+      return notificationMessageId
+        ? contextualMessageIds.has(notificationMessageId)
+        : false;
+    });
+    if (contextualNotifications.length === 0) return false;
+  }
+
   const recipients = await QuarkAppointmentRecipient.findAll({
     where: { phone: normalizedPhone, active: true }
   });
-  const recipientAppointmentIds = recipients.map(item => item.appointmentId);
-  const phoneOwnership = {
-    [Op.or]: [
-      { phone: normalizedPhone },
-      ...(recipientAppointmentIds.length
-        ? [{ appointmentId: { [Op.in]: recipientAppointmentIds } }]
-        : [])
-    ]
-  };
+  const recipientAppointmentIds = message
+    ? []
+    : recipients.map(item => item.appointmentId);
+  const notifiedAppointmentIds = contextualNotifications.map(
+    item => item.appointmentId
+  );
+  const authorizedAppointmentIds = Array.from(
+    new Set([...recipientAppointmentIds, ...notifiedAppointmentIds])
+  );
+  const phoneOwnership: any = message
+    ? { appointmentId: { [Op.in]: notifiedAppointmentIds } }
+    : {
+        [Op.or]: [
+          { phone: normalizedPhone },
+          ...(authorizedAppointmentIds.length
+            ? [{ appointmentId: { [Op.in]: authorizedAppointmentIds } }]
+            : [])
+        ]
+      };
 
   const appointments = await QuarkAppointment.findAll({
     where: {
@@ -164,14 +220,23 @@ const HandleQuarkConfirmationReply = async ({
   let responseAudit: QuarkAppointmentResponse | undefined;
   try {
     const receivedAt = new Date();
-    const sourceNotification = await QuarkAppointmentNotification.findOne({
-      where: {
-        appointmentId: appointment.appointmentId,
-        status: "SENT",
-        [Op.or]: [{ recipientPhone: normalizedPhone }, { recipientPhone: null }]
-      },
-      order: [["sentAt", "DESC"]]
-    });
+    const contextualNotification = contextualNotifications.find(
+      notification =>
+        notification.appointmentId === appointment.appointmentId
+    );
+    const sourceNotification = contextualNotification
+      ? contextualNotification
+      : await QuarkAppointmentNotification.findOne({
+          where: {
+            appointmentId: appointment.appointmentId,
+            status: "SENT",
+            [Op.or]: [
+              { ticketId: ticket.id },
+              { recipientPhone: normalizedPhone }
+            ]
+          },
+          order: [["sentAt", "DESC"]]
+        });
     const responseTimeSeconds = sourceNotification?.sentAt
       ? Math.max(
           0,

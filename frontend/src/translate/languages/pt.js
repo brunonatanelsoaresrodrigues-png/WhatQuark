@@ -41,19 +41,25 @@ const messages = {
         },
         messages: {
           inAttendance: {
-            title: "Em Atendimento"
+            title: "Em Atendimento",
           },
           waiting: {
-            title: "Aguardando"
+            title: "Aguardando",
           },
           closed: {
-            title: "Finalizado"
-          }
-        }
+            title: "Finalizado",
+          },
+        },
       },
       connections: {
         title: "Conexões",
         toasts: {
+          historySyncStarted:
+            "Sincronização do histórico iniciada sem desconectar o WhatsApp.",
+          historySyncCompleted:
+            "Histórico sincronizado: {{count}} mensagens recuperadas.",
+          historySyncFailed:
+            "Não foi possível concluir a sincronização do histórico.",
           deleted: "Conexão com o WhatsApp excluída com sucesso!",
         },
         confirmationModal: {
@@ -64,6 +70,8 @@ const messages = {
             "Tem certeza? Você precisará ler o QR Code novamente.",
         },
         buttons: {
+          syncHistory: "Sincronizar histórico",
+          syncingHistory: "Sincronizando {{current}}/{{total}}",
           add: "Adicionar WhatsApp",
           disconnect: "desconectar",
           tryAgain: "Tentar novamente",
@@ -108,7 +116,7 @@ const messages = {
         form: {
           name: "Nome",
           default: "Padrão",
-          farewellMessage: "Mensagem de despedida"
+          farewellMessage: "Mensagem de despedida",
         },
         buttons: {
           okAdd: "Adicionar",
@@ -209,6 +217,7 @@ const messages = {
           password: "Senha",
           profile: "Perfil",
           whatsapp: "Conexão Padrão",
+          viewOtherAgentsTickets: "Permitir visualizar conversas de outros atendentes",
         },
         buttons: {
           okAdd: "Adicionar",
@@ -227,6 +236,11 @@ const messages = {
       },
       ticketsQueueSelect: {
         placeholder: "Filas",
+      },
+      ticketsAssigneeSelect: {
+        all: "Todos os atendentes",
+        me: "Atribuídas a mim",
+        unassigned: "Sem atendente",
       },
       tickets: {
         toasts: {
@@ -350,6 +364,7 @@ const messages = {
           email: "Email",
           profile: "Perfil",
           whatsapp: "Conexão Padrão",
+          otherAgents: "Outros atendentes",
           actions: "Ações",
         },
         buttons: {
@@ -397,7 +412,8 @@ const messages = {
         },
       },
       messagesInput: {
-        placeholderOpen: "Digite uma mensagem ou tecle ''/'' para utilizar as respostas rápidas cadastrada",
+        placeholderOpen:
+          "Digite uma mensagem ou tecle ''/'' para utilizar as respostas rápidas cadastrada",
         placeholderClosed:
           "Reabra ou aceite esse ticket para enviar uma mensagem.",
         signMessage: "Assinar",
@@ -437,6 +453,14 @@ const messages = {
         },
       },
       backendErrors: {
+        ERR_HISTORY_SYNC_REQUIRES_CONNECTED_WHATSAPP:
+          "Conecte o WhatsApp antes de sincronizar o histórico.",
+        ERR_HISTORY_SYNC_NOT_SUPPORTED:
+          "Este provedor não oferece sincronização de histórico.",
+        ERR_HISTORY_SYNC_TIMEOUT:
+          "O WhatsApp demorou demais para responder à sincronização.",
+        ERR_HISTORY_SYNC_UNAVAILABLE:
+          "O telefone não respondeu às solicitações de histórico. Tente novamente em alguns minutos.",
         ERR_NO_OTHER_WHATSAPP: "Deve haver pelo menos um WhatsApp padrão.",
         ERR_NO_DEF_WAPP_FOUND:
           "Nenhum WhatsApp padrão encontrado. Verifique a página de conexões.",

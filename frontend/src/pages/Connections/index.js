@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useContext } from "react";
+import React, { useState, useCallback, useContext, useEffect } from "react";
 import { toast } from "react-toastify";
 import { format, parseISO } from "date-fns";
 
@@ -25,6 +25,7 @@ import {
 	SignalCellular4Bar,
 	CropFree,
 	DeleteOutline,
+	Sync as SyncIcon,
 } from "@material-ui/icons";
 
 import MainContainer from "../../components/MainContainer";
@@ -99,6 +100,7 @@ const Connections = () => {
 	const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
 	const [qrModalOpen, setQrModalOpen] = useState(false);
 	const [selectedWhatsApp, setSelectedWhatsApp] = useState(null);
+	const [historySyncById, setHistorySyncById] = useState({});
 	const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 	const confirmationModalInitialState = {
 		action: "",
@@ -110,6 +112,62 @@ const Connections = () => {
 	const [confirmModalInfo, setConfirmModalInfo] = useState(
 		confirmationModalInitialState
 	);
+
+	useEffect(() => {
+		let active = true;
+		const connectedIds = (whatsApps || [])
+			.filter(whatsApp => whatsApp.status === "CONNECTED")
+			.map(whatsApp => whatsApp.id);
+
+		const refreshStatuses = async () => {
+			await Promise.all(
+				connectedIds.map(async whatsAppId => {
+					try {
+						const { data } = await api.get(
+							`/whatsapp/${whatsAppId}/history-sync`
+						);
+						if (!active) return;
+						setHistorySyncById(previous => {
+							const oldStatus = previous[whatsAppId];
+							if (oldStatus?.status === "running" && data.status === "completed") {
+								toast.success(
+									i18n.t("connections.toasts.historySyncCompleted", {
+										count: data.importedMessages,
+									})
+								);
+							}
+							if (oldStatus?.status === "running" && data.status === "failed") {
+								toast.error(i18n.t("connections.toasts.historySyncFailed"));
+							}
+							return { ...previous, [whatsAppId]: data };
+						});
+					} catch (err) {
+						// Estado auxiliar; falhas transitórias são repetidas no próximo ciclo.
+					}
+				})
+			);
+		};
+
+		refreshStatuses();
+		const interval = setInterval(refreshStatuses, 3000);
+		return () => {
+			active = false;
+			clearInterval(interval);
+		};
+	}, [whatsApps]);
+
+	const handleSyncHistory = async whatsAppId => {
+		try {
+			const { data } = await api.post(`/whatsapp/${whatsAppId}/history-sync`);
+			setHistorySyncById(previous => ({
+				...previous,
+				[whatsAppId]: data,
+			}));
+			toast.info(i18n.t("connections.toasts.historySyncStarted"));
+		} catch (err) {
+			toastError(err);
+		}
+	};
 
 	const handleStartWhatsAppSession = async whatsAppId => {
 		try {
@@ -195,6 +253,8 @@ const Connections = () => {
 	};
 
 	const renderActionButtons = whatsApp => {
+		const historySync = historySyncById[whatsApp.id];
+		const isSyncingHistory = historySync?.status === "running";
 		return (
 			<>
 				{whatsApp.status === "qrcode" && (
@@ -240,6 +300,28 @@ const Connections = () => {
 					>
 						{i18n.t("connections.buttons.disconnect")}
 					</Button>
+				)}
+				{whatsApp.status === "CONNECTED" && (
+					<>
+						{" "}
+						<Button
+							size="small"
+							variant="outlined"
+							color="primary"
+							disabled={isSyncingHistory}
+							startIcon={
+								isSyncingHistory ? <CircularProgress size={16} /> : <SyncIcon />
+							}
+							onClick={() => handleSyncHistory(whatsApp.id)}
+						>
+							{isSyncingHistory
+								? i18n.t("connections.buttons.syncingHistory", {
+										current: historySync.processedChats,
+										total: historySync.totalChats || "…",
+								  })
+								: i18n.t("connections.buttons.syncHistory")}
+						</Button>
+					</>
 				)}
 				{whatsApp.status === "OPENING" && (
 					<Button size="small" variant="outlined" disabled color="default">

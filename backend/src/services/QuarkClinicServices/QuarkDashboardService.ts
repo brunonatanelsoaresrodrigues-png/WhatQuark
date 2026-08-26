@@ -283,6 +283,56 @@ const allowedResponseStatuses: Record<string, string> = {
     "NOT EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS')"
 };
 
+const appointmentFilterClause = (filters: DashboardFilters): string => {
+  const filterClauses = [
+    filters.status ? allowedStatuses[filters.status] : undefined,
+    filters.messageStatus
+      ? allowedMessageStatuses[filters.messageStatus]
+      : undefined,
+    filters.responseStatus
+      ? allowedResponseStatuses[filters.responseStatus]
+      : undefined
+  ].filter(Boolean);
+
+  return filterClauses.length ? ` AND ${filterClauses.join(" AND ")}` : "";
+};
+
+export const getQuarkDashboardCalendarDays = async (
+  filters: DashboardFilters
+) => {
+  const range = resolveDateRange(filters);
+  const filterClause = appointmentFilterClause(filters);
+  const rows = await sequelize.query<CountRow>(
+    `SELECT
+      DATE(a.scheduledAt) AS day,
+      COUNT(*) AS total,
+      SUM(a.status = 'AGENDADO' AND a.awaitingConfirmation = 0) AS scheduled,
+      SUM(a.status = 'AGENDADO' AND a.awaitingConfirmation = 1) AS awaitingResponse,
+      SUM(a.status = 'CONFIRMADO') AS confirmed,
+      SUM(a.status IN ('CANCELADO', 'CANCELADO_VIA_SMS', 'EXCLUIDO')) AS cancelled
+    FROM QuarkAppointments a
+    WHERE a.scheduledAt BETWEEN :fromDateTime AND :toDateTime${filterClause}
+    GROUP BY DATE(a.scheduledAt)
+    ORDER BY day`,
+    {
+      replacements: {
+        fromDateTime: range.fromDateTime,
+        toDateTime: range.toDateTime
+      },
+      type: QueryTypes.SELECT
+    }
+  );
+
+  return rows.map(row => ({
+    day: String(row.day).slice(0, 10),
+    total: numberValue(row.total),
+    scheduled: numberValue(row.scheduled),
+    awaitingResponse: numberValue(row.awaitingResponse),
+    confirmed: numberValue(row.confirmed),
+    cancelled: numberValue(row.cancelled)
+  }));
+};
+
 export const listQuarkDashboardAppointments = async (
   filters: DashboardFilters
 ) => {
@@ -293,18 +343,7 @@ export const listQuarkDashboardAppointments = async (
     Math.max(10, Math.floor(filters.pageSize || 25))
   );
   const offset = (page - 1) * pageSize;
-  const filterClauses = [
-    filters.status ? allowedStatuses[filters.status] : undefined,
-    filters.messageStatus
-      ? allowedMessageStatuses[filters.messageStatus]
-      : undefined,
-    filters.responseStatus
-      ? allowedResponseStatuses[filters.responseStatus]
-      : undefined
-  ].filter(Boolean);
-  const filterClause = filterClauses.length
-    ? ` AND ${filterClauses.join(" AND ")}`
-    : "";
+  const filterClause = appointmentFilterClause(filters);
   const replacements = {
     fromDateTime: range.fromDateTime,
     toDateTime: range.toDateTime,

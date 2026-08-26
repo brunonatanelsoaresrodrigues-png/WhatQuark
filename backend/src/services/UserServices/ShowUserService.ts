@@ -11,6 +11,7 @@ const ShowUserService = async (id: string | number): Promise<User> => {
       "email",
       "profile",
       "canAccessQuarkClinic",
+      "canViewOtherAgentsTickets",
       "tokenVersion",
       "whatsappId"
     ],

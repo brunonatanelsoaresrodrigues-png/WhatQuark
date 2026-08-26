@@ -50,6 +50,10 @@ class QuarkAppointmentNotification extends Model<QuarkAppointmentNotification> {
 
   @AllowNull
   @Column(DataType.DATE)
+  priorityAt: Date | null;
+
+  @AllowNull
+  @Column(DataType.DATE)
   processingStartedAt: Date | null;
 
   @AllowNull

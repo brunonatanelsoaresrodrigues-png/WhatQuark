@@ -24,6 +24,11 @@ quarkDashboardRoutes.get(
   isAuth,
   QuarkDashboardController.appointments
 );
+quarkDashboardRoutes.get(
+  "/quark/dashboard/calendar-days",
+  isAuth,
+  QuarkDashboardController.calendarDays
+);
 quarkDashboardRoutes.post(
   "/quark/dashboard/appointments/:appointmentId/reminder",
   isAuth,

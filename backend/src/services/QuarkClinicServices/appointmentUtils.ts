@@ -214,12 +214,16 @@ export const parseConfirmationReply = (
   const numeric = normalized.match(/^([12])(?:\D|$)/);
   if (numeric) return { choice: Number(numeric[1]) as 1 | 2 };
 
-  const textual = normalized.match(/^(sim|nao)(?:[\s,:;-]+(\d+))?(?:\b|$)/);
+  const textual = normalized.match(
+    /^(sim|nao|confirmo|comfirmo|confirmar(?: consulta)?|cancelar(?: consulta)?)(?:[\s,:;-]+(\d+))?(?:\b|$)/
+  );
   if (!textual) return null;
 
   const option = textual[2] ? Number(textual[2]) : undefined;
   return {
-    choice: textual[1] === "sim" ? 1 : 2,
+    choice: ["nao", "cancelar", "cancelar consulta"].includes(textual[1])
+      ? 2
+      : 1,
     appointmentOption:
       option && Number.isSafeInteger(option) && option > 0 ? option : undefined
   };

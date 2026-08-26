@@ -153,7 +153,7 @@ const reducer = (state, action) => {
 };
 
 	const TicketsList = (props) => {
-		const { status, searchParam, showAll, selectedQueueIds, updateCount, style } =
+		const { status, searchParam, showAll, assignee, selectedQueueIds, updateCount, style } =
 			props;
 	const classes = useStyles();
 	const [pageNumber, setPageNumber] = useState(1);
@@ -163,13 +163,14 @@ const reducer = (state, action) => {
 	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
-	}, [status, searchParam, dispatch, showAll, selectedQueueIds]);
+	}, [status, searchParam, dispatch, showAll, assignee, selectedQueueIds]);
 
 	const { tickets, hasMore, loading } = useTickets({
 		pageNumber,
 		searchParam,
 		status,
 		showAll,
+		assignee,
 		queueIds: JSON.stringify(selectedQueueIds),
 	});
 
@@ -184,12 +185,23 @@ const reducer = (state, action) => {
 	useEffect(() => {
 		const socket = openSocket();
 
-		const shouldUpdateTicket = ticket => !searchParam &&
-			(!ticket.userId || ticket.userId === user?.id || showAll) &&
+		const matchesAssignee = ticket => {
+			if (assignee === "all") return true;
+			if (assignee === "unassigned") return !ticket.userId;
+			if (assignee && assignee.startsWith("user:")) {
+				return ticket.userId === Number(assignee.split(":")[1]);
+			}
+			if (assignee === "me") return ticket.userId === user?.id;
+
+			return !ticket.userId || ticket.userId === user?.id || showAll;
+		};
+
+		const matchesFilters = ticket =>
+			(!status || ticket.status === status) &&
+			matchesAssignee(ticket) &&
 			(!ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
 
-		const notBelongsToUserQueues = ticket =>
-			ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
+		const shouldUpdateTicket = ticket => !searchParam && matchesFilters(ticket);
 
 		socket.on("connect", () => {
 			if (status) {
@@ -214,7 +226,7 @@ const reducer = (state, action) => {
 				});
 			}
 
-			if (data.action === "update" && notBelongsToUserQueues(data.ticket)) {
+			if (data.action === "update" && !searchParam && !matchesFilters(data.ticket)) {
 				dispatch({ type: "DELETE_TICKET", payload: data.ticket.id });
 			}
 
@@ -244,7 +256,7 @@ const reducer = (state, action) => {
 		return () => {
 			socket.disconnect();
 		};
-	}, [status, searchParam, showAll, user, selectedQueueIds]);
+	}, [status, searchParam, showAll, assignee, user, selectedQueueIds]);
 
 	useEffect(() => {
     if (typeof updateCount === "function") {

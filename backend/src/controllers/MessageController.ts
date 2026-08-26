@@ -14,6 +14,7 @@ import { logger } from "../utils/logger";
 
 type IndexQuery = {
   pageNumber: string;
+  beforeMessageId?: string;
 };
 
 type MessageData = {
@@ -25,10 +26,11 @@ type MessageData = {
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
-  const { pageNumber } = req.query as IndexQuery;
+  const { pageNumber, beforeMessageId } = req.query as IndexQuery;
 
   const { count, messages, ticket, hasMore } = await ListMessagesService({
     pageNumber,
+    beforeMessageId,
     ticketId
   });
 

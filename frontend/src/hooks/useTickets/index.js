@@ -10,6 +10,7 @@ const useTickets = ({
     status,
     date,
     showAll,
+    assignee,
     queueIds,
     withUnreadMessages,
 }) => {
@@ -30,6 +31,7 @@ const useTickets = ({
                             status,
                             date,
                             showAll,
+                            assignee,
                             queueIds,
                             withUnreadMessages,
                         },
@@ -78,6 +80,7 @@ const useTickets = ({
         status,
         date,
         showAll,
+        assignee,
         queueIds,
         withUnreadMessages,
     ])

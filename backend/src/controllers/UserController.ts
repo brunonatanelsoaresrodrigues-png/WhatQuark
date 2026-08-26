@@ -9,6 +9,7 @@ import ListUsersService from "../services/UserServices/ListUsersService";
 import UpdateUserService from "../services/UserServices/UpdateUserService";
 import ShowUserService from "../services/UserServices/ShowUserService";
 import DeleteUserService from "../services/UserServices/DeleteUserService";
+import ListTicketAssigneesService from "../services/UserServices/ListTicketAssigneesService";
 
 type IndexQuery = {
   searchParam: string;
@@ -26,6 +27,15 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
   return res.json({ users, count, hasMore });
 };
 
+export const assignees = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const users = await ListTicketAssigneesService(req.user.id);
+
+  return res.json(users);
+};
+
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const {
     email,
@@ -34,7 +44,8 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     profile,
     queueIds,
     whatsappId,
-    canAccessQuarkClinic
+    canAccessQuarkClinic,
+    canViewOtherAgentsTickets
   } = req.body;
 
   if (
@@ -54,7 +65,9 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     queueIds,
     whatsappId,
     canAccessQuarkClinic:
-      req.url === "/signup" ? false : canAccessQuarkClinic === true
+      req.url === "/signup" ? false : canAccessQuarkClinic === true,
+    canViewOtherAgentsTickets:
+      req.url === "/signup" ? false : canViewOtherAgentsTickets === true
   });
 
   const io = getIO();
