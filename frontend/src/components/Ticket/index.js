@@ -28,18 +28,19 @@ const useStyles = makeStyles((theme) => ({
   },
 
   ticketInfo: {
-    maxWidth: "50%",
-    flexBasis: "50%",
+    minWidth: 0,
+    flex: "1 1 220px",
     [theme.breakpoints.down("sm")]: {
-      maxWidth: "80%",
-      flexBasis: "80%",
+      flexBasis: "calc(100% - 64px)",
     },
   },
   ticketActionButtons: {
-    maxWidth: "50%",
-    flexBasis: "50%",
+    minWidth: 280,
+    maxWidth: "65%",
+    flex: "1 1 480px",
     display: "flex",
     [theme.breakpoints.down("sm")]: {
+      minWidth: 0,
       maxWidth: "100%",
       flexBasis: "100%",
       marginBottom: "5px",

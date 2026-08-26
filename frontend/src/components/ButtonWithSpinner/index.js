@@ -1,4 +1,5 @@
 import React from "react";
+import clsx from "clsx";
 
 import { makeStyles } from "@material-ui/core/styles";
 import { green } from "@material-ui/core/colors";
@@ -19,11 +20,15 @@ const useStyles = makeStyles(theme => ({
 	},
 }));
 
-const ButtonWithSpinner = ({ loading, children, ...rest }) => {
+const ButtonWithSpinner = ({ loading, children, className, ...rest }) => {
 	const classes = useStyles();
 
 	return (
-		<Button className={classes.button} disabled={loading} {...rest}>
+		<Button
+			className={clsx(classes.button, className)}
+			disabled={loading}
+			{...rest}
+		>
 			{children}
 			{loading && (
 				<CircularProgress size={24} className={classes.buttonProgress} />
