@@ -104,13 +104,21 @@ const appointment = () => ({
 
 const appointmentWithinTwoHours = () => {
   const date = new Date(Date.now() + 60 * 60 * 1000);
-  const pad = (value: number) => (value < 10 ? `0${value}` : String(value));
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: config.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const part = (type: string): string =>
+    parts.find(item => item.type === type)?.value || "";
   return {
     ...appointment(),
-    dataAgendamento: `${pad(date.getDate())}-${pad(
-      date.getMonth() + 1
-    )}-${date.getFullYear()}`,
-    horaAgendamento: `${pad(date.getHours())}:${pad(date.getMinutes())}:00`
+    dataAgendamento: `${part("day")}-${part("month")}-${part("year")}`,
+    horaAgendamento: `${part("hour")}:${part("minute")}:00`
   };
 };
 

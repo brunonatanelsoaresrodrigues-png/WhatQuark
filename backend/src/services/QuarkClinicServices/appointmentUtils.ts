@@ -54,7 +54,8 @@ export const normalizeQuarkPhone = (
 
 export const parseQuarkScheduledAt = (
   dateValue?: string,
-  timeValue?: string
+  timeValue?: string,
+  timezone = "America/Sao_Paulo"
 ): Date | null => {
   const dateMatch = (dateValue || "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
   if (!dateMatch) return null;
@@ -66,17 +67,73 @@ export const parseQuarkScheduledAt = (
 
   const [, day, month, year] = dateMatch;
   const [, hour, minute, second = "0"] = timeMatch;
-  const parsed = new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour),
-    Number(minute),
-    Number(second),
-    0
+  const target = {
+    year: Number(year),
+    month: Number(month),
+    day: Number(day),
+    hour: Number(hour),
+    minute: Number(minute),
+    second: Number(second)
+  };
+  const targetAsUtc = Date.UTC(
+    target.year,
+    target.month - 1,
+    target.day,
+    target.hour,
+    target.minute,
+    target.second
+  );
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+  const partsInTimezone = (value: Date) => {
+    const parts = formatter.formatToParts(value);
+    const part = (type: string): number =>
+      Number(parts.find(item => item.type === type)?.value || "0");
+    return {
+      year: part("year"),
+      month: part("month"),
+      day: part("day"),
+      hour: part("hour"),
+      minute: part("minute"),
+      second: part("second")
+    };
+  };
+
+  // Converte o horário de parede informado pelo Quark para um instante UTC,
+  // sem depender do fuso horário configurado no servidor ou na CI.
+  let timestamp = targetAsUtc;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const rendered = partsInTimezone(new Date(timestamp));
+    const renderedAsUtc = Date.UTC(
+      rendered.year,
+      rendered.month - 1,
+      rendered.day,
+      rendered.hour,
+      rendered.minute,
+      rendered.second
+    );
+    const adjustment = targetAsUtc - renderedAsUtc;
+    timestamp += adjustment;
+    if (adjustment === 0) break;
+  }
+
+  const parsed = new Date(timestamp);
+  const rendered = partsInTimezone(parsed);
+  const matchesTarget = Object.keys(target).every(
+    key =>
+      rendered[key as keyof typeof rendered] ===
+      target[key as keyof typeof target]
   );
 
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return Number.isNaN(parsed.getTime()) || !matchesTarget ? null : parsed;
 };
 
 export const selectQuarkPhones = (
@@ -141,7 +198,8 @@ export const buildAppointmentSnapshot = (
 ): AppointmentSnapshot => {
   const scheduledAt = parseQuarkScheduledAt(
     appointment.dataAgendamento,
-    appointment.horaAgendamento
+    appointment.horaAgendamento,
+    config.timezone
   );
   const phones = selectQuarkPhones(appointment, config);
 
@@ -179,15 +237,26 @@ export const buildAppointmentSnapshot = (
 };
 
 export const formatAppointmentDateTime = (
-  scheduledAt: Date | null
+  scheduledAt: Date | null,
+  timezone = "America/Sao_Paulo"
 ): { date: string; time: string } => {
   if (!scheduledAt) return { date: "data a confirmar", time: "" };
-  const pad = (value: number) => (value < 10 ? `0${value}` : String(value));
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  });
+  const parts = formatter.formatToParts(scheduledAt);
+  const part = (type: string): string =>
+    parts.find(item => item.type === type)?.value || "";
+
   return {
-    date: `${pad(scheduledAt.getDate())}/${pad(
-      scheduledAt.getMonth() + 1
-    )}/${scheduledAt.getFullYear()}`,
-    time: `${pad(scheduledAt.getHours())}:${pad(scheduledAt.getMinutes())}`
+    date: `${part("day")}/${part("month")}/${part("year")}`,
+    time: `${part("hour")}:${part("minute")}`
   };
 };
 

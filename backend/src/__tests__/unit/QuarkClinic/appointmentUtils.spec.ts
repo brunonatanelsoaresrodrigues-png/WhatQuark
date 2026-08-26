@@ -85,15 +85,12 @@ describe("QuarkClinic appointment helpers", () => {
   it("combines the Quark date and time without changing the local hour", () => {
     const parsed = parseQuarkScheduledAt(
       "20-08-2026",
-      "2026-08-20T14:35:00.000Z"
+      "2026-08-20T14:35:00.000Z",
+      config.timezone
     );
 
     expect(parsed).not.toBeNull();
-    expect(parsed?.getFullYear()).toBe(2026);
-    expect(parsed?.getMonth()).toBe(7);
-    expect(parsed?.getDate()).toBe(20);
-    expect(parsed?.getHours()).toBe(14);
-    expect(parsed?.getMinutes()).toBe(35);
+    expect(parsed?.toISOString()).toBe("2026-08-20T17:35:00.000Z");
   });
 
   it("accepts numeric choices and the confirmation button label", () => {
