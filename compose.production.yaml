@@ -177,6 +177,12 @@ services:
       - "127.0.0.1:3100:80"
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
     mem_limit: 96m
     memswap_limit: 192m
