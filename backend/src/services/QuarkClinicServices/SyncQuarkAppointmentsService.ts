@@ -1,6 +1,7 @@
 import { hostname } from "os";
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentEvent from "../../models/QuarkAppointmentEvent";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../models/QuarkSyncState";
@@ -36,6 +37,7 @@ const COVERING_NOTIFICATION_STATUSES = [
   "SENT"
 ];
 const COVERAGE_DEAD_LETTER_RETRY_MS = 6 * 60 * 60 * 1000;
+const CANCELLATION_COVERAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const syncWorkerId = `${hostname()}-${process.pid}`.slice(0, 64);
 
 const pad = (value: number): string =>
@@ -602,6 +604,124 @@ const ensureNotificationCoverage = async (
   }
 };
 
+const ensureCancellationNotificationCoverage = async (
+  snapshots: AppointmentSnapshot[]
+): Promise<void> => {
+  const cancelledById = new Map(
+    snapshots
+      .filter(
+        snapshot =>
+          appointmentIsCancelled(snapshot.status) && snapshot.phones.length > 0
+      )
+      .map(snapshot => [snapshot.appointmentId, snapshot])
+  );
+  if (cancelledById.size === 0) return;
+
+  // Patient-requested cancellations already receive an acknowledgement in the
+  // same WhatsApp flow. Only external Quark changes need outbox reconciliation.
+  const events = await QuarkAppointmentEvent.findAll({
+    where: {
+      appointmentId: { [Op.in]: Array.from(cancelledById.keys()) },
+      eventType: "CANCELLED",
+      source: "QUARK_EXTERNAL",
+      occurredAt: {
+        [Op.gte]: new Date(Date.now() - CANCELLATION_COVERAGE_WINDOW_MS)
+      }
+    },
+    attributes: ["appointmentId"]
+  });
+  const candidateIds = Array.from(
+    new Set(events.map(event => event.appointmentId))
+  );
+  if (candidateIds.length === 0) return;
+
+  const notifications = await QuarkAppointmentNotification.findAll({
+    where: {
+      appointmentId: { [Op.in]: candidateIds },
+      eventType: "CANCELLED",
+      status: {
+        [Op.in]: [...COVERING_NOTIFICATION_STATUSES, "DEAD_LETTER"]
+      }
+    },
+    attributes: [
+      "appointmentId",
+      "notificationKey",
+      "status",
+      "lastError",
+      "updatedAt"
+    ]
+  });
+  const covered = new Set(
+    notifications
+      .filter(notification =>
+        COVERING_NOTIFICATION_STATUSES.includes(notification.status)
+      )
+      .map(notification => notification.appointmentId)
+  );
+  const deadLettersByAppointment = new Map<
+    string,
+    QuarkAppointmentNotification[]
+  >();
+  notifications
+    .filter(notification => notification.status === "DEAD_LETTER")
+    .forEach(notification => {
+      const current =
+        deadLettersByAppointment.get(notification.appointmentId) || [];
+      current.push(notification);
+      deadLettersByAppointment.set(notification.appointmentId, current);
+    });
+
+  let queued = 0;
+  let revived = 0;
+  let unresolved = 0;
+  for (const appointmentId of candidateIds) {
+    if (covered.has(appointmentId)) continue;
+    const snapshot = cancelledById.get(appointmentId);
+    if (!snapshot) continue;
+
+    const created = await createOutbox(
+      snapshot,
+      `cancelled:${snapshot.scheduleFingerprint.slice(0, 24)}`,
+      "CANCELLED",
+      cancelledAppointmentMessage(snapshot)
+    );
+    if (created) {
+      queued += 1;
+      continue;
+    }
+
+    const retryable = (
+      deadLettersByAppointment.get(appointmentId) || []
+    ).filter(notification => deadLetterCanBeRetried(notification, Date.now()));
+    if (retryable.length === 0) {
+      unresolved += 1;
+      continue;
+    }
+    for (const notification of retryable) {
+      await notification.update({
+        status: "FAILED_RETRY",
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Requeued by cancellation coverage audit"
+      });
+    }
+    revived += 1;
+  }
+
+  if (queued > 0 || revived > 0 || unresolved > 0) {
+    logger[unresolved > 0 ? "error" : "warn"]({
+      info: "QuarkClinic cancellation notification coverage repaired",
+      externalCancellations: candidateIds.length,
+      alreadyCovered: covered.size,
+      cancellationNoticesQueued: queued,
+      deadLetterAppointmentsRequeued: revived,
+      unresolvedAppointments: unresolved
+    });
+  }
+};
+
 const acquireSyncLock = async (): Promise<QuarkSyncState | undefined> => {
   const now = new Date();
   await QuarkSyncState.findOrCreate({
@@ -669,6 +789,7 @@ export const SyncQuarkAppointmentsService = async (
       await processSnapshots(config, verificationSweep, true);
       count = verificationSweep.length;
     } else {
+      await ensureCancellationNotificationCoverage(firstSweep);
       await ensureNotificationCoverage(config, firstSweep);
     }
 

@@ -354,13 +354,54 @@ export const collectOperationalHealth = async (): Promise<
             SUM(status = 'PENDING') AS pending,
             SUM(status = 'PROCESSING') AS processing,
             SUM(status = 'FAILED_RETRY') AS retrying,
-            SUM(status = 'DEAD_LETTER') AS deadLetter,
+            SUM(
+              n.status = 'DEAD_LETTER'
+              AND (
+                (
+                  n.eventType = 'CANCELLED'
+                  AND EXISTS (
+                    SELECT 1 FROM QuarkAppointments a
+                    WHERE a.appointmentId = n.appointmentId
+                      AND a.status IN ('CANCELADO', 'CANCELADO_VIA_SMS', 'EXCLUIDO')
+                  )
+                  AND EXISTS (
+                    SELECT 1 FROM QuarkAppointmentEvents e
+                    WHERE e.appointmentId = n.appointmentId
+                      AND e.eventType = 'CANCELLED'
+                      AND e.source = 'QUARK_EXTERNAL'
+                      AND e.occurredAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM QuarkAppointmentNotifications x
+                    WHERE x.appointmentId = n.appointmentId
+                      AND x.id <> n.id
+                      AND x.eventType = 'CANCELLED'
+                      AND x.status IN ('PENDING', 'PROCESSING', 'FAILED_RETRY', 'SENT')
+                  )
+                )
+                OR (
+                  n.eventType <> 'CANCELLED'
+                  AND EXISTS (
+                    SELECT 1 FROM QuarkAppointments a
+                    WHERE a.appointmentId = n.appointmentId
+                      AND a.status = 'AGENDADO'
+                      AND a.scheduledAt > NOW()
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM QuarkAppointmentNotifications x
+                    WHERE x.appointmentId = n.appointmentId
+                      AND x.id <> n.id
+                      AND x.status IN ('PENDING', 'PROCESSING', 'FAILED_RETRY', 'SENT')
+                  )
+                )
+              )
+            ) AS deadLetter,
             SUM(status = 'SUPPRESSED') AS suppressed,
             SUM(status = 'SENT' AND sentAt >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) AS sentLastHour,
             SUM(status = 'PROCESSING' AND processingStartedAt < DATE_SUB(NOW(), INTERVAL 10 MINUTE)) AS stuckProcessing,
             MIN(CASE WHEN status IN ('PENDING', 'FAILED_RETRY') THEN createdAt END) AS oldestPendingAt,
             MAX(sentAt) AS lastSentAt
-          FROM QuarkAppointmentNotifications`,
+          FROM QuarkAppointmentNotifications n`,
           { type: QueryTypes.SELECT }
         ),
         sequelize.query<CountRow>(
@@ -377,7 +418,13 @@ export const collectOperationalHealth = async (): Promise<
             ) AS uncoveredUpcoming,
             SUM(
               a.status IN ('CANCELADO', 'CANCELADO_VIA_SMS', 'EXCLUIDO')
-              AND a.lastChangedAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+              AND EXISTS (
+                SELECT 1 FROM QuarkAppointmentEvents e
+                WHERE e.appointmentId = a.appointmentId
+                  AND e.eventType = 'CANCELLED'
+                  AND e.source = 'QUARK_EXTERNAL'
+                  AND e.occurredAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+              )
               AND NOT EXISTS (
                 SELECT 1 FROM QuarkAppointmentNotifications n
                 WHERE n.appointmentId = a.appointmentId

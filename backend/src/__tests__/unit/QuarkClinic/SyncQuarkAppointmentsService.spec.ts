@@ -1,4 +1,5 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
+import QuarkAppointmentEvent from "../../../models/QuarkAppointmentEvent";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../../models/QuarkSyncState";
@@ -14,6 +15,13 @@ jest.mock("../../../models/QuarkAppointment", () => ({
     findAll: jest.fn(),
     findOrCreate: jest.fn(),
     count: jest.fn()
+  }
+}));
+
+jest.mock("../../../models/QuarkAppointmentEvent", () => ({
+  __esModule: true,
+  default: {
+    findAll: jest.fn()
   }
 }));
 
@@ -144,6 +152,7 @@ describe("SyncQuarkAppointmentsService", () => {
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
     (QuarkAppointmentRecipient.update as jest.Mock).mockResolvedValue([0]);
     (QuarkAppointmentNotification.update as jest.Mock).mockResolvedValue([0]);
+    (QuarkAppointmentEvent.findAll as jest.Mock).mockResolvedValue([]);
     (QuarkAppointment.count as jest.Mock).mockResolvedValue(1);
     (QuarkAppointmentNotification.findAll as jest.Mock).mockImplementation(() =>
       (createQuarkNotificationOnce as jest.Mock).mock.calls
@@ -494,6 +503,75 @@ describe("SyncQuarkAppointmentsService", () => {
     (QuarkAppointment.findOrCreate as jest.Mock)
       .mockResolvedValueOnce([{}, true])
       .mockResolvedValueOnce([{}, false]);
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+  });
+
+  it("repairs a recent external cancellation that has no notice", async () => {
+    mockSyncState("ACTIVE");
+    const cancelled = { ...appointment(), statusMarcacao: "CANCELADO" };
+    const currentSnapshot = buildAppointmentSnapshot(cancelled, config);
+    const record = {
+      appointmentId: "42",
+      status: "CANCELADO",
+      phone: currentSnapshot.phone,
+      phones: JSON.stringify(currentSnapshot.phones.map(item => item.phone)),
+      scheduleFingerprint: currentSnapshot.scheduleFingerprint,
+      snapshotFingerprint: currentSnapshot.snapshotFingerprint,
+      baselineImported: true,
+      fingerprintVersion: 3,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      awaitingConfirmation: false,
+      confirmationRequestedAt: null,
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([cancelled]);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([record]);
+    (QuarkAppointmentEvent.findAll as jest.Mock).mockResolvedValue([
+      { appointmentId: "42" }
+    ]);
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([]);
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
+    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
+      "42",
+      expect.stringMatching(/^cancelled:[a-f0-9]{24}:to:[a-f0-9]{16}$/),
+      "CANCELLED",
+      expect.objectContaining({
+        phone: "5511999990000",
+        requestsConfirmation: false
+      }),
+      "PENDING"
+    );
+  });
+
+  it("does not duplicate a patient-requested cancellation acknowledgement", async () => {
+    mockSyncState("ACTIVE");
+    const cancelled = { ...appointment(), statusMarcacao: "CANCELADO" };
+    const currentSnapshot = buildAppointmentSnapshot(cancelled, config);
+    const record = {
+      appointmentId: "42",
+      status: "CANCELADO",
+      phone: currentSnapshot.phone,
+      phones: JSON.stringify(currentSnapshot.phones.map(item => item.phone)),
+      scheduleFingerprint: currentSnapshot.scheduleFingerprint,
+      snapshotFingerprint: currentSnapshot.snapshotFingerprint,
+      baselineImported: true,
+      fingerprintVersion: 3,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      awaitingConfirmation: false,
+      confirmationRequestedAt: null,
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([cancelled]);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([record]);
+    (QuarkAppointmentEvent.findAll as jest.Mock).mockResolvedValue([]);
 
     await SyncQuarkAppointmentsService(config);
 
