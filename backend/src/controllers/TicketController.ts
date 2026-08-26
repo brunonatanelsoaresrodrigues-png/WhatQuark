@@ -11,6 +11,7 @@ import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService
 import formatBody from "../helpers/Mustache";
 import SetTicketWaitingForPatientService from "../services/TicketInactivityServices/SetTicketWaitingForPatientService";
 import EnsureTicketDeletionPermissionService from "../services/TicketServices/EnsureTicketDeletionPermissionService";
+import ResumePatientIntakeService from "../services/PatientIntakeServices/ResumePatientIntakeService";
 
 type IndexQuery = {
   searchParam: string;
@@ -138,6 +139,25 @@ export const setWaitingForPatient = async (
     ticketId,
     waiting,
     userId: Number(req.user.id)
+  });
+
+  return res.status(200).json(ticket);
+};
+
+export const resumePatientIntake = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const { ticketId } = req.params;
+  const ticket = await ResumePatientIntakeService({
+    ticketId,
+    userId: Number(req.user.id)
+  });
+
+  const io = getIO();
+  io.to(ticket.status).to(String(ticket.id)).emit("ticket", {
+    action: "update",
+    ticket
   });
 
   return res.status(200).json(ticket);

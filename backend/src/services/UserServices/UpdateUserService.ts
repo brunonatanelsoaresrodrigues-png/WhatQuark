@@ -12,6 +12,7 @@ interface UserData {
   queueIds?: number[];
   whatsappId?: number;
   canAccessQuarkClinic?: boolean;
+  canAccessQuarkAutomation?: boolean;
   canViewOtherAgentsTickets?: boolean;
 }
 
@@ -26,6 +27,7 @@ interface Response {
   email: string;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canAccessQuarkAutomation: boolean;
   canViewOtherAgentsTickets: boolean;
 }
 
@@ -41,6 +43,7 @@ const UpdateUserService = async ({
     profile: Yup.string(),
     password: Yup.string(),
     canAccessQuarkClinic: Yup.boolean().strict(),
+    canAccessQuarkAutomation: Yup.boolean().strict(),
     canViewOtherAgentsTickets: Yup.boolean().strict()
   });
 
@@ -52,6 +55,7 @@ const UpdateUserService = async ({
     queueIds = [],
     whatsappId,
     canAccessQuarkClinic,
+    canAccessQuarkAutomation,
     canViewOtherAgentsTickets
   } = userData;
 
@@ -62,6 +66,7 @@ const UpdateUserService = async ({
       profile,
       name,
       canAccessQuarkClinic,
+      canAccessQuarkAutomation,
       canViewOtherAgentsTickets
     });
   } catch (err) {
@@ -74,6 +79,7 @@ const UpdateUserService = async ({
     profile,
     name,
     canAccessQuarkClinic,
+    canAccessQuarkAutomation,
     canViewOtherAgentsTickets,
     whatsappId: whatsappId ? whatsappId : null
   });

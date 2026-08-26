@@ -12,6 +12,7 @@ interface Request {
   profile?: string;
   whatsappId?: number;
   canAccessQuarkClinic?: boolean;
+  canAccessQuarkAutomation?: boolean;
   canViewOtherAgentsTickets?: boolean;
 }
 
@@ -21,6 +22,7 @@ interface Response {
   id: number;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canAccessQuarkAutomation: boolean;
   canViewOtherAgentsTickets: boolean;
 }
 
@@ -32,6 +34,7 @@ const CreateUserService = async ({
   profile = "admin",
   whatsappId,
   canAccessQuarkClinic = false,
+  canAccessQuarkAutomation = false,
   canViewOtherAgentsTickets = false
 }: Request): Promise<Response> => {
   const schema = Yup.object().shape({
@@ -52,6 +55,7 @@ const CreateUserService = async ({
       ),
     password: Yup.string().required().min(5),
     canAccessQuarkClinic: Yup.boolean().strict(),
+    canAccessQuarkAutomation: Yup.boolean().strict(),
     canViewOtherAgentsTickets: Yup.boolean().strict()
   });
 
@@ -61,6 +65,7 @@ const CreateUserService = async ({
       password,
       name,
       canAccessQuarkClinic,
+      canAccessQuarkAutomation,
       canViewOtherAgentsTickets
     });
   } catch (err) {
@@ -74,6 +79,7 @@ const CreateUserService = async ({
       name,
       profile,
       canAccessQuarkClinic,
+      canAccessQuarkAutomation,
       canViewOtherAgentsTickets,
       whatsappId: whatsappId ? whatsappId : null
     },

@@ -19,6 +19,12 @@ ticketRoutes.post(
   TicketController.setWaitingForPatient
 );
 
+ticketRoutes.post(
+  "/tickets/:ticketId/intake/resume",
+  isAuth,
+  TicketController.resumePatientIntake
+);
+
 ticketRoutes.delete("/tickets/:ticketId", isAuth, TicketController.remove);
 
 export default ticketRoutes;

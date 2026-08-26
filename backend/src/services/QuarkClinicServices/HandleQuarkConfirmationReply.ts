@@ -9,6 +9,7 @@ import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import {
   formatAppointmentDateTime,
+  confirmationReplyRequiresExactContext,
   normalizeQuarkPhone,
   parseConfirmationReply
 } from "./appointmentUtils";
@@ -33,6 +34,16 @@ interface StoredSnapshot {
 }
 
 const ARRIVAL_ORDER_NOTICE = "Atendimento por ordem de chegada";
+
+const notificationRequestsConfirmation = (
+  notification: QuarkAppointmentNotification
+): boolean => {
+  try {
+    return JSON.parse(notification.payload)?.requestsConfirmation === true;
+  } catch {
+    return false;
+  }
+};
 
 const appointmentDescription = (appointment: QuarkAppointment): string => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
@@ -112,10 +123,11 @@ const HandleQuarkConfirmationReply = async ({
   const sentNotifications = await QuarkAppointmentNotification.findAll({
     where: {
       status: "SENT",
+      sentAt: { [Op.gte]: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
       [Op.or]: [{ ticketId: ticket.id }, { recipientPhone: normalizedPhone }]
     },
     order: [["sentAt", "DESC"]]
-  });
+  }).then(items => items.filter(notificationRequestsConfirmation));
 
   // A short reply such as "sim", "1", "nao" or "2" is only a Quark
   // decision when it answers the exact reminder. This prevents an unrelated
@@ -136,13 +148,17 @@ const HandleQuarkConfirmationReply = async ({
     const contextualMessageIds = new Set(
       [message.quotedMsgId, previousOutbound?.id].filter(Boolean)
     );
-    contextualNotifications = sentNotifications.filter(notification => {
+    const exactContext = sentNotifications.filter(notification => {
       const notificationMessageId = notification.messageId;
       return notificationMessageId
         ? contextualMessageIds.has(notificationMessageId)
         : false;
     });
-    if (contextualNotifications.length === 0) return false;
+    if (exactContext.length > 0) {
+      contextualNotifications = exactContext;
+    } else if (confirmationReplyRequiresExactContext(body)) {
+      return false;
+    }
   }
 
   const recipients = await QuarkAppointmentRecipient.findAll({

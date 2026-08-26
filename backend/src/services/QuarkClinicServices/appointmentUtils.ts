@@ -271,28 +271,70 @@ export interface ConfirmationReply {
   appointmentOption?: number;
 }
 
+export const confirmationReplyRequiresExactContext = (body: string): boolean => {
+  const normalized = body
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  // Respostas curtas tambem aparecem com frequencia em conversas comuns.
+  // Exigimos que elas estejam imediatamente ligadas ao lembrete para evitar
+  // confirmar/cancelar uma consulta quando o paciente respondia ao atendente.
+  return /^(?:1|2|sim|nao)(?: [1-9]\d*)?$/.test(normalized);
+};
+
 export const parseConfirmationReply = (
   body: string
 ): ConfirmationReply | null => {
   const normalized = body
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 
   const numeric = normalized.match(/^([12])(?:\D|$)/);
   if (numeric) return { choice: Number(numeric[1]) as 1 | 2 };
 
-  const textual = normalized.match(
-    /^(sim|nao|confirmo|comfirmo|confirmar(?: consulta)?|cancelar(?: consulta)?)(?:[\s,:;-]+(\d+))?(?:\b|$)/
-  );
-  if (!textual) return null;
+  const optionMatch = normalized.match(/(?:^|\s)(\d+)\s*$/);
+  const decisionText = optionMatch
+    ? normalized.slice(0, optionMatch.index).trim()
+    : normalized;
+  const positivePhrases = new Set([
+    "sim",
+    "sim confirmo",
+    "confirmo",
+    "comfirmo",
+    "confirmar",
+    "confirmar consulta",
+    "pode confirmar",
+    "pode confirmar minha consulta",
+    "eu vou",
+    "vou sim",
+    "estarei presente",
+    "ok eu vou"
+  ]);
+  const negativePhrases = new Set([
+    "nao",
+    "cancelar",
+    "cancelar consulta",
+    "pode cancelar",
+    "pode cancelar minha consulta",
+    "nao vou",
+    "nao poderei ir",
+    "nao poderei comparecer"
+  ]);
+  const positive = positivePhrases.has(decisionText);
+  const negative = negativePhrases.has(decisionText);
+  if (!positive && !negative) return null;
 
-  const option = textual[2] ? Number(textual[2]) : undefined;
+  const option = optionMatch ? Number(optionMatch[1]) : undefined;
   return {
-    choice: ["nao", "cancelar", "cancelar consulta"].includes(textual[1])
-      ? 2
-      : 1,
+    choice: negative ? 2 : 1,
     appointmentOption:
       option && Number.isSafeInteger(option) && option > 0 ? option : undefined
   };

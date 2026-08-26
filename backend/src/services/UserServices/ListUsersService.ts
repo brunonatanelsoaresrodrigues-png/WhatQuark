@@ -41,6 +41,7 @@ const ListUsersService = async ({
       "email",
       "profile",
       "canAccessQuarkClinic",
+      "canAccessQuarkAutomation",
       "canViewOtherAgentsTickets",
       "createdAt"
     ],

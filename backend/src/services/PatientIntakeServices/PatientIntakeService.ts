@@ -626,7 +626,7 @@ const finishBooking = async (
   );
 };
 
-const PatientIntakeService = async (
+const ProcessPatientIntakeMessage = async (
   ticket: Ticket,
   body: string
 ): Promise<PatientIntakeResult> => {
@@ -969,6 +969,34 @@ const PatientIntakeService = async (
   }
 
   return { handled: false, showQueueMenu: false };
+};
+
+// Eventos do provedor podem chegar quase ao mesmo tempo. Sem uma fila por
+// ticket, duas execucoes leem o mesmo estado e enviam o mesmo passo do bot.
+// Esta serializacao nao altera o provedor WhatsApp nem atrasa outras conversas.
+const ticketTurns = new Map<number, Promise<void>>();
+
+const PatientIntakeService = async (
+  ticket: Ticket,
+  body: string
+): Promise<PatientIntakeResult> => {
+  const previousTurn = ticketTurns.get(ticket.id) || Promise.resolve();
+  let releaseTurn: () => void = () => undefined;
+  const currentGate = new Promise<void>(resolve => {
+    releaseTurn = resolve;
+  });
+  const currentTurn = previousTurn.catch(() => undefined).then(() => currentGate);
+  ticketTurns.set(ticket.id, currentTurn);
+
+  await previousTurn.catch(() => undefined);
+  try {
+    return await ProcessPatientIntakeMessage(ticket, body);
+  } finally {
+    releaseTurn();
+    if (ticketTurns.get(ticket.id) === currentTurn) {
+      ticketTurns.delete(ticket.id);
+    }
+  }
 };
 
 export default PatientIntakeService;

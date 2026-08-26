@@ -84,6 +84,7 @@ const UserModal = ({ open, onClose, userId }) => {
 		password: "",
 		profile: "user",
 		canAccessQuarkClinic: false,
+		canAccessQuarkAutomation: false,
 		canViewOtherAgentsTickets: false
 	};
 
@@ -307,7 +308,28 @@ const UserModal = ({ open, onClose, userId }) => {
 													color="primary"
 												/>
 											}
-											label="Permitir acesso ao Quark Clinic e à Automação Quark"
+											label="Permitir acesso ao Quark Clinic"
+										/>
+									)}
+								/>
+								<Can
+									role={loggedInUser.profile}
+									perform="user-modal:editQuarkClinicAccess"
+									yes={() => (
+										<FormControlLabel
+											control={
+												<Switch
+													checked={Boolean(values.canAccessQuarkAutomation)}
+													onChange={event =>
+														setFieldValue(
+															"canAccessQuarkAutomation",
+															event.target.checked
+														)
+													}
+													color="primary"
+												/>
+											}
+											label="Permitir acesso à Automação Quark"
 										/>
 									)}
 								/>

@@ -9,6 +9,7 @@ let io: SocketIO;
 
 export const initIO = (httpServer: Server): SocketIO => {
   io = new SocketIO(httpServer, {
+    maxHttpBufferSize: Number(process.env.SOCKET_MAX_BUFFER_BYTES || 1000000),
     cors: {
       origin: process.env.FRONTEND_URL
     }

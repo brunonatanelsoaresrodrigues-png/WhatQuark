@@ -199,8 +199,14 @@ const QuarkDashboardContent = ({ canManage }) => {
     status: "",
     messageStatus: "",
     responseStatus: "",
+    professional: "",
+    search: "",
   });
   const [page, setPage] = useState(0);
+  const [textFilters, setTextFilters] = useState({
+    professional: "",
+    search: "",
+  });
   const [pageSize, setPageSize] = useState(25);
   const [viewMode, setViewMode] = useState(() =>
     window.localStorage.getItem("quarkAppointmentsView") === "table"
@@ -251,6 +257,8 @@ const QuarkDashboardContent = ({ canManage }) => {
               status: filters.status || undefined,
               messageStatus: filters.messageStatus || undefined,
               responseStatus: filters.responseStatus || undefined,
+              professional: filters.professional || undefined,
+              search: filters.search || undefined,
               page: page + 1,
               pageSize,
             },
@@ -261,6 +269,8 @@ const QuarkDashboardContent = ({ canManage }) => {
               status: filters.status || undefined,
               messageStatus: filters.messageStatus || undefined,
               responseStatus: filters.responseStatus || undefined,
+              professional: filters.professional || undefined,
+              search: filters.search || undefined,
             },
           }),
         ]);
@@ -276,7 +286,9 @@ const QuarkDashboardContent = ({ canManage }) => {
     }
   }, [
     filters.messageStatus,
+    filters.professional,
     filters.responseStatus,
+    filters.search,
     filters.status,
     page,
     pageSize,
@@ -297,6 +309,8 @@ const QuarkDashboardContent = ({ canManage }) => {
           status: filters.status || undefined,
           messageStatus: filters.messageStatus || undefined,
           responseStatus: filters.responseStatus || undefined,
+          professional: filters.professional || undefined,
+          search: filters.search || undefined,
           page: dayPage + 1,
           pageSize: dayPageSize,
         },
@@ -317,7 +331,9 @@ const QuarkDashboardContent = ({ canManage }) => {
     dayPage,
     dayPageSize,
     filters.messageStatus,
+    filters.professional,
     filters.responseStatus,
+    filters.search,
     filters.status,
     selectedDay,
     viewMode,
@@ -366,6 +382,19 @@ const QuarkDashboardContent = ({ canManage }) => {
       if (name === "to" && value < current.from) next.from = value;
       return next;
     });
+  };
+
+  const applyTextFilter = (name) => {
+    setPage(0);
+    setFilters((current) => ({
+      ...current,
+      [name]: textFilters[name].trim(),
+    }));
+  };
+
+  const handleTextFilterKeyDown = (event) => {
+    if (event.key !== "Enter") return;
+    applyTextFilter(event.target.name);
   };
 
   const changeViewMode = (mode) => {
@@ -626,6 +655,38 @@ const QuarkDashboardContent = ({ canManage }) => {
               value={filters.from}
               onChange={changeFilter}
               InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="Buscar paciente, telefone ou consulta"
+              name="search"
+              value={textFilters.search}
+              onChange={(event) =>
+                setTextFilters((current) => ({
+                  ...current,
+                  search: event.target.value,
+                }))
+              }
+              onBlur={() => applyTextFilter("search")}
+              onKeyDown={handleTextFilterKeyDown}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="Filtrar por profissional"
+              name="professional"
+              value={textFilters.professional}
+              onChange={(event) =>
+                setTextFilters((current) => ({
+                  ...current,
+                  professional: event.target.value,
+                }))
+              }
+              onBlur={() => applyTextFilter("professional")}
+              onKeyDown={handleTextFilterKeyDown}
             />
           </Grid>
           <Grid item xs={12} sm={4} md={2}>
@@ -966,7 +1027,7 @@ const QuarkDashboard = () => {
   const { user } = useContext(AuthContext);
   const canManage = user?.profile === "admin";
 
-  if (!canManage && !user?.canAccessQuarkClinic) {
+  if (!canManage && !user?.canAccessQuarkAutomation) {
     return <Redirect to="/tickets" />;
   }
 

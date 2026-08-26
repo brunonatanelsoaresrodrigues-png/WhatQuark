@@ -19,6 +19,7 @@ import QuestionAnswerOutlinedIcon from "@material-ui/icons/QuestionAnswerOutline
 import AssessmentOutlinedIcon from "@material-ui/icons/AssessmentOutlined";
 import LocalHospitalOutlinedIcon from "@material-ui/icons/LocalHospitalOutlined";
 import InsertChartOutlinedIcon from "@material-ui/icons/InsertChartOutlined";
+import FavoriteBorderIcon from "@material-ui/icons/FavoriteBorder";
 
 import { i18n } from "../translate/i18n";
 import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
@@ -176,7 +177,7 @@ const MainListItems = (props) => {
           className={classes.item}
         />
       )}
-      {(user.profile === "admin" || user.canAccessQuarkClinic) && (
+      {(user.profile === "admin" || user.canAccessQuarkAutomation) && (
         <ListItemLink
           to="/quark-dashboard"
           primary="Automação Quark"
@@ -197,6 +198,12 @@ const MainListItems = (props) => {
               to="/daily-reports"
               primary="Relatórios Diários"
               icon={<InsertChartOutlinedIcon />}
+              className={classes.item}
+            />
+            <ListItemLink
+              to="/system-health"
+              primary="Saúde do Sistema"
+              icon={<FavoriteBorderIcon />}
               className={classes.item}
             />
             <ListItemLink

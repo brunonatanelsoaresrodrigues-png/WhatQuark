@@ -19,9 +19,9 @@ describe("EnsureQuarkAutomationAccessService", () => {
     expect(User.findByPk).not.toHaveBeenCalled();
   });
 
-  it("allows a regular user granted Quark Clinic access", async () => {
+  it("allows a regular user granted Quark Automation access", async () => {
     (User.findByPk as jest.Mock).mockResolvedValue({
-      canAccessQuarkClinic: true
+      canAccessQuarkAutomation: true
     });
 
     await expect(
@@ -31,7 +31,7 @@ describe("EnsureQuarkAutomationAccessService", () => {
 
   it("denies a regular user without the permission", async () => {
     (User.findByPk as jest.Mock).mockResolvedValue({
-      canAccessQuarkClinic: false
+      canAccessQuarkAutomation: false
     });
 
     await expect(

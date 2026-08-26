@@ -54,6 +54,10 @@ class User extends Model<User> {
 
   @Default(false)
   @Column
+  canAccessQuarkAutomation: boolean;
+
+  @Default(false)
+  @Column
   canViewOtherAgentsTickets: boolean;
 
   @ForeignKey(() => Whatsapp)

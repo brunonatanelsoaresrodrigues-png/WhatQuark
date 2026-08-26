@@ -18,6 +18,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: whaticket_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      NODE_ENV: test
+      DB_DIALECT: mysql
+      DB_HOST: 127.0.0.1
+      DB_NAME: whaticket_test
+      DB_USER: root
+      DB_PASS: root
+
     strategy:
       matrix:
         node-version: [22.x]
@@ -33,19 +55,20 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm install
+        run: npm ci
 
       - run: npm run build
         working-directory: backend
 
-      - name: Test changed services
-        run: >-
-          npx jest
-          src/__tests__/unit/QuarkClinic
-          src/__tests__/unit/Message
-          src/__tests__/unit/PatientIntake
-          src/__tests__/unit/Ticket
-          src/__tests__/unit/Whatsapp
-          --runInBand
-          --coverage=false
+      - name: Validate database migrations and rollbacks
+        run: |
+          npx sequelize db:migrate
+          npx sequelize db:migrate:undo
+          npx sequelize db:migrate:undo
+          npx sequelize db:migrate:undo
+          npx sequelize db:migrate
+        working-directory: backend
+
+      - name: Run unit test suite
+        run: npx jest src/__tests__/unit --runInBand --coverage=false
         working-directory: backend

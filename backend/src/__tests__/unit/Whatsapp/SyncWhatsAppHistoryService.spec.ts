@@ -1,5 +1,9 @@
 import Message from "../../../models/Message";
-import { buildHistoryCursors } from "../../../services/WhatsappService/SyncWhatsAppHistoryService";
+import WhatsappHistorySyncJob from "../../../models/WhatsappHistorySyncJob";
+import {
+  buildHistoryCursors,
+  GetWhatsAppHistorySyncStatusService
+} from "../../../services/WhatsappService/SyncWhatsAppHistoryService";
 
 jest.mock("../../../libs/socket", () => ({
   getIO: jest.fn(() => ({ emit: jest.fn() }))
@@ -15,6 +19,10 @@ jest.mock("../../../models/Ticket", () => ({
 jest.mock("../../../models/Contact", () => ({
   __esModule: true,
   default: {}
+}));
+jest.mock("../../../models/WhatsappHistorySyncJob", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn(), upsert: jest.fn() }
 }));
 jest.mock("../../../providers/WhatsApp", () => ({
   whatsappProvider: { syncHistory: jest.fn() }
@@ -79,5 +87,35 @@ describe("SyncWhatsAppHistoryService", () => {
         oldestMessageTimestampMs: new Date("2026-08-24T11:00:00.000Z").getTime()
       }
     ]);
+  });
+
+  it("persists an interrupted job as failed so it can be restarted safely", async () => {
+    (WhatsappHistorySyncJob.findOne as jest.Mock).mockResolvedValue({
+      status: "running",
+      totalChats: 10,
+      processedChats: 4,
+      importedMessages: 30,
+      duplicateMessages: 2,
+      failedMessages: 0,
+      failedChats: 0,
+      limitedChats: 0,
+      startedAt: new Date("2026-08-24T10:00:00.000Z"),
+      finishedAt: null,
+      error: null
+    });
+    (WhatsappHistorySyncJob.upsert as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await GetWhatsAppHistorySyncStatusService(999);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        processedChats: 4,
+        error: "ERR_HISTORY_SYNC_INTERRUPTED_RESTART_REQUIRED"
+      })
+    );
+    expect(WhatsappHistorySyncJob.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ whatsappId: 999, status: "failed" })
+    );
   });
 });

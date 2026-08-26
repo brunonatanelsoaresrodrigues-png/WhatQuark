@@ -9,6 +9,7 @@ import {
 } from "../../providers/WhatsApp/types";
 import { logger } from "../../utils/logger";
 import ShowWhatsAppService from "./ShowWhatsAppService";
+import WhatsappHistorySyncJob from "../../models/WhatsappHistorySyncJob";
 
 export interface WhatsAppHistorySyncStatus extends HistorySyncProgress {
   whatsappId: number;
@@ -20,6 +21,8 @@ export interface WhatsAppHistorySyncStatus extends HistorySyncProgress {
 }
 
 const jobs = new Map<number, WhatsAppHistorySyncStatus>();
+const persistenceTails = new Map<number, Promise<void>>();
+const lastProgressPersistedAt = new Map<number, number>();
 
 const emptyStatus = (whatsappId: number): WhatsAppHistorySyncStatus => ({
   whatsappId,
@@ -36,9 +39,59 @@ const emptyStatus = (whatsappId: number): WhatsAppHistorySyncStatus => ({
   error: null
 });
 
-const publishStatus = (status: WhatsAppHistorySyncStatus): void => {
+const persistStatus = async (
+  status: WhatsAppHistorySyncStatus
+): Promise<void> => {
+  await WhatsappHistorySyncJob.upsert({
+    whatsappId: status.whatsappId,
+    status: status.status,
+    totalChats: status.totalChats,
+    processedChats: status.processedChats,
+    importedMessages: status.importedMessages,
+    duplicateMessages: status.duplicateMessages,
+    failedMessages: status.failedMessages,
+    failedChats: status.failedChats,
+    limitedChats: status.limitedChats,
+    startedAt: status.startedAt ? new Date(status.startedAt) : null,
+    finishedAt: status.finishedAt ? new Date(status.finishedAt) : null,
+    error: status.error?.slice(0, 512) || null
+  });
+};
+
+const queueStatusPersistence = (
+  status: WhatsAppHistorySyncStatus
+): Promise<void> => {
+  const snapshot = { ...status };
+  const previous = persistenceTails.get(status.whatsappId) || Promise.resolve();
+  const current = previous
+    .catch(() => undefined)
+    .then(() => persistStatus(snapshot))
+    .catch(error =>
+      logger.error({
+        info: "Could not persist WhatsApp history synchronization status",
+        whatsappId: status.whatsappId,
+        err: error
+      })
+    );
+  persistenceTails.set(status.whatsappId, current);
+  return current;
+};
+
+const publishStatus = (
+  status: WhatsAppHistorySyncStatus,
+  forcePersist = false
+): Promise<void> | undefined => {
   jobs.set(status.whatsappId, { ...status });
   getIO().emit("historySync", { ...status });
+  const now = Date.now();
+  if (
+    forcePersist ||
+    now - (lastProgressPersistedAt.get(status.whatsappId) || 0) >= 2000
+  ) {
+    lastProgressPersistedAt.set(status.whatsappId, now);
+    return queueStatusPersistence(status);
+  }
+  return undefined;
 };
 
 const chatIdForContact = (contact: Contact): string => {
@@ -112,7 +165,7 @@ const runHistorySync = async (
       ...initialStatus,
       totalChats: cursors.length
     };
-    publishStatus(runningStatus);
+    await publishStatus(runningStatus, true);
 
     const result = await whatsappProvider.syncHistory(
       whatsappId,
@@ -126,12 +179,15 @@ const runHistorySync = async (
       }
     );
 
-    publishStatus({
-      ...runningStatus,
-      ...result,
-      status: "completed",
-      finishedAt: new Date().toISOString()
-    });
+    await publishStatus(
+      {
+        ...runningStatus,
+        ...result,
+        status: "completed",
+        finishedAt: new Date().toISOString()
+      },
+      true
+    );
   } catch (error) {
     logger.error({
       info: "WhatsApp history synchronization failed",
@@ -139,12 +195,16 @@ const runHistorySync = async (
       err: error
     });
     const latest = jobs.get(whatsappId) || initialStatus;
-    publishStatus({
-      ...latest,
-      status: "failed",
-      finishedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : "ERR_HISTORY_SYNC_FAILED"
-    });
+    await publishStatus(
+      {
+        ...latest,
+        status: "failed",
+        finishedAt: new Date().toISOString(),
+        error:
+          error instanceof Error ? error.message : "ERR_HISTORY_SYNC_FAILED"
+      },
+      true
+    );
   }
 };
 
@@ -159,15 +219,46 @@ export const StartWhatsAppHistorySyncService = async (
     status: "running",
     startedAt: new Date().toISOString()
   };
-  publishStatus(status);
+  await publishStatus(status, true);
   void runHistorySync(whatsappId, status);
   return { ...status };
 };
 
-export const GetWhatsAppHistorySyncStatusService = (
+export const GetWhatsAppHistorySyncStatusService = async (
   whatsappId: number
-): WhatsAppHistorySyncStatus => ({
-  ...(jobs.get(whatsappId) || emptyStatus(whatsappId))
-});
+): Promise<WhatsAppHistorySyncStatus> => {
+  const current = jobs.get(whatsappId);
+  if (current) return { ...current };
+
+  const persisted = await WhatsappHistorySyncJob.findOne({
+    where: { whatsappId }
+  });
+  if (!persisted) return emptyStatus(whatsappId);
+
+  const restored: WhatsAppHistorySyncStatus = {
+    whatsappId,
+    status: persisted.status,
+    totalChats: persisted.totalChats,
+    processedChats: persisted.processedChats,
+    importedMessages: persisted.importedMessages,
+    duplicateMessages: persisted.duplicateMessages,
+    failedMessages: persisted.failedMessages,
+    failedChats: persisted.failedChats,
+    limitedChats: persisted.limitedChats,
+    startedAt: persisted.startedAt?.toISOString() || null,
+    finishedAt: persisted.finishedAt?.toISOString() || null,
+    error: persisted.error
+  };
+
+  if (restored.status === "running") {
+    restored.status = "failed";
+    restored.finishedAt = new Date().toISOString();
+    restored.error = "ERR_HISTORY_SYNC_INTERRUPTED_RESTART_REQUIRED";
+    await publishStatus(restored, true);
+  } else {
+    jobs.set(whatsappId, restored);
+  }
+  return { ...restored };
+};
 
 export { buildHistoryCursors };

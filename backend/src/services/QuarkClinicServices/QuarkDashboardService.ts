@@ -10,6 +10,8 @@ interface DashboardFilters {
   eventType?: string;
   messageStatus?: string;
   responseStatus?: string;
+  professional?: string;
+  search?: string;
 }
 
 interface CountRow {
@@ -283,7 +285,9 @@ const allowedResponseStatuses: Record<string, string> = {
     "NOT EXISTS (SELECT 1 FROM QuarkAppointmentResponses r WHERE r.appointmentId = a.appointmentId AND r.status = 'SUCCESS')"
 };
 
-const appointmentFilterClause = (filters: DashboardFilters): string => {
+const appointmentFilters = (
+  filters: DashboardFilters
+): { clause: string; replacements: Record<string, string> } => {
   const filterClauses = [
     filters.status ? allowedStatuses[filters.status] : undefined,
     filters.messageStatus
@@ -294,14 +298,34 @@ const appointmentFilterClause = (filters: DashboardFilters): string => {
       : undefined
   ].filter(Boolean);
 
-  return filterClauses.length ? ` AND ${filterClauses.join(" AND ")}` : "";
+  const replacements: Record<string, string> = {};
+  const professional = (filters.professional || "").trim().slice(0, 120);
+  const search = (filters.search || "").trim().slice(0, 120);
+  if (professional) {
+    filterClauses.push(
+      "JSON_UNQUOTE(JSON_EXTRACT(a.snapshot, '$.profissionalNome')) LIKE :professional"
+    );
+    replacements.professional = `%${professional}%`;
+  }
+  if (search) {
+    filterClauses.push(
+      "(a.patientName LIKE :search OR a.phone LIKE :search OR a.appointmentId LIKE :search)"
+    );
+    replacements.search = `%${search}%`;
+  }
+
+  return {
+    clause: filterClauses.length ? ` AND ${filterClauses.join(" AND ")}` : "",
+    replacements
+  };
 };
 
 export const getQuarkDashboardCalendarDays = async (
   filters: DashboardFilters
 ) => {
   const range = resolveDateRange(filters);
-  const filterClause = appointmentFilterClause(filters);
+  const { clause: filterClause, replacements: filterReplacements } =
+    appointmentFilters(filters);
   const rows = await sequelize.query<CountRow>(
     `SELECT
       DATE(a.scheduledAt) AS day,
@@ -317,7 +341,8 @@ export const getQuarkDashboardCalendarDays = async (
     {
       replacements: {
         fromDateTime: range.fromDateTime,
-        toDateTime: range.toDateTime
+        toDateTime: range.toDateTime,
+        ...filterReplacements
       },
       type: QueryTypes.SELECT
     }
@@ -343,10 +368,12 @@ export const listQuarkDashboardAppointments = async (
     Math.max(10, Math.floor(filters.pageSize || 25))
   );
   const offset = (page - 1) * pageSize;
-  const filterClause = appointmentFilterClause(filters);
+  const { clause: filterClause, replacements: filterReplacements } =
+    appointmentFilters(filters);
   const replacements = {
     fromDateTime: range.fromDateTime,
     toDateTime: range.toDateTime,
+    ...filterReplacements,
     limit: pageSize,
     offset
   };

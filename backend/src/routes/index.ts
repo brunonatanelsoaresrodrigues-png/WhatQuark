@@ -13,6 +13,7 @@ import quickAnswerRoutes from "./quickAnswerRoutes";
 import apiRoutes from "./apiRoutes";
 import quarkDashboardRoutes from "./quarkDashboardRoutes";
 import dailyReportRoutes from "./dailyReportRoutes";
+import operationalHealthRoutes from "./operationalHealthRoutes";
 
 const routes = Router();
 
@@ -28,6 +29,7 @@ routes.use(queueRoutes);
 routes.use(quickAnswerRoutes);
 routes.use(quarkDashboardRoutes);
 routes.use(dailyReportRoutes);
+routes.use(operationalHealthRoutes);
 routes.use("/api/messages", apiRoutes);
 
 export default routes;

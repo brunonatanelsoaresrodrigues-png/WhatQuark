@@ -45,6 +45,7 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     queueIds,
     whatsappId,
     canAccessQuarkClinic,
+    canAccessQuarkAutomation,
     canViewOtherAgentsTickets
   } = req.body;
 
@@ -66,6 +67,8 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     whatsappId,
     canAccessQuarkClinic:
       req.url === "/signup" ? false : canAccessQuarkClinic === true,
+    canAccessQuarkAutomation:
+      req.url === "/signup" ? false : canAccessQuarkAutomation === true,
     canViewOtherAgentsTickets:
       req.url === "/signup" ? false : canViewOtherAgentsTickets === true
   });

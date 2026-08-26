@@ -80,4 +80,20 @@ describe("User", () => {
 
     expect(updatedUser).toHaveProperty("canAccessQuarkClinic", true);
   });
+
+  it("should update Quark Automation without granting Quark Clinic", async () => {
+    const newUser = await CreateUserService({
+      name: faker.name.findName(),
+      email: faker.internet.email(),
+      password: faker.internet.password()
+    });
+
+    const updatedUser = await UpdateUserService({
+      userId: newUser.id,
+      userData: { canAccessQuarkAutomation: true }
+    });
+
+    expect(updatedUser).toHaveProperty("canAccessQuarkClinic", false);
+    expect(updatedUser).toHaveProperty("canAccessQuarkAutomation", true);
+  });
 });

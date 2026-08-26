@@ -246,7 +246,8 @@ const Users = () => {
               <TableCell align="center">
                 {i18n.t("users.table.whatsapp")}
               </TableCell>
-              <TableCell align="center">Quark Clinic + Automação</TableCell>
+              <TableCell align="center">Quark Clinic</TableCell>
+              <TableCell align="center">Automação Quark</TableCell>
               <TableCell align="center">
                 {i18n.t("users.table.otherAgents")}
               </TableCell>
@@ -265,6 +266,9 @@ const Users = () => {
                   <TableCell align="center">{user.whatsapp?.name}</TableCell>
                   <TableCell align="center">
                     {user.canAccessQuarkClinic ? "Liberado" : "Bloqueado"}
+                  </TableCell>
+                  <TableCell align="center">
+                    {user.canAccessQuarkAutomation ? "Liberado" : "Bloqueado"}
                   </TableCell>
                   <TableCell align="center">
                     {user.canViewOtherAgentsTickets ? "Liberado" : "Bloqueado"}

@@ -16,6 +16,10 @@ import {
   StartDailyManagementReportWorker,
   StopDailyManagementReportWorker
 } from "./services/DailyReportServices/DailyManagementReportWorker";
+import {
+  StartOperationalHealthWorker,
+  StopOperationalHealthWorker
+} from "./services/OperationalHealthServices/OperationalHealthWorker";
 
 const server = app.listen(process.env.PORT, () => {
   logger.info(`Server started on port: ${process.env.PORT}`);
@@ -27,12 +31,14 @@ StartAllWhatsAppsSessions();
 StartQuarkClinicIntegration();
 StartTicketInactivityWorker();
 StartDailyManagementReportWorker();
+StartOperationalHealthWorker();
 gracefulShutdown(server, {
   timeout: 30000,
   onShutdown: async signal => {
     logger.info({ info: "Graceful shutdown started", signal });
     await StopTicketInactivityWorker();
     await StopDailyManagementReportWorker();
+    await StopOperationalHealthWorker();
     await StopQuarkClinicIntegration();
     await whatsappProvider.shutdown();
     await closeRedis();

@@ -205,4 +205,26 @@ describe("QuarkDashboardService", () => {
     expect(sql).not.toContain("DROP TABLE");
     expect(sql).not.toContain("UNKNOWN");
   });
+
+  it("binds professional and patient search filters without raw SQL", async () => {
+    (sequelize.query as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ total: "0" }]);
+
+    await listQuarkDashboardAppointments({
+      professional: "ASDRUBAL' OR 1=1 --",
+      search: "Ana Clara%"
+    });
+    const [sql, options] = (sequelize.query as jest.Mock).mock.calls[0];
+
+    expect(sql).toContain("profissionalNome");
+    expect(sql).toContain("a.patientName LIKE :search");
+    expect(sql).not.toContain("ASDRUBAL' OR 1=1 --");
+    expect(options.replacements).toEqual(
+      expect.objectContaining({
+        professional: "%ASDRUBAL' OR 1=1 --%",
+        search: "%Ana Clara%%"
+      })
+    );
+  });
 });

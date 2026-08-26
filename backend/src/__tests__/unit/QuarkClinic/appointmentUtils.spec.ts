@@ -1,5 +1,6 @@
 import {
   buildAppointmentSnapshot,
+  confirmationReplyRequiresExactContext,
   normalizeQuarkPhone,
   parseConfirmationChoice,
   parseConfirmationReply,
@@ -118,6 +119,18 @@ describe("QuarkClinic appointment helpers", () => {
     });
     expect(parseConfirmationReply("acho que sim")).toBeNull();
     expect(parseConfirmationReply("talvez não")).toBeNull();
+    expect(parseConfirmationReply("sim, mas quero remarcar")).toBeNull();
+    expect(parseConfirmationReply("não sei")).toBeNull();
+    expect(parseConfirmationReply("Ok 👍 eu vou")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("Pode confirmar minha consulta")).toEqual({
+      choice: 1
+    });
+    expect(parseConfirmationReply("Não poderei ir")).toEqual({ choice: 2 });
+    expect(confirmationReplyRequiresExactContext("1")).toBe(true);
+    expect(confirmationReplyRequiresExactContext("SIM")).toBe(true);
+    expect(confirmationReplyRequiresExactContext("NAO")).toBe(true);
+    expect(confirmationReplyRequiresExactContext("Sim, confirmo")).toBe(false);
+    expect(confirmationReplyRequiresExactContext("Ok eu vou")).toBe(false);
   });
 
   it("changes the schedule fingerprint when an old appointment is moved", () => {

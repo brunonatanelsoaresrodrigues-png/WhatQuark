@@ -37,6 +37,11 @@ const filtersFrom = (req: Request) => ({
     typeof req.query.responseStatus === "string"
       ? req.query.responseStatus
       : undefined,
+  professional:
+    typeof req.query.professional === "string"
+      ? req.query.professional
+      : undefined,
+  search: typeof req.query.search === "string" ? req.query.search : undefined,
   page: typeof req.query.page === "string" ? Number(req.query.page) : undefined,
   pageSize:
     typeof req.query.pageSize === "string"

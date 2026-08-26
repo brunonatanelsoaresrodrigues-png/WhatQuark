@@ -3,7 +3,7 @@ import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
 import { Chip, IconButton } from "@material-ui/core";
-import { HourglassEmpty, MoreVert, Replay, TimerOff } from "@material-ui/icons";
+import { HourglassEmpty, MoreVert, PlayArrow, Replay, TimerOff } from "@material-ui/icons";
 import { toast } from "react-toastify";
 
 import { i18n } from "../../translate/i18n";
@@ -99,6 +99,18 @@ const TicketActionButtons = ({ ticket }) => {
 		}
 	};
 
+	const handleResumePatientIntake = async () => {
+		setLoading(true);
+		try {
+			await api.post(`/tickets/${ticket.id}/intake/resume`);
+			toast.success("Automação retomada e menu enviado ao paciente.");
+		} catch (err) {
+			toastError(err);
+		} finally {
+			setLoading(false);
+		}
+	};
+
 	return (
 		<div className={classes.actionButtons}>
 			{ticket.status === "closed" && ticket.closedByInactivity && (
@@ -121,6 +133,17 @@ const TicketActionButtons = ({ ticket }) => {
 			)}
 			{ticket.status === "open" && (
 				<>
+					{ticket.intakeStatus === "PAUSED_HUMAN" && (
+						<ButtonWithSpinner
+							loading={loading}
+							startIcon={<PlayArrow />}
+							size="small"
+							variant="outlined"
+							onClick={handleResumePatientIntake}
+						>
+							Retomar bot
+						</ButtonWithSpinner>
+					)}
 					<ButtonWithSpinner
 						loading={loading}
 						startIcon={

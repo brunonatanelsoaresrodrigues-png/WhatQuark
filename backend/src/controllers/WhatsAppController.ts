@@ -83,7 +83,9 @@ export const historySyncStatus = async (
   }
   const whatsappId = Number(req.params.whatsappId);
   await ShowWhatsAppService(whatsappId);
-  return res.status(200).json(GetWhatsAppHistorySyncStatusService(whatsappId));
+  return res
+    .status(200)
+    .json(await GetWhatsAppHistorySyncStatusService(whatsappId));
 };
 
 export const syncHistory = async (

@@ -158,7 +158,10 @@ describe("HandleQuarkConfirmationReply", () => {
   it("confirms from the ticket that received the reminder even when the old phone mapping is inactive", async () => {
     const pending = appointment(10, 9);
     (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([
-      { appointmentId: "10" }
+      {
+        appointmentId: "10",
+        payload: JSON.stringify({ requestsConfirmation: true })
+      }
     ]);
     (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
 
@@ -186,6 +189,7 @@ describe("HandleQuarkConfirmationReply", () => {
         id: 99,
         appointmentId: "10",
         messageId: "reminder-10",
+        payload: JSON.stringify({ requestsConfirmation: true }),
         sentAt: new Date()
       }
     ]);
@@ -225,6 +229,7 @@ describe("HandleQuarkConfirmationReply", () => {
         id: 99,
         appointmentId: "10",
         messageId: "reminder-10",
+        payload: JSON.stringify({ requestsConfirmation: true }),
         sentAt: new Date()
       }
     ]);
@@ -247,6 +252,40 @@ describe("HandleQuarkConfirmationReply", () => {
     expect(QuarkAppointment.findAll).not.toHaveBeenCalled();
     expect(confirmQuarkAppointment).not.toHaveBeenCalled();
     expect(cancelQuarkAppointment).not.toHaveBeenCalled();
+  });
+
+  it("accepts an explicit attendance phrase when a valid reminder exists in the ticket", async () => {
+    const pending = appointment(10, 9);
+    (QuarkAppointmentNotification.findAll as jest.Mock).mockResolvedValue([
+      {
+        id: 99,
+        appointmentId: "10",
+        messageId: "reminder-10",
+        payload: JSON.stringify({ requestsConfirmation: true }),
+        sentAt: new Date()
+      }
+    ]);
+    (Message.findOne as jest.Mock).mockResolvedValue({ id: "human-message" });
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
+
+    await expect(
+      HandleQuarkConfirmationReply({
+        body: "Ok, eu vou",
+        phone: "5585988880000",
+        ticket: { id: 321 } as any,
+        whatsappId: 1,
+        message: {
+          id: "patient-reply",
+          quotedMsgId: null,
+          createdAt: new Date()
+        } as any
+      })
+    ).resolves.toBe(true);
+
+    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
+      expect.any(Object),
+      "10"
+    );
   });
 
   it("asks for an appointment number when the phone has multiple pending appointments", async () => {

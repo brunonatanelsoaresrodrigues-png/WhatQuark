@@ -13,10 +13,10 @@ const EnsureQuarkAutomationAccessService = async ({
   if (profile === "admin") return;
 
   const user = await User.findByPk(userId, {
-    attributes: ["canAccessQuarkClinic"]
+    attributes: ["canAccessQuarkAutomation"]
   });
 
-  if (!user?.canAccessQuarkClinic) {
+  if (!user?.canAccessQuarkAutomation) {
     throw new AppError("ERR_NO_PERMISSION", 403);
   }
 };
