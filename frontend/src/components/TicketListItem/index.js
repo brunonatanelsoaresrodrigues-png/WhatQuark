@@ -30,7 +30,7 @@ const useStyles = makeStyles(theme => ({
 	},
 
 	pendingTicket: {
-		cursor: "unset",
+		cursor: "pointer",
 	},
 
 	noTicketsDiv: {
@@ -138,7 +138,7 @@ const TicketListItem = ({ ticket }) => {
 		};
 	}, []);
 
-	const handleAcepptTicket = async id => {
+	const handleAcceptTicket = async id => {
 		setLoading(true);
 		try {
 			await api.put(`/tickets/${id}`, {
@@ -164,8 +164,7 @@ const TicketListItem = ({ ticket }) => {
 			<ListItem
 				dense
 				button
-				onClick={e => {
-					if (ticket.status === "pending") return;
+				onClick={() => {
 					handleSelectTicket(ticket.id);
 				}}
 				selected={ticketId && +ticketId === ticket.id}
@@ -266,7 +265,10 @@ const TicketListItem = ({ ticket }) => {
 						className={classes.acceptButton}
 						size="small"
 						loading={loading}
-						onClick={e => handleAcepptTicket(ticket.id)}
+						onClick={e => {
+							e.stopPropagation();
+							handleAcceptTicket(ticket.id);
+						}}
 					>
 						{i18n.t("ticketsList.buttons.accept")}
 					</ButtonWithSpinner>

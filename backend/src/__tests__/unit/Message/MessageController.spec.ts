@@ -1,4 +1,6 @@
-import { store } from "../../../controllers/MessageController";
+import { index, store } from "../../../controllers/MessageController";
+import SetTicketMessagesAsRead from "../../../helpers/SetTicketMessagesAsRead";
+import ListMessagesService from "../../../services/MessageServices/ListMessagesService";
 import PausePatientIntakeService from "../../../services/PatientIntakeServices/PausePatientIntakeService";
 import ShowTicketService from "../../../services/TicketServices/ShowTicketService";
 import SendWhatsAppMedia from "../../../services/WbotServices/SendWhatsAppMedia";
@@ -83,5 +85,57 @@ describe("MessageController.store", () => {
       sentByUserId: 8,
       origin: "HUMAN"
     });
+  });
+});
+
+describe("MessageController.index", () => {
+  const response = { json: jest.fn() } as any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    response.json.mockReturnValue(response);
+  });
+
+  it("keeps a pending ticket unread while it is only being previewed", async () => {
+    const ticket = { id: 42, status: "pending" } as any;
+    (ListMessagesService as jest.Mock).mockResolvedValue({
+      count: 1,
+      messages: [{ id: "message-1" }],
+      ticket,
+      hasMore: false
+    });
+
+    await index(
+      {
+        params: { ticketId: "42" },
+        query: { pageNumber: "1" }
+      } as any,
+      response
+    );
+
+    expect(SetTicketMessagesAsRead).not.toHaveBeenCalled();
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ ticket, count: 1 })
+    );
+  });
+
+  it("marks messages as read after the ticket has been accepted", async () => {
+    const ticket = { id: 42, status: "open" } as any;
+    (ListMessagesService as jest.Mock).mockResolvedValue({
+      count: 1,
+      messages: [{ id: "message-1" }],
+      ticket,
+      hasMore: false
+    });
+
+    await index(
+      {
+        params: { ticketId: "42" },
+        query: { pageNumber: "1" }
+      } as any,
+      response
+    );
+
+    expect(SetTicketMessagesAsRead).toHaveBeenCalledWith(ticket);
   });
 });

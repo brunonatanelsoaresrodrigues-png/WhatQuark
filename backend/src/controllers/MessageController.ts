@@ -34,7 +34,11 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     ticketId
   });
 
-  SetTicketMessagesAsRead(ticket);
+  // Pending tickets may be previewed before an attendant accepts them. Keep
+  // unread counters and WhatsApp read receipts untouched during that preview.
+  if (ticket.status !== "pending") {
+    SetTicketMessagesAsRead(ticket);
+  }
 
   return res.json({ count, messages, ticket, hasMore });
 };
