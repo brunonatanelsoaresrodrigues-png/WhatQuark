@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# 06:20 UTC = 03:20 America/Sao_Paulo. The backup script verifies checksums
+# and archives the database, public uploads and WhatsApp session state.
+20 6 * * * root WHATICKET_COMPOSE_FILE=compose.yaml /opt/whaticket/backup.sh >> /var/log/whaticket-backup.log 2>&1
