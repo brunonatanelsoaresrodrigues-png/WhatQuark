@@ -61,7 +61,11 @@ const removeIndexIfExists = async (queryInterface: QueryInterface) => {
 export const ensureWppKeysSchema = async (
   queryInterface: QueryInterface
 ): Promise<void> => {
+  // both deletes run before the ALTERs: a table that lived without the unique
+  // index has a row per write, and rebuilding all of that just to throw it
+  // away afterwards is the slow way around
   await dropOversizedKeys(queryInterface);
+  await dropDuplicatedKeys(queryInterface);
 
   await queryInterface.changeColumn(WPP_KEYS_TABLE, "type", {
     type: DataTypes.STRING(WPP_KEYS_TYPE_LENGTH),
@@ -72,8 +76,6 @@ export const ensureWppKeysSchema = async (
     type: DataTypes.STRING(WPP_KEYS_KEY_ID_LENGTH),
     allowNull: false
   });
-
-  await dropDuplicatedKeys(queryInterface);
 
   await removeIndexIfExists(queryInterface);
 
