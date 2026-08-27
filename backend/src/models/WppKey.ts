@@ -23,10 +23,10 @@ class WppKey extends Model<WppKey> {
   @Column
   connectionId: number;
 
-  @Column(DataType.STRING(64))
+  @Column(DataType.TEXT)
   type: string;
 
-  @Column(DataType.STRING(255))
+  @Column(DataType.TEXT)
   keyId: string;
 
   @Column(DataType.TEXT)
