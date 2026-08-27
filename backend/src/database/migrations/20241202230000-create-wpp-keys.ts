@@ -1,5 +1,11 @@
 import { QueryInterface, DataTypes } from "sequelize";
 
+import {
+  ensureWppKeysSchema,
+  WPP_KEYS_KEY_ID_LENGTH,
+  WPP_KEYS_TYPE_LENGTH
+} from "../wppKeys";
+
 module.exports = {
   up: async (queryInterface: QueryInterface) => {
     await queryInterface.createTable("WppKeys", {
@@ -20,11 +26,11 @@ module.exports = {
         onDelete: "CASCADE"
       },
       type: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING(WPP_KEYS_TYPE_LENGTH),
         allowNull: false
       },
       keyId: {
-        type: DataTypes.TEXT,
+        type: DataTypes.STRING(WPP_KEYS_KEY_ID_LENGTH),
         allowNull: false
       },
       value: {
@@ -41,14 +47,7 @@ module.exports = {
       }
     });
 
-    await queryInterface.addIndex(
-      "WppKeys",
-      ["connectionId", "type", "keyId"],
-      {
-        unique: true,
-        name: "wpp_keys_connection_type_key_unique"
-      }
-    );
+    await ensureWppKeysSchema(queryInterface);
   },
 
   down: (queryInterface: QueryInterface) => {

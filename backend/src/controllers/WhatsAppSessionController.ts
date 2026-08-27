@@ -15,6 +15,12 @@ const store = async (req: Request, res: Response): Promise<Response> => {
 
 const update = async (req: Request, res: Response): Promise<Response> => {
   const { whatsappId } = req.params;
+  const currentWhatsapp = await ShowWhatsAppService(whatsappId);
+
+  // a new QR code starts a new pairing, so the credentials and the signal keys
+  // of the previous one have to go with it: kept around they are read back by
+  // the fresh session and keep it from ever connecting
+  await whatsappProvider.resetSession(currentWhatsapp.id);
 
   const { whatsapp } = await UpdateWhatsAppService({
     whatsappId,

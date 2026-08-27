@@ -3,6 +3,7 @@ import { BufferJSON } from "whaileys";
 import WppKey from "../../models/WppKey";
 import { getFromRedis } from "../../libs/redisStore";
 import { logger } from "../../utils/logger";
+import { buildRedisKey, shouldUseRedis } from "./wppKeyStorage";
 
 interface GetKeysRequest {
   connectionId: number;
@@ -10,8 +11,6 @@ interface GetKeysRequest {
   type: string;
   ids: string[];
 }
-
-const REDIS_KEY_TYPES = ["session", "sender-keys", "sender-key-memory"];
 
 const GetWppSessionKeys = async ({
   connectionId,
@@ -21,11 +20,12 @@ const GetWppSessionKeys = async ({
 }: GetKeysRequest): Promise<any> => {
   const data: any = {};
 
-  if (REDIS_KEY_TYPES.includes(type)) {
+  if (shouldUseRedis(type)) {
     await Promise.all(
       ids.map(async id => {
-        const key = `wpp:${connectionId}:${deviceId}:${type}:${id}`;
-        const stored = await getFromRedis(key);
+        const stored = await getFromRedis(
+          buildRedisKey(connectionId, deviceId, type, id)
+        );
 
         if (stored) {
           data[id] = JSON.parse(stored, BufferJSON.reviver);
@@ -44,7 +44,8 @@ const GetWppSessionKeys = async ({
             connectionId,
             type,
             keyId: id
-          }
+          },
+          order: [["id", "DESC"]]
         });
 
         if (keyRecord) {
