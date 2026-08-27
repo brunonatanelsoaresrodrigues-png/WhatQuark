@@ -12,6 +12,11 @@ import { WhaileysProvider } from "./Implementations/whaileys";
 export interface WhatsappProvider {
   init(whatsapp: Whatsapp): Promise<void>;
   removeSession(whatsappId: number): Promise<void>;
+  /**
+   * Drops everything the current pairing left behind — socket, credentials and
+   * signal keys — so the next `init` starts from a clean slate.
+   */
+  resetSession(whatsappId: number): Promise<void>;
   shutdown(): Promise<void>;
   logout(sessionId: number): Promise<void>;
   sendMessage(
@@ -51,5 +56,13 @@ const providersMap: Record<string, WhatsappProvider> = {
 };
 
 const whatsappProvider = providersMap[provider];
+
+if (!whatsappProvider) {
+  throw new Error(
+    `Unknown WHATSAPP_PROVIDER "${provider}". Supported providers: ${Object.keys(
+      providersMap
+    ).join(", ")}`
+  );
+}
 
 export { whatsappProvider };

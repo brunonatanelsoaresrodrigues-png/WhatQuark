@@ -6,14 +6,43 @@ let redisClient: Redis | null = null;
 
 const REDIS_SESSION_TTL = 604800; // 7 days
 
+const getRedisUrl = (): string | null => {
+  if (process.env.REDIS_URL) return process.env.REDIS_URL;
+
+  const host = process.env.IO_REDIS_SERVER;
+  if (!host) return null;
+
+  const port = process.env.IO_REDIS_PORT || "6379";
+  const password = process.env.IO_REDIS_PASSWORD
+    ? `:${encodeURIComponent(process.env.IO_REDIS_PASSWORD)}@`
+    : "";
+
+  return `redis://${password}${host}:${port}`;
+};
+
+const getRedisDb = (): number => {
+  const db = process.env.REDIS_DB || process.env.IO_REDIS_DB_SESSION || "0";
+
+  return parseInt(db, 10);
+};
+
 export const initRedis = async () => {
-  if (!process.env.REDIS_URL || redisClient) return;
+  const redisUrl = getRedisUrl();
+
+  if (!redisUrl || redisClient) {
+    if (!redisUrl) {
+      logger.warn(
+        "Redis is not configured (REDIS_URL / IO_REDIS_SERVER); WhatsApp signal keys will be stored in the database only"
+      );
+    }
+    return;
+  }
 
   try {
-    redisClient = new Redis(process.env.REDIS_URL, {
+    redisClient = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
       lazyConnect: true,
-      db: parseInt(process.env.REDIS_DB || "0", 10),
+      db: getRedisDb(),
       disableClientInfo: true
     });
 

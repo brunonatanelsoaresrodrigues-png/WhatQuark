@@ -1,8 +1,9 @@
 import { BufferJSON } from "whaileys";
 
 import WppKey from "../../models/WppKey";
-import { setInRedis } from "../../libs/redisStore";
+import { setInRedis, deleteFromRedis } from "../../libs/redisStore";
 import { logger } from "../../utils/logger";
+import { buildRedisKey, shouldUseRedis } from "./wppKeyStorage";
 
 interface StoreKeyRequest {
   connectionId: number;
@@ -12,8 +13,6 @@ interface StoreKeyRequest {
   value: any;
 }
 
-const REDIS_KEY_TYPES = ["session", "sender-keys", "sender-key-memory"];
-
 const StoreWppSessionKeys = async ({
   connectionId,
   deviceId,
@@ -21,21 +20,30 @@ const StoreWppSessionKeys = async ({
   id,
   value
 }: StoreKeyRequest): Promise<void> => {
-  const valueJson = JSON.stringify(value, BufferJSON.replacer);
+  if (shouldUseRedis(type)) {
+    const redisKey = buildRedisKey(connectionId, deviceId, type, id);
 
-  if (REDIS_KEY_TYPES.includes(type)) {
-    const redisKey = `wpp:${connectionId}:${deviceId}:${type}:${id}`;
-    await setInRedis(redisKey, valueJson);
+    if (value === null || value === undefined) {
+      await deleteFromRedis(redisKey);
+      return;
+    }
+
+    await setInRedis(redisKey, JSON.stringify(value, BufferJSON.replacer));
 
     return;
   }
 
   try {
+    if (value === null || value === undefined) {
+      await WppKey.destroy({ where: { connectionId, type, keyId: id } });
+      return;
+    }
+
     await WppKey.upsert({
       connectionId,
       type,
       keyId: id,
-      value: valueJson
+      value: JSON.stringify(value, BufferJSON.replacer)
     });
   } catch (err) {
     logger.error({

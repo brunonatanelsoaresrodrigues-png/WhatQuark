@@ -34,6 +34,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import NodeCache from "node-cache";
 
 import Whatsapp from "../../../models/Whatsapp";
+import WppKey from "../../../models/WppKey";
 import { getIO } from "../../../libs/socket";
 import { logger } from "../../../utils/logger";
 import AppError from "../../../errors/AppError";
@@ -76,6 +77,26 @@ interface Session extends WASocket {
 const sessions = new Map<number, Session>();
 const stores = new Map<number, Store>();
 const inFlightMessageHandlers = new Set<Promise<void>>();
+
+const MAX_RECONNECT_RETRIES = 5;
+const RECONNECT_DELAY_MS = 3000;
+
+/**
+ * Closes that reconnecting cannot fix: the credentials are gone, refused or
+ * broken, so the connection has to be paired again from a new QR code.
+ * 405 is not in DisconnectReason but is what WhatsApp answers to a client it
+ * refuses to authorize.
+ */
+const TERMINAL_DISCONNECT_CODES = [
+  DisconnectReason.loggedOut,
+  DisconnectReason.forbidden,
+  DisconnectReason.badSession,
+  DisconnectReason.multideviceMismatch,
+  405
+];
+
+const isTerminalDisconnect = (statusCode?: number): boolean =>
+  statusCode !== undefined && TERMINAL_DISCONNECT_CODES.includes(statusCode);
 
 const msgRetryCounterLRU = new LRUCache<string, number>({
   max: 5000,
@@ -171,6 +192,18 @@ const msgCache = {
 };
 
 const clearSessionKeys = async (sessionId: number): Promise<void> => {
+  try {
+    await WppKey.destroy({ where: { connectionId: sessionId } });
+
+    logger.info({ info: "Cleared database session keys", sessionId });
+  } catch (err) {
+    logger.error({
+      info: "Error clearing database session keys",
+      sessionId,
+      err
+    });
+  }
+
   const client = getRedisClient();
   if (!client) return;
 
@@ -203,27 +236,16 @@ const clearSessionKeys = async (sessionId: number): Promise<void> => {
   }
 };
 
-const assertUnique = (sessionId: number) => {
-  const wbot = sessions.get(sessionId);
-
-  if (wbot) {
-    wbot.ev.removeAllListeners("connection.update");
-    sessions.delete(sessionId);
-    stores.delete(sessionId);
-
-    wbot.end(undefined);
-  }
-};
-
 const saveSessionCreds = async (
   whatsapp: Whatsapp,
   creds: AuthenticationCreds
 ) => {
   try {
+    // only the creds are persisted here: creds.update also fires while the
+    // socket is still pairing or reconnecting, and claiming CONNECTED at that
+    // point closes the QR modal on a session that never opened
     await whatsapp.update({
-      session: JSON.stringify(creds, BufferJSON.replacer),
-      status: "CONNECTED",
-      qrcode: ""
+      session: JSON.stringify(creds, BufferJSON.replacer)
     });
 
     logger.debug({
@@ -244,6 +266,16 @@ const pendingCredsSaves = new Map<
   number,
   { whatsapp: Whatsapp; creds: AuthenticationCreds }
 >();
+
+const discardPendingCredsSave = (sessionId: number): void => {
+  const existingTimer = credsDebounceTimers.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    credsDebounceTimers.delete(sessionId);
+  }
+
+  pendingCredsSaves.delete(sessionId);
+};
 
 const flushPendingCredsSave = async (sessionId: number): Promise<void> => {
   const existingTimer = credsDebounceTimers.get(sessionId);
@@ -834,9 +866,7 @@ const getWbot = (sessionId: number): Session => {
   return wbot;
 };
 
-const removeSession = async (whatsappId: number): Promise<void> => {
-  await flushPendingCredsSave(whatsappId);
-
+const destroySession = async (whatsappId: number): Promise<void> => {
   const wbot = sessions.get(whatsappId);
   if (wbot) {
     wbot.ev.removeAllListeners("connection.update");
@@ -874,9 +904,37 @@ const removeSession = async (whatsappId: number): Promise<void> => {
   stores.delete(whatsappId);
 };
 
+const removeSession = async (whatsappId: number): Promise<void> => {
+  await flushPendingCredsSave(whatsappId);
+
+  await destroySession(whatsappId);
+};
+
+const resetSession = async (whatsappId: number): Promise<void> => {
+  discardPendingCredsSave(whatsappId);
+
+  await destroySession(whatsappId);
+  await clearSessionKeys(whatsappId);
+};
+
+const assertUnique = async (sessionId: number): Promise<void> => {
+  if (!sessions.has(sessionId)) return;
+
+  // the socket being replaced still holds listeners bound to the old creds;
+  // dropping its pending save keeps it from writing them over the row the new
+  // socket is about to own
+  discardPendingCredsSave(sessionId);
+
+  await destroySession(sessionId);
+};
+
 const init = async (whatsapp: Whatsapp): Promise<void> => {
   const sessionId = whatsapp.id;
   const io = getIO();
+
+  // tear the previous socket down first: it would otherwise outlive this call
+  // and race the new one over the same session row
+  await assertUnique(sessionId);
 
   const { state } = await useSessionAuthState(whatsapp);
   const store = makeInMemoryStore({ logger: whaileyLogger });
@@ -904,15 +962,27 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
   if (!waVersionToUse) {
     try {
       const fetchedVersionData = await fetchLatestWaWebVersion({});
-      if (fetchedVersionData?.version) {
-        waVersionToUse = fetchedVersionData.version;
+      waVersionToUse = fetchedVersionData?.version;
+
+      if (fetchedVersionData?.isLatest) {
         logger.info({
           info: "Using latest WA Web version",
-          version: waVersionToUse.join(".")
+          version: waVersionToUse?.join(".")
+        });
+      } else {
+        // WhatsApp rejects outdated web clients, so a silent fallback here is
+        // the reason a session can keep failing to connect
+        logger.warn({
+          info: "Could not fetch the latest WA Web version, using the bundled one",
+          version: waVersionToUse?.join("."),
+          err: fetchedVersionData?.error
         });
       }
     } catch (e) {
-      logger.warn({ info: "Failed to fetch latest WA version, using default" });
+      logger.warn({
+        info: "Failed to fetch latest WA version, using default",
+        err: e
+      });
     }
   }
 
@@ -974,8 +1044,6 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     connOptions.agent = new HttpsProxyAgent(proxyUrl);
     connOptions.fetchAgent = new HttpsProxyAgent(proxyUrl);
   }
-
-  assertUnique(sessionId);
 
   const wbot = makeWASocket(connOptions) as Session;
   wbot.id = sessionId;
@@ -1079,9 +1147,16 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         return;
       }
 
-      if (statusCode === DisconnectReason.loggedOut) {
+      if (isTerminalDisconnect(statusCode)) {
+        // these codes never recover by reconnecting with the same credentials:
+        // the session has to be paired again from a fresh QR code
+        discardPendingCredsSave(sessionId);
+        await destroySession(sessionId);
+        await clearSessionKeys(sessionId);
+
         await whatsapp.update({
           status: "DISCONNECTED",
+          session: "",
           qrcode: "",
           retries: 0
         });
@@ -1094,30 +1169,62 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
           });
         }
 
-        await removeSession(sessionId);
+        logger.warn({
+          info: "Session disconnected, a new QR code is required",
+          sessionId,
+          statusCode,
+          errorMessage
+        });
 
         return;
       }
 
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut; // TODO handle other cases
+      await flushPendingCredsSave(sessionId);
 
-      if (shouldReconnect) {
-        await flushPendingCredsSave(sessionId);
+      // restartRequired is the expected close right after pairing, so it must
+      // not eat into the retry budget
+      const retries =
+        statusCode === DisconnectReason.restartRequired
+          ? 0
+          : (whatsapp.retries || 0) + 1;
 
-        await whatsapp.update({ status: "OPENING" });
-        io.emit("whatsappSession", {
-          action: "update",
-          session: whatsapp
-        });
-        logger.info({
-          info: "Connection closed, reconnecting...",
+      if (retries > MAX_RECONNECT_RETRIES) {
+        await destroySession(sessionId);
+
+        await whatsapp.update({ status: "DISCONNECTED", retries: 0 });
+
+        const updatedWhatsapp = await Whatsapp.findByPk(sessionId);
+        if (updatedWhatsapp) {
+          io.emit("whatsappSession", {
+            action: "update",
+            session: updatedWhatsapp
+          });
+        }
+
+        logger.error({
+          info: "Giving up on reconnecting, session marked as disconnected",
           sessionId,
-          statusCode
+          statusCode,
+          errorMessage
         });
 
-        await sleep(3000);
-        init(whatsapp);
+        return;
       }
+
+      await whatsapp.update({ status: "OPENING", retries });
+      io.emit("whatsappSession", {
+        action: "update",
+        session: whatsapp
+      });
+      logger.info({
+        info: "Connection closed, reconnecting...",
+        sessionId,
+        statusCode,
+        retries
+      });
+
+      await sleep(RECONNECT_DELAY_MS * Math.max(retries, 1));
+      init(whatsapp);
     }
 
     if (connection === "open") {
@@ -1539,6 +1646,7 @@ const fetchChatMessages = async (
 export const WhaileysProvider: WhatsappProvider = {
   init,
   removeSession,
+  resetSession,
   shutdown,
   logout,
   sendMessage,

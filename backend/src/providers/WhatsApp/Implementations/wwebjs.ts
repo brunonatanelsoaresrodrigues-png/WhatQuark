@@ -628,6 +628,9 @@ const shutdown = async (): Promise<void> => {
 export const WhatsappWebJsProvider: WhatsappProvider = {
   init,
   removeSession,
+  // LocalAuth owns the credentials on disk and drops them on the next pairing,
+  // so tearing the client down is all there is to reset here
+  resetSession: removeSession,
   shutdown,
   logout,
   sendMessage,
