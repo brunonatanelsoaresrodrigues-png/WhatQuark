@@ -29,9 +29,14 @@ import GetAppIcon from "@material-ui/icons/GetApp";
 import { toast } from "react-toastify";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+import PageHeading from "../../components/PageHeading";
+import PageSkeleton from "../../components/PageSkeleton";
 
 const useStyles = makeStyles(theme => ({
-  container: { paddingTop: theme.spacing(3), paddingBottom: theme.spacing(4) },
+  container: {
+    padding: theme.spacing(3.5, 4, 4),
+    [theme.breakpoints.down("sm")]: { padding: theme.spacing(2) }
+  },
   header: {
     display: "flex",
     justifyContent: "space-between",
@@ -45,9 +50,9 @@ const useStyles = makeStyles(theme => ({
   statusRow: { display: "flex", gap: theme.spacing(1), flexWrap: "wrap" },
   preview: {
     whiteSpace: "pre-wrap",
-    background: theme.palette.type === "dark" ? "#202020" : "#f5f5f5",
+    background: theme.modeTokens.surfaceMuted,
     padding: theme.spacing(2),
-    borderRadius: 4,
+    borderRadius: 12,
     maxHeight: 520,
     overflow: "auto"
   },
@@ -151,11 +156,7 @@ const DailyReports = () => {
   };
 
   if (loading && !data) {
-    return (
-      <div style={{ display: "grid", placeItems: "center", height: "60vh" }}>
-        <CircularProgress />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   const config = data?.config || {};
@@ -164,18 +165,16 @@ const DailyReports = () => {
 
   return (
     <Container maxWidth="xl" className={classes.container}>
-      <div className={classes.header}>
-        <div>
-          <Typography variant="h5">Relatórios Diários</Typography>
-          <Typography variant="body2" color="textSecondary">
-            Fechamento gerencial agregado, sem dados identificáveis de
-            pacientes.
-          </Typography>
-        </div>
-        <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
-          Atualizar
-        </Button>
-      </div>
+      <PageHeading
+        title="Relatórios diários"
+        eyebrow="Gestão da operação"
+        description="Fechamento gerencial agregado, sem dados identificáveis de pacientes."
+        actions={
+          <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
+            Atualizar
+          </Button>
+        }
+      />
 
       <Grid container spacing={2}>
         <Grid item xs={12} sm={6} md={3}>
@@ -243,6 +242,7 @@ const DailyReports = () => {
         </Typography>
         <form className={classes.form} onSubmit={addRecipient}>
           <TextField
+            id="report-recipient-name"
             className={classes.grow}
             label="Nome do gestor"
             value={name}
@@ -250,6 +250,8 @@ const DailyReports = () => {
             required
           />
           <TextField
+            id="report-recipient-phone"
+            type="tel"
             className={classes.grow}
             label="WhatsApp com DDI e DDD"
             value={phone}

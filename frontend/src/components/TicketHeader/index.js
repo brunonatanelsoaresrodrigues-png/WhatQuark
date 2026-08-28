@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Card, Button } from "@material-ui/core";
+import { Card, IconButton } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import TicketHeaderSkeleton from "../TicketHeaderSkeleton";
 import ArrowBackIos from "@material-ui/icons/ArrowBackIos";
@@ -11,14 +11,24 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     backgroundColor: theme.palette.background.paper,
     flex: "none",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     alignItems: "center",
-    padding: "4px 8px",
-    gap: 4,
-    borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
+    minHeight: 72,
+    padding: "6px 12px",
+    gap: 6,
+    border: 0,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    boxShadow: "none",
     [theme.breakpoints.down("sm")]: {
-      flexWrap: "wrap"
+      flexWrap: "wrap",
+      minHeight: 64,
+      padding: "4px 8px"
     }
+  },
+  backButton: {
+    flexShrink: 0,
+    color: theme.palette.text.secondary,
+    background: theme.modeTokens.surfaceMuted
   }
 }));
 
@@ -35,14 +45,14 @@ const TicketHeader = ({ loading, children }) => {
         <TicketHeaderSkeleton />
       ) : (
         <Card square className={classes.ticketHeader}>
-          <Button
-            color="primary"
+          <IconButton
             aria-label="Voltar à lista de atendimentos"
-            style={{ minWidth: 40 }}
+            size="small"
+            className={classes.backButton}
             onClick={handleBack}
           >
-            <ArrowBackIos />
-          </Button>
+            <ArrowBackIos fontSize="small" />
+          </IconButton>
           {children}
         </Card>
       )}

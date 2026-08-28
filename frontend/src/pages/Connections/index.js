@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import HistorySyncButton from "../../components/HistorySyncButton";
 import React, { useState, useCallback, useContext } from "react";
 import { toast } from "react-toastify";
@@ -45,8 +46,10 @@ import toastError from "../../errors/toastError";
 const useStyles = makeStyles(theme => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
+    padding: 0,
+    overflow: "auto",
+    borderRadius: 14,
+    minHeight: 160,
     ...theme.scrollbarStyles
   },
   customTableCell: {
@@ -323,7 +326,7 @@ const Connections = () => {
         </MainHeaderButtonsWrapper>
       </MainHeader>
       <Paper className={classes.mainPaper} variant="outlined">
-        <Table size="small">
+        <Table size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -351,6 +354,12 @@ const Connections = () => {
               <TableRowSkeleton />
             ) : (
               <>
+                {!whatsApps?.length && (
+                  <TableEmptyState
+                    title="Nenhum canal conectado"
+                    description="Adicione uma conexão para iniciar o atendimento pelo WhatsApp."
+                  />
+                )}
                 {whatsApps?.length > 0 &&
                   whatsApps.map(whatsApp => (
                     <TableRow key={whatsApp.id}>
@@ -375,6 +384,7 @@ const Connections = () => {
                       <TableCell align="center">
                         <IconButton
                           size="small"
+                          aria-label={`Editar ${whatsApp.name}`}
                           onClick={() => handleEditWhatsApp(whatsApp)}
                         >
                           <Edit />
@@ -382,7 +392,8 @@ const Connections = () => {
 
                         <IconButton
                           size="small"
-                          onClick={e => {
+                          aria-label="Excluir conexão"
+                          onClick={() => {
                             handleOpenConfirmationModal("delete", whatsApp.id);
                           }}
                         >

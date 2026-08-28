@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import React, { useState, useEffect, useReducer } from "react";
 import { toast } from "react-toastify";
 import openSocket from "../../services/socket-io";
@@ -77,8 +78,10 @@ const reducer = (state, action) => {
 const useStyles = makeStyles(theme => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
+    padding: 0,
+    overflow: "auto",
+    borderRadius: 14,
+    minHeight: 160,
     ...theme.scrollbarStyles
   }
 }));
@@ -102,6 +105,7 @@ const Users = () => {
   }, [searchParam]);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     const delayDebounceFn = setTimeout(() => {
       const fetchUsers = async () => {
@@ -109,16 +113,22 @@ const Users = () => {
           const { data } = await api.get("/users/", {
             params: { searchParam, pageNumber }
           });
+          if (!active) return;
           dispatch({ type: "LOAD_USERS", payload: data.users });
           setHasMore(data.hasMore);
           setLoading(false);
         } catch (err) {
+          if (!active) return;
+          setLoading(false);
           toastError(err);
         }
       };
       fetchUsers();
     }, 500);
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
   }, [searchParam, pageNumber]);
 
   useEffect(() => {
@@ -209,6 +219,8 @@ const Users = () => {
           <TextField
             placeholder={i18n.t("contacts.searchPlaceholder")}
             type="search"
+            size="small"
+            inputProps={{ "aria-label": "Buscar registros" }}
             value={searchParam}
             onChange={handleSearch}
             InputProps={{
@@ -233,7 +245,7 @@ const Users = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
+        <Table size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">{i18n.t("users.table.name")}</TableCell>
@@ -266,6 +278,7 @@ const Users = () => {
                   <TableCell align="center">
                     <IconButton
                       size="small"
+                      aria-label={`Editar ${user.name}`}
                       onClick={() => handleEditUser(user)}
                     >
                       <EditIcon />
@@ -273,6 +286,7 @@ const Users = () => {
 
                     <IconButton
                       size="small"
+                      aria-label="Excluir registro"
                       onClick={() => {
                         setConfirmModalOpen(true);
                         setDeletingUser(user);
@@ -283,6 +297,9 @@ const Users = () => {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && users.length === 0 && (
+                <TableEmptyState columns={6} />
+              )}
               {loading && <TableRowSkeleton columns={6} />}
             </>
           </TableBody>

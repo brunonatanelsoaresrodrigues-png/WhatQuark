@@ -17,7 +17,7 @@ import ContactModal from "../ContactModal";
 import ContactDrawerSkeleton from "../ContactDrawerSkeleton";
 import MarkdownWrapper from "../MarkdownWrapper";
 
-const drawerWidth = 320;
+const drawerWidth = 376;
 
 const useStyles = makeStyles(theme => ({
   drawer: {
@@ -27,15 +27,13 @@ const useStyles = makeStyles(theme => ({
   drawerPaper: {
     width: drawerWidth,
     display: "flex",
-    borderTop: "1px solid rgba(0, 0, 0, 0.12)",
-    borderRight: "1px solid rgba(0, 0, 0, 0.12)",
-    borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 4
+    maxWidth: "100vw",
+    borderLeft: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper
   },
   header: {
     display: "flex",
-    borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
+    borderBottom: `1px solid ${theme.palette.divider}`,
     backgroundColor: theme.palette.background.default,
     alignItems: "center",
     padding: theme.spacing(0, 1),
@@ -46,7 +44,7 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     backgroundColor: theme.palette.background.default,
     flexDirection: "column",
-    padding: "8px 0px 8px 8px",
+    padding: 16,
     height: "100%",
     overflowY: "scroll",
     ...theme.scrollbarStyles
@@ -54,13 +52,16 @@ const useStyles = makeStyles(theme => ({
 
   contactAvatar: {
     margin: 15,
-    width: 160,
-    height: 160
+    width: 80,
+    height: 80,
+    background: theme.palette.primary.main,
+    color: theme.palette.primary.contrastText
   },
 
   contactHeader: {
     display: "flex",
-    padding: 8,
+    padding: 20,
+    borderRadius: 14,
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
@@ -70,18 +71,29 @@ const useStyles = makeStyles(theme => ({
   },
 
   contactDetails: {
-    marginTop: 8,
-    padding: 8,
+    marginTop: 16,
+    padding: 20,
+    borderRadius: 14,
     display: "flex",
     flexDirection: "column"
   },
   contactExtraInfo: {
     marginTop: 4,
-    padding: 6
+    padding: 12,
+    background: theme.modeTokens.surfaceMuted,
+    border: 0,
+    borderRadius: 10
   }
 }));
 
-const ContactDrawer = ({ open, handleDrawerClose, contact, loading }) => {
+const ContactDrawer = ({
+  open,
+  handleDrawerClose,
+  contact,
+  loading,
+  ticket,
+  context
+}) => {
   const classes = useStyles();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -117,9 +129,11 @@ const ContactDrawer = ({ open, handleDrawerClose, contact, loading }) => {
               alt={contact.name}
               src={contact.profilePicUrl}
               className={classes.contactAvatar}
-            ></Avatar>
+            >
+              {contact.name?.charAt(0)}
+            </Avatar>
 
-            <Typography>{contact.name}</Typography>
+            <Typography variant="h6">{contact.name}</Typography>
             <Typography>
               <Link href={`tel:${contact.number}`}>{contact.number}</Link>
             </Typography>
@@ -131,6 +145,46 @@ const ContactDrawer = ({ open, handleDrawerClose, contact, loading }) => {
               {i18n.t("contactDrawer.buttons.edit")}
             </Button>
           </Paper>
+          {ticket && (
+            <Paper variant="outlined" className={classes.contactDetails}>
+              <Typography variant="subtitle1">Atendimento atual</Typography>
+              <Typography variant="body2" color="textSecondary">
+                Canal · {ticket.whatsapp?.name || "WhatsApp"}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Setor · {ticket.queue?.name || "Sem setor"}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Responsável · {ticket.user?.name || "Aguardando atribuição"}
+              </Typography>
+            </Paper>
+          )}
+          {context && (
+            <Paper variant="outlined" className={classes.contactDetails}>
+              <Typography variant="subtitle1">Próximas consultas</Typography>
+              {context.appointments?.length ? (
+                context.appointments.map(appointment => (
+                  <div
+                    key={appointment.appointmentId}
+                    className={classes.contactExtraInfo}
+                  >
+                    <Typography variant="body2">
+                      {new Date(appointment.scheduledAt).toLocaleString(
+                        "pt-BR"
+                      )}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {appointment.status} · {appointment.reference}
+                    </Typography>
+                  </div>
+                ))
+              ) : (
+                <Typography variant="body2" color="textSecondary">
+                  Nenhuma consulta futura vinculada a este número.
+                </Typography>
+              )}
+            </Paper>
+          )}
           <Paper square variant="outlined" className={classes.contactDetails}>
             <ContactModal
               open={modalOpen}
@@ -140,6 +194,11 @@ const ContactDrawer = ({ open, handleDrawerClose, contact, loading }) => {
             <Typography variant="subtitle1">
               {i18n.t("contactDrawer.extraInfo")}
             </Typography>
+            {!contact?.extraInfo?.length && (
+              <Typography variant="body2" color="textSecondary">
+                Sem informações adicionais cadastradas.
+              </Typography>
+            )}
             {contact?.extraInfo?.map(info => (
               <Paper
                 key={info.id}
@@ -148,7 +207,10 @@ const ContactDrawer = ({ open, handleDrawerClose, contact, loading }) => {
                 className={classes.contactExtraInfo}
               >
                 <InputLabel>{info.name}</InputLabel>
-                <Typography component="div" noWrap style={{ paddingTop: 2 }}>
+                <Typography
+                  component="div"
+                  style={{ paddingTop: 2, overflowWrap: "anywhere" }}
+                >
                   <MarkdownWrapper>{info.value}</MarkdownWrapper>
                 </Typography>
               </Paper>

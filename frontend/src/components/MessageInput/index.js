@@ -27,7 +27,8 @@ import CircularProgress from "@material-ui/core/CircularProgress";
 import { green } from "@material-ui/core/colors";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
 import IconButton from "@material-ui/core/IconButton";
-import MoreVert from "@material-ui/icons/MoreVert";
+import AddIcon from "@material-ui/icons/Add";
+import QuickReplyIcon from "@material-ui/icons/ReplyAll";
 import MoodIcon from "@material-ui/icons/Mood";
 import SendIcon from "@material-ui/icons/Send";
 import ClearIcon from "@material-ui/icons/Clear";
@@ -38,7 +39,6 @@ import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import {
   FormControlLabel,
-  Hidden,
   Menu,
   MenuItem,
   Switch,
@@ -81,7 +81,8 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    borderTop: "1px solid rgba(0, 0, 0, 0.12)",
+    borderTop: `1px solid ${theme.palette.divider}`,
+    boxShadow: "0 -8px 24px rgba(13,41,69,.035)",
     [theme.breakpoints.down("sm")]: {
       position: "relative",
       flexShrink: 0,
@@ -93,29 +94,41 @@ const useStyles = makeStyles(theme => ({
     background: theme.palette.background.paper,
     width: "100%",
     display: "flex",
-    padding: "7px",
-    alignItems: "center"
+    padding: "10px 12px",
+    alignItems: "center",
+    gap: 2,
+    [theme.breakpoints.down("xs")]: { padding: "8px 6px" }
   },
 
   messageInputWrapper: {
-    padding: 6,
-    marginRight: 7,
-    background: theme.palette.background.default,
+    padding: "6px 8px",
+    marginRight: 4,
+    background: theme.modeTokens.surfaceMuted,
     display: "flex",
-    borderRadius: 20,
+    borderRadius: 24,
     flex: 1,
     minWidth: 0,
-    position: "relative"
+    position: "relative",
+    border: `1px solid ${theme.palette.divider}`,
+    transition: "border-color 160ms ease, box-shadow 160ms ease",
+    "&:focus-within": {
+      borderColor: theme.modeTokens.focus,
+      boxShadow: theme.productTokens.shadows.focus
+    }
   },
 
   messageInput: {
-    paddingLeft: 10,
+    padding: "5px 8px",
     flex: 1,
     border: "none"
   },
 
   sendMessageIcons: {
-    color: theme.palette.text.secondary
+    color: theme.palette.text.secondary,
+    "&:hover": {
+      color: theme.palette.primary.main,
+      background: theme.modeTokens.surfaceTint
+    }
   },
 
   uploadInput: {
@@ -129,14 +142,14 @@ const useStyles = makeStyles(theme => ({
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: theme.palette.background.paper,
-    borderTop: "1px solid rgba(0, 0, 0, 0.12)"
+    borderTop: `1px solid ${theme.palette.divider}`
   },
 
   emojiBox: {
     position: "absolute",
     bottom: 63,
     left: 8,
-    zIndex: 5,
+    zIndex: 8,
     maxWidth: "calc(100% - 16px)",
     overflowX: "auto"
   },
@@ -190,8 +203,8 @@ const useStyles = makeStyles(theme => ({
     flex: 1,
     marginRight: 5,
     overflowY: "hidden",
-    backgroundColor: "rgba(0, 0, 0, 0.05)",
-    borderRadius: "7.5px",
+    backgroundColor: theme.modeTokens.surfaceMuted,
+    borderRadius: 10,
     display: "flex",
     position: "relative"
   },
@@ -226,20 +239,28 @@ const useStyles = makeStyles(theme => ({
     position: "absolute",
     bottom: "50px",
     background: theme.palette.background.paper,
-    padding: "2px",
-    border: "1px solid #CCC",
+    padding: theme.spacing(1),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 12,
+    boxShadow: theme.productTokens.shadows.raised,
     left: 0,
     width: "100%",
     "& li": {
       listStyle: "none",
-      "& a": {
+      "& button": {
+        border: 0,
+        width: "100%",
+        textAlign: "left",
+        background: "transparent",
+        color: "inherit",
+        font: "inherit",
         display: "block",
         padding: "8px",
         textOverflow: "ellipsis",
         overflow: "hidden",
         maxHeight: "32px",
         "&:hover": {
-          background: "#F1F1F1",
+          background: theme.modeTokens.surfaceMuted,
           cursor: "pointer"
         }
       }
@@ -254,6 +275,7 @@ const MessageInput = ({
   onDroppedFilesHandled
 }) => {
   const classes = useStyles();
+  const fileInputRef = useRef(null);
   const { ticketId } = useParams();
 
   const [medias, setMedias] = useState([]);
@@ -349,7 +371,9 @@ const MessageInput = ({
       if (result.rejected.length)
         toast.warn(
           `${result.rejected.length} arquivo${
-            result.rejected.length === 1 ? " não foi aceito" : "s não foram aceitos"
+            result.rejected.length === 1
+              ? " não foi aceito"
+              : "s não foram aceitos"
           }: ${result.rejected[0].reason}`
         );
       return result.accepted;
@@ -491,7 +515,11 @@ const MessageInput = ({
       }
       const filename = `${new Date().getTime()}.mp3`;
       const audioFile = new File([blob], filename, { type: "audio/mpeg" });
-      setRecordedAudio({ blob, file: audioFile, url: URL.createObjectURL(blob) });
+      setRecordedAudio({
+        blob,
+        file: audioFile,
+        url: URL.createObjectURL(blob)
+      });
     } catch (err) {
       toastError(err);
     }
@@ -577,7 +605,9 @@ const MessageInput = ({
         progress={uploadProgress}
         onAdd={addMedias}
         onRemove={index =>
-          setMedias(current => current.filter((_, itemIndex) => itemIndex !== index))
+          setMedias(current =>
+            current.filter((_, itemIndex) => itemIndex !== index)
+          )
         }
         onClear={() => setMedias([])}
         onSend={handleUploadMedia}
@@ -607,136 +637,80 @@ const MessageInput = ({
           ticketId={ticketId}
         />
         <div className={classes.newMessageBox}>
-          <Hidden only={["sm", "xs"]}>
-            <IconButton
-              aria-label="Inserir emoji"
-              component="button"
-              disabled={
-                loading || recording || ticketStatus !== "open" || sendBlocked
-              }
-              onClick={() => setShowEmoji(prevState => !prevState)}
-            >
-              <MoodIcon className={classes.sendMessageIcons} />
-            </IconButton>
-
-            <input
-              multiple
-              type="file"
-              id="upload-button"
-              disabled={
-                loading || recording || ticketStatus !== "open" || sendBlocked
-              }
-              className={classes.uploadInput}
-              onChange={handleChangeMedias}
-            />
-            <label htmlFor="upload-button">
+          <input
+            multiple
+            type="file"
+            ref={fileInputRef}
+            className={classes.uploadInput}
+            disabled={
+              loading || recording || ticketStatus !== "open" || sendBlocked
+            }
+            onChange={handleChangeMedias}
+          />
+          <Tooltip title="Anexos e opções">
+            <span>
               <IconButton
-                aria-label="Anexar arquivo"
-                component="span"
+                aria-label="Anexos e opções"
+                aria-controls="composer-menu"
+                aria-haspopup="true"
+                aria-expanded={Boolean(anchorEl)}
+                onClick={handleOpenMenuClick}
                 disabled={
                   loading || recording || ticketStatus !== "open" || sendBlocked
                 }
               >
-                <AttachFileIcon className={classes.sendMessageIcons} />
+                <AddIcon />
               </IconButton>
-            </label>
-            <FormControlLabel
-              style={{ marginRight: 7, color: "gray" }}
-              label={i18n.t("messagesInput.signMessage")}
-              labelPlacement="start"
-              control={
-                <Switch
-                  size="small"
-                  checked={signMessage}
-                  onChange={e => {
-                    setSignMessage(e.target.checked);
-                  }}
-                  name="showAllTickets"
-                  color="primary"
-                />
-              }
-            />
-          </Hidden>
-          <Hidden only={["md", "lg", "xl"]}>
-            <IconButton
-              aria-label="Opções da mensagem"
-              aria-controls="simple-menu"
-              aria-haspopup="true"
-              onClick={handleOpenMenuClick}
+            </span>
+          </Tooltip>
+          <Menu
+            id="composer-menu"
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleMenuItemClick}
+          >
+            <MenuItem
+              onClick={() => {
+                handleMenuItemClick();
+                fileInputRef.current?.click();
+              }}
             >
-              <MoreVert></MoreVert>
-            </IconButton>
-            <Menu
-              id="simple-menu"
-              keepMounted
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuItemClick}
+              <AttachFileIcon fontSize="small" style={{ marginRight: 12 }} />{" "}
+              Anexar arquivo
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                handleMenuItemClick();
+                setShowEmoji(value => !value);
+              }}
             >
-              <MenuItem onClick={handleMenuItemClick}>
-                <IconButton
-                  aria-label="Inserir emoji"
-                  component="button"
-                  disabled={
-                    loading ||
-                    recording ||
-                    ticketStatus !== "open" ||
-                    sendBlocked
-                  }
-                  onClick={() => setShowEmoji(prevState => !prevState)}
-                >
-                  <MoodIcon className={classes.sendMessageIcons} />
-                </IconButton>
-              </MenuItem>
-              <MenuItem onClick={handleMenuItemClick}>
-                <input
-                  multiple
-                  type="file"
-                  id="upload-button-mobile"
-                  disabled={
-                    loading ||
-                    recording ||
-                    ticketStatus !== "open" ||
-                    sendBlocked
-                  }
-                  className={classes.uploadInput}
-                  onChange={handleChangeMedias}
-                />
-                <label htmlFor="upload-button-mobile">
-                  <IconButton
-                    aria-label="Anexar arquivo"
-                    component="span"
-                    disabled={
-                      loading ||
-                      recording ||
-                      ticketStatus !== "open" ||
-                      sendBlocked
-                    }
-                  >
-                    <AttachFileIcon className={classes.sendMessageIcons} />
-                  </IconButton>
-                </label>
-              </MenuItem>
-              <MenuItem onClick={handleMenuItemClick}>
-                <FormControlLabel
-                  style={{ marginRight: 7, color: "gray" }}
-                  label={i18n.t("messagesInput.signMessage")}
-                  labelPlacement="start"
-                  control={
-                    <Switch
-                      size="small"
-                      checked={signMessage}
-                      onChange={e => {
-                        setSignMessage(e.target.checked);
-                      }}
-                      name="showAllTickets"
-                      color="primary"
-                    />
-                  }
-                />
-              </MenuItem>
-            </Menu>
-          </Hidden>
+              <MoodIcon fontSize="small" style={{ marginRight: 12 }} /> Emoji
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                handleMenuItemClick();
+                setInputMessage("/");
+                handleLoadQuickAnswer("/");
+                inputRef.current?.focus();
+              }}
+            >
+              <QuickReplyIcon fontSize="small" style={{ marginRight: 12 }} />{" "}
+              Resposta rápida
+            </MenuItem>
+            <MenuItem>
+              <FormControlLabel
+                label={i18n.t("messagesInput.signMessage")}
+                control={
+                  <Switch
+                    size="small"
+                    checked={signMessage}
+                    onChange={event => setSignMessage(event.target.checked)}
+                    color="primary"
+                  />
+                }
+              />
+            </MenuItem>
+          </Menu>
           <Tooltip title="Figurinhas salvas">
             <span>
               <IconButton
@@ -754,7 +728,10 @@ const MessageInput = ({
               </IconButton>
             </span>
           </Tooltip>
-          <div className={classes.messageInputWrapper}>
+          <div
+            className={classes.messageInputWrapper}
+            style={recording || recordedAudio ? { display: "none" } : undefined}
+          >
             <InputBase
               inputRef={inputRef}
               inputProps={{ "aria-label": "Mensagem para o paciente" }}
@@ -792,9 +769,12 @@ const MessageInput = ({
                       className={classes.messageQuickAnswersWrapperItem}
                       key={index}
                     >
-                      <a onClick={() => handleQuickAnswersClick(value.message)}>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickAnswersClick(value.message)}
+                      >
                         {`${value.shortcut} - ${value.message}`}
-                      </a>
+                      </button>
                     </li>
                   );
                 })}
@@ -834,14 +814,31 @@ const MessageInput = ({
           ) : recordedAudio ? (
             <div className={classes.recorderWrapper}>
               <Tooltip title="Descartar áudio">
-                <IconButton aria-label="Descartar áudio" disabled={loading} onClick={handleCancelAudio}>
+                <IconButton
+                  aria-label="Descartar áudio"
+                  disabled={loading}
+                  onClick={handleCancelAudio}
+                >
                   <HighlightOffIcon className={classes.cancelAudioIcon} />
                 </IconButton>
               </Tooltip>
-              <audio className={classes.audioPreview} src={recordedAudio.url} controls preload="metadata" />
+              <audio
+                className={classes.audioPreview}
+                src={recordedAudio.url}
+                controls
+                preload="metadata"
+              />
               <Tooltip title="Enviar áudio">
-                <IconButton aria-label="Enviar áudio gravado" disabled={loading} onClick={handleUploadAudio}>
-                  {loading ? <CircularProgress size={20} /> : <CheckCircleOutlineIcon className={classes.sendAudioIcon} />}
+                <IconButton
+                  aria-label="Enviar áudio gravado"
+                  disabled={loading}
+                  onClick={handleUploadAudio}
+                >
+                  {loading ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <CheckCircleOutlineIcon className={classes.sendAudioIcon} />
+                  )}
                 </IconButton>
               </Tooltip>
             </div>
@@ -866,7 +863,9 @@ const MessageInput = ({
                       aria-label="Enviar mensagem"
                       component="button"
                       onClick={handleSendMessage}
-                      disabled={loading || sendBlocked || ticketStatus !== "open"}
+                      disabled={
+                        loading || sendBlocked || ticketStatus !== "open"
+                      }
                     >
                       <SendIcon className={classes.sendMessageIcons} />
                     </IconButton>

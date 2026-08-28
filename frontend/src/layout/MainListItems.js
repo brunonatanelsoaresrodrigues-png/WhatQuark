@@ -7,7 +7,7 @@ import ListItemIcon from "@material-ui/core/ListItemIcon";
 import ListItemText from "@material-ui/core/ListItemText";
 import ListSubheader from "@material-ui/core/ListSubheader";
 import Divider from "@material-ui/core/Divider";
-import { Badge } from "@material-ui/core";
+import { Badge, Tooltip } from "@material-ui/core";
 import DashboardOutlinedIcon from "@material-ui/icons/DashboardOutlined";
 import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import SyncAltIcon from "@material-ui/icons/SyncAlt";
@@ -27,49 +27,60 @@ import { Can } from "../components/Can";
 
 const useStyles = makeStyles(theme => ({
   navigation: {
-    padding: theme.spacing(0.5, 1.25, 2)
+    padding: theme.spacing(0.75, 1.25, 2)
+  },
+  compact: {
+    "& .MuiListItemText-root, & .MuiListSubheader-root": { display: "none" },
+    "& .MuiListItemIcon-root": { minWidth: 0 },
+    "& .MuiListItem-root": {
+      justifyContent: "center",
+      paddingLeft: 8,
+      paddingRight: 8
+    }
   },
   item: {
-    minHeight: 42,
+    minHeight: 44,
     margin: theme.spacing(0.35, 0),
-    paddingLeft: theme.spacing(1.5),
-    borderRadius: 8,
-    borderLeft: "3px solid transparent",
-    color: theme.palette.text.secondary,
+    paddingLeft: theme.spacing(1.45),
+    borderRadius: 10,
+    borderLeft: "0",
+    color: "rgba(220,235,246,.7)",
+    transition:
+      "color 160ms ease, background-color 160ms ease, transform 160ms ease",
     "& .MuiListItemIcon-root": {
       minWidth: 38,
       color: "inherit"
     },
     "& .MuiListItemText-primary": {
       fontSize: ".86rem",
-      fontWeight: 650
+      fontWeight: 680
     },
     "&:hover": {
-      color: theme.palette.primary.main,
-      backgroundColor:
-        theme.palette.type === "dark" ? "rgba(54,183,165,.1)" : "#edf8f6"
+      color: "#fff",
+      backgroundColor: "rgba(255,255,255,.07)",
+      transform: "translateX(2px)"
     },
     "&.Mui-selected": {
-      color:
-        theme.palette.type === "dark"
-          ? theme.palette.primary.light
-          : theme.palette.primary.dark,
-      borderLeftColor: theme.palette.primary.main,
-      backgroundColor:
-        theme.palette.type === "dark" ? "rgba(54,183,165,.16)" : "#dff3ef"
+      color: "#fff",
+      background:
+        "linear-gradient(100deg, rgba(54,191,174,.2), rgba(57,120,230,.12))",
+      boxShadow: "inset 3px 0 #36bfae"
     },
     "&.Mui-selected:hover": {
-      backgroundColor:
-        theme.palette.type === "dark" ? "rgba(54,183,165,.2)" : "#d5eee9"
+      background:
+        "linear-gradient(100deg, rgba(54,191,174,.26), rgba(57,120,230,.16))"
     }
   },
-  divider: { margin: theme.spacing(1.25, 0) },
+  divider: {
+    margin: theme.spacing(1.25, 0),
+    backgroundColor: "rgba(255,255,255,.08)"
+  },
   subheader: {
-    color: theme.palette.primary.main,
+    color: "rgba(169,199,219,.55)",
     fontSize: ".68rem",
     fontWeight: 800,
     lineHeight: "32px",
-    letterSpacing: ".08em",
+    letterSpacing: ".11em",
     textTransform: "uppercase"
   }
 }));
@@ -91,23 +102,25 @@ function ListItemLink(props) {
   );
 
   return (
-    <li>
+    <Tooltip title={primary} placement="right" enterDelay={600}>
       <ListItem
         button
         component={renderLink}
         className={className}
         selected={selected}
+        aria-label={primary}
+        aria-current={selected ? "page" : undefined}
       >
         {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
         <ListItemText primary={primary} />
       </ListItem>
-    </li>
+    </Tooltip>
   );
 }
 
 const MainListItems = props => {
   const classes = useStyles();
-  const { drawerClose } = props;
+  const { drawerClose, collapsed } = props;
   const { whatsApps } = useContext(WhatsAppsContext);
   const { user } = useContext(AuthContext);
   const [connectionWarning, setConnectionWarning] = useState(false);
@@ -135,10 +148,14 @@ const MainListItems = props => {
   }, [whatsApps]);
 
   return (
-    <div onClick={drawerClose} className={classes.navigation}>
+    <nav
+      aria-label="Navegação principal"
+      onClick={drawerClose}
+      className={`${classes.navigation} ${collapsed ? classes.compact : ""}`}
+    >
       <ListItemLink
         to="/"
-        primary="Dashboard"
+        primary="Visão geral"
         icon={<DashboardOutlinedIcon />}
         className={classes.item}
       />
@@ -221,7 +238,7 @@ const MainListItems = props => {
           </>
         )}
       />
-    </div>
+    </nav>
   );
 };
 

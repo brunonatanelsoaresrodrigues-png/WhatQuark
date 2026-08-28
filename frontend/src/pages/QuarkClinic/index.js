@@ -11,7 +11,8 @@ import { getQuarkClinicUrl } from "../../config";
 
 const useStyles = makeStyles(theme => ({
   root: {
-    height: "calc(100vh - 48px)",
+    flex: 1,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -21,8 +22,8 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(2),
-    minHeight: 56,
-    padding: theme.spacing(1, 2),
+    minHeight: 84,
+    padding: theme.spacing(2, 3),
     borderRadius: 0,
     borderLeft: 0,
     borderRight: 0,
@@ -103,7 +104,9 @@ const QuarkClinic = () => {
     <div className={classes.root}>
       <Paper className={classes.header} variant="outlined" square>
         <div className={classes.heading}>
-          <Typography variant="h6">Quark Clinic</Typography>
+          <Typography component="h1" variant="h6">
+            Quark Clinic
+          </Typography>
           <Typography variant="body2" className={classes.description}>
             Acesso individual. O login é feito e mantido pelo próprio Quark
             neste navegador.

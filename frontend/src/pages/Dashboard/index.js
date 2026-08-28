@@ -28,21 +28,28 @@ import useWhatsApps from "../../hooks/useWhatsApps";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { i18n } from "../../translate/i18n";
 import Chart from "./Chart";
+import Skeleton from "@material-ui/lab/Skeleton";
 
 const useStyles = makeStyles(theme => ({
   container: {
-    paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(4)
+    width: "100%",
+    maxWidth: 1440,
+    paddingTop: theme.spacing(3.5),
+    paddingBottom: theme.spacing(5),
+    [theme.breakpoints.down("xs")]: { paddingTop: theme.spacing(2) }
   },
   hero: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: theme.spacing(3),
-    padding: theme.spacing(3.5),
+    marginBottom: theme.spacing(3.5),
+    padding: theme.spacing(4.5),
     color: "#fff",
     background:
-      "linear-gradient(118deg, #005f57 0%, #08766c 58%, #20a796 100%)",
+      "linear-gradient(118deg, #0B2742 0%, #0D3458 58%, #11546A 100%)",
     border: 0,
+    borderRadius: 20,
+    boxShadow: "0 22px 60px rgba(11,39,66,.2)",
+    [theme.breakpoints.down("xs")]: { padding: theme.spacing(3, 2.5) },
     "&:before": {
       content: '""',
       position: "absolute",
@@ -51,7 +58,7 @@ const useStyles = makeStyles(theme => ({
       top: -145,
       right: 80,
       borderRadius: "50%",
-      background: "rgba(255,255,255,.09)"
+      background: "rgba(116,164,255,.12)"
     },
     "&:after": {
       content: '""',
@@ -61,7 +68,7 @@ const useStyles = makeStyles(theme => ({
       right: -70,
       bottom: -120,
       borderRadius: "50%",
-      background: "rgba(255,255,255,.08)"
+      background: "rgba(54,191,174,.12)"
     }
   },
   heroContent: {
@@ -76,9 +83,18 @@ const useStyles = makeStyles(theme => ({
     width: 64,
     height: 64,
     flex: "0 0 auto",
-    color: "#08766c",
-    backgroundColor: "#e6f8f4",
-    boxShadow: "0 10px 26px rgba(0,0,0,.13)"
+    color: "#fff",
+    background: "linear-gradient(145deg, #36bfae, #3978e6)",
+    boxShadow: "0 12px 30px rgba(0,0,0,.2)"
+  },
+  eyebrow: {
+    display: "block",
+    marginBottom: theme.spacing(0.8),
+    color: "rgba(190,216,255,.78)",
+    fontSize: ".66rem",
+    fontWeight: 800,
+    letterSpacing: ".12em",
+    textTransform: "uppercase"
   },
   heroTitle: {
     fontWeight: 800,
@@ -92,8 +108,15 @@ const useStyles = makeStyles(theme => ({
   metric: {
     height: "100%",
     minHeight: 132,
-    padding: theme.spacing(2.25),
-    borderTop: "4px solid var(--metric-color)"
+    padding: theme.spacing(2.4),
+    border: `1px solid ${theme.palette.divider}`,
+    borderTop: "1px solid var(--metric-color)",
+    borderRadius: 16,
+    transition: "transform 180ms ease, box-shadow 180ms ease",
+    "&:hover": {
+      transform: "translateY(-2px)",
+      boxShadow: theme.productTokens.shadows.raised
+    }
   },
   metricHeader: {
     display: "flex",
@@ -102,19 +125,22 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1)
   },
   metricIcon: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     color: "var(--metric-color)",
-    backgroundColor: "var(--metric-bg)"
+    backgroundColor: "var(--metric-bg)",
+    borderRadius: 12
   },
   metricValue: {
     marginTop: theme.spacing(1.2),
     fontWeight: 800,
+    letterSpacing: "-.035em",
     color: theme.palette.text.primary
   },
   chartPaper: {
     height: 340,
-    padding: theme.spacing(2.5)
+    padding: theme.spacing(2.75),
+    borderRadius: 16
   },
   chartTitle: {
     marginBottom: theme.spacing(1.5)
@@ -123,7 +149,8 @@ const useStyles = makeStyles(theme => ({
     height: 340,
     padding: theme.spacing(2.5),
     display: "flex",
-    flexDirection: "column"
+    flexDirection: "column",
+    borderRadius: 16
   },
   overviewRow: {
     display: "flex",
@@ -159,7 +186,7 @@ const MetricCard = ({ color, background, icon, label, value }) => {
         </Typography>
         <Avatar className={classes.metricIcon}>{icon}</Avatar>
       </div>
-      <Typography variant="h3" className={classes.metricValue}>
+      <Typography variant="h3" component="p" className={classes.metricValue}>
         {value}
       </Typography>
     </Paper>
@@ -172,25 +199,25 @@ const Dashboard = () => {
   const { user } = useContext(AuthContext);
   const userQueueIds = (user.queues || []).map(queue => queue.id);
   const queueIds = JSON.stringify(userQueueIds);
-  const { count: openCount } = useTickets({
+  const { count: openCount, loading: loadingOpen } = useTickets({
     status: "open",
     showAll: "true",
     withUnreadMessages: "false",
     queueIds
   });
-  const { count: pendingCount } = useTickets({
+  const { count: pendingCount, loading: loadingPending } = useTickets({
     status: "pending",
     showAll: "true",
     withUnreadMessages: "false",
     queueIds
   });
-  const { count: closedCount } = useTickets({
+  const { count: closedCount, loading: loadingClosed } = useTickets({
     status: "closed",
     showAll: "true",
     withUnreadMessages: "false",
     queueIds
   });
-  const { count: unreadCount } = useTickets({
+  const { count: unreadCount, loading: loadingUnread } = useTickets({
     showAll: "true",
     withUnreadMessages: "true",
     queueIds
@@ -215,7 +242,14 @@ const Dashboard = () => {
             <LocalHospitalOutlinedIcon fontSize="large" />
           </Avatar>
           <Box>
-            <Typography variant="h4" className={classes.heroTitle}>
+            <span className={classes.eyebrow}>
+              Central inteligente de atendimento
+            </span>
+            <Typography
+              variant="h4"
+              component="h1"
+              className={classes.heroTitle}
+            >
               Olá, {firstName}! Bem-vindo(a) ao SquadChat.
             </Typography>
             <Typography variant="body1" className={classes.heroText}>
@@ -233,7 +267,7 @@ const Dashboard = () => {
             background="#dff4f0"
             icon={<AssignmentTurnedInOutlinedIcon />}
             label={i18n.t("dashboard.messages.inAttendance.title")}
-            value={openCount}
+            value={loadingOpen ? <Skeleton width={60} /> : openCount}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
@@ -242,7 +276,7 @@ const Dashboard = () => {
             background="#fff3da"
             icon={<HourglassEmptyIcon />}
             label={i18n.t("dashboard.messages.waiting.title")}
-            value={pendingCount}
+            value={loadingPending ? <Skeleton width={60} /> : pendingCount}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
@@ -251,7 +285,7 @@ const Dashboard = () => {
             background="#e4f4e9"
             icon={<CheckCircleOutlineIcon />}
             label={i18n.t("dashboard.messages.closed.title")}
-            value={closedCount}
+            value={loadingClosed ? <Skeleton width={60} /> : closedCount}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
@@ -260,7 +294,7 @@ const Dashboard = () => {
             background="#fbe8eb"
             icon={<MailOutlineIcon />}
             label="Mensagens não lidas"
-            value={unreadCount}
+            value={loadingUnread ? <Skeleton width={60} /> : unreadCount}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
@@ -310,6 +344,7 @@ const Dashboard = () => {
               Proporção de conversas resolvidas no conjunto consultado
             </Typography>
             <LinearProgress
+              aria-label="Proporção de conversas resolvidas"
               variant="determinate"
               value={resolutionRate}
               className={classes.progress}

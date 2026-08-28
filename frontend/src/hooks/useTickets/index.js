@@ -11,16 +11,19 @@ const useTickets = ({
   showAll,
   assignee,
   queueIds,
-  withUnreadMessages
+  withUnreadMessages,
+  refreshKey
 }) => {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [tickets, setTickets] = useState([]);
   const [count, setCount] = useState(0);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError(null);
     const delayDebounceFn = setTimeout(() => {
       const fetchTickets = async () => {
         try {
@@ -44,6 +47,7 @@ const useTickets = ({
           setLoading(false);
         } catch (err) {
           if (!active) return;
+          setError(err);
           setLoading(false);
           toastError(err);
         }
@@ -63,10 +67,11 @@ const useTickets = ({
     showAll,
     assignee,
     queueIds,
-    withUnreadMessages
+    withUnreadMessages,
+    refreshKey
   ]);
 
-  return { tickets, loading, hasMore, count };
+  return { tickets, loading, hasMore, count, error };
 };
 
 export default useTickets;

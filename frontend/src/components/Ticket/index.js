@@ -23,7 +23,8 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     height: "100%",
     position: "relative",
-    overflow: "hidden"
+    overflow: "hidden",
+    background: theme.palette.background.paper
   },
 
   ticketInfo: { flex: "1 1 180px", minWidth: 0 },
@@ -39,9 +40,8 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
-    borderLeft: "0",
+    borderRadius: 0,
+    border: 0,
     marginRight: 0,
     minWidth: 0,
     minHeight: 0,
@@ -62,18 +62,22 @@ const useStyles = makeStyles(theme => ({
   },
   dropOverlay: {
     position: "absolute",
-    inset: 8,
+    inset: 12,
     zIndex: 20,
     pointerEvents: "none",
     border: `3px dashed ${theme.palette.primary.main}`,
-    borderRadius: 14,
-    background: "rgba(255,255,255,.94)",
+    borderRadius: 18,
+    background:
+      theme.palette.type === "dark"
+        ? "rgba(7,19,31,.94)"
+        : "rgba(255,255,255,.94)",
     color: theme.palette.primary.main,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "1.15rem",
-    fontWeight: 600,
+    fontWeight: 750,
+    backdropFilter: "blur(8px)",
     textAlign: "center",
     padding: theme.spacing(3)
   }
@@ -258,6 +262,7 @@ const Ticket = () => {
         />
         <ReplyMessageProvider>
           <MessagesList
+            key={`messages-${ticketId}`}
             ticketId={ticketId}
             isGroup={ticket.isGroup}
           ></MessagesList>
@@ -274,6 +279,8 @@ const Ticket = () => {
         open={drawerOpen}
         handleDrawerClose={handleDrawerClose}
         contact={contact}
+        ticket={ticket}
+        context={context}
         loading={loading}
       />
     </div>

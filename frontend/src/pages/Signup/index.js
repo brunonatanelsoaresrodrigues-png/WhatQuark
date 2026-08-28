@@ -44,14 +44,21 @@ import toastError from "../../errors/toastError";
 
 const useStyles = makeStyles(theme => ({
   paper: {
-    marginTop: theme.spacing(8),
+    marginTop: "clamp(32px, 8vh, 90px)",
+    padding: theme.spacing(4),
+    borderRadius: 18,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper,
+    boxShadow: theme.productTokens.shadows.soft,
     display: "flex",
     flexDirection: "column",
     alignItems: "center"
   },
   avatar: {
     margin: theme.spacing(1),
-    backgroundColor: theme.palette.secondary.main
+    width: 52,
+    height: 52,
+    backgroundColor: "#0C7C72"
   },
   form: {
     width: "100%",
@@ -111,7 +118,7 @@ const SignUp = () => {
             }, 400);
           }}
         >
-          {({ touched, errors, isSubmitting }) => (
+          {({ touched, errors }) => (
             <Form className={classes.form}>
               <Grid container spacing={2}>
                 <Grid item xs={12}>
@@ -158,7 +165,9 @@ const SignUp = () => {
                       endAdornment: (
                         <InputAdornment position="end">
                           <IconButton
-                            aria-label="toggle password visibility"
+                            aria-label={
+                              showPassword ? "Ocultar senha" : "Mostrar senha"
+                            }
                             onClick={() => setShowPassword(e => !e)}
                           >
                             {showPassword ? <VisibilityOff /> : <Visibility />}

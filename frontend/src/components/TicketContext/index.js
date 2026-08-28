@@ -9,13 +9,40 @@ import {
   DialogActions,
   Divider,
   TextField,
-  Typography
+  Typography,
+  makeStyles
 } from "@material-ui/core";
 import InfoOutlined from "@material-ui/icons/InfoOutlined";
 import { toast } from "react-toastify";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+
+const useStyles = makeStyles(theme => ({
+  contextBar: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    minHeight: 42,
+    padding: theme.spacing(0.65, 1.5),
+    gap: theme.spacing(1),
+    background: theme.modeTokens.surfaceMuted,
+    borderBottom: `1px solid ${theme.palette.divider}`
+  },
+  contextCopy: { flex: 1, minWidth: 160 },
+  activeChip: {
+    color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
+    background: theme.modeTokens.surfaceTint,
+    borderColor: "rgba(12,124,114,.24)"
+  },
+  blockedChip: {
+    color: theme.palette.error.main,
+    background:
+      theme.palette.type === "dark" ? "rgba(198,75,85,.12)" : "#FFF0F1",
+    borderColor: "rgba(198,75,85,.24)"
+  }
+}));
 export default function TicketContext({ ticket, context, onRefresh }) {
+  const classes = useStyles();
   const [open, setOpen] = useState(false);
   const [evidence, setEvidence] = useState("");
   const [relationship, setRelationship] = useState("Próprio paciente");
@@ -63,17 +90,11 @@ export default function TicketContext({ ticket, context, onRefresh }) {
     !context || context.paused || ["off", "simulation"].includes(context.mode);
   return (
     <>
-      <Box
-        display="flex"
-        alignItems="center"
-        flexWrap="wrap"
-        px={2}
-        py={0.75}
-        style={{ gap: 8, borderBottom: "1px solid rgba(128,128,128,.18)" }}
-      >
+      <Box className={classes.contextBar}>
         <Chip
           size="small"
           variant="outlined"
+          className={blocked ? classes.blockedChip : classes.activeChip}
           label={
             blocked
               ? "Envios pausados"
@@ -82,7 +103,11 @@ export default function TicketContext({ ticket, context, onRefresh }) {
               : "Assistente ativo"
           }
         />
-        <Typography variant="caption" color="textSecondary" style={{ flex: 1 }}>
+        <Typography
+          variant="caption"
+          color="textSecondary"
+          className={classes.contextCopy}
+        >
           {context
             ? labels[context.preference?.consent || "UNKNOWN"]
             : "Verificando segurança de envio…"}

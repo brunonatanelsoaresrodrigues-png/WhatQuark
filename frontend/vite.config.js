@@ -4,12 +4,12 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [
     react({
-      jsxRuntime: "classic",
-    }),
+      jsxRuntime: "classic"
+    })
   ],
   server: {
     port: 3000,
-    open: true,
+    open: true
   },
   build: {
     outDir: "build",
@@ -20,33 +20,35 @@ export default defineConfig({
           "material-ui": [
             "@material-ui/core",
             "@material-ui/icons",
-            "@material-ui/lab",
-          ],
-        },
-      },
-    },
+            "@material-ui/lab"
+          ]
+        }
+      }
+    }
   },
   envPrefix: "VITE_",
   esbuild: {
     loader: "jsx",
     include: /src\/.*\.[jt]sx?$/,
-    exclude: [],
+    exclude: []
   },
   define: {
-    global: "globalThis",
+    global: "globalThis"
   },
   optimizeDeps: {
+    esbuildOptions: { loader: { ".js": "jsx" } },
     include: [
       "mic-recorder-to-mp3",
+      "howler",
       "@material-ui/core",
       "@material-ui/icons",
-      "@material-ui/lab",
+      "@material-ui/lab"
     ],
-    exclude: [],
+    exclude: []
   },
   resolve: {
     alias: {
-      "jss-plugin-globalThis": "jss-plugin-global",
-    },
-  },
+      "jss-plugin-globalThis": "jss-plugin-global"
+    }
+  }
 });

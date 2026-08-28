@@ -30,13 +30,45 @@ const useStyles = makeStyles(theme => ({
     boxShadow: theme.shadows[8]
   },
   header: { display: "flex", alignItems: "center", gap: theme.spacing(1) },
-  search: { display: "flex", flex: 1, alignItems: "center", padding: "2px 8px", background: theme.palette.background.default, borderRadius: 18 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, maxHeight: 280, overflowY: "auto", marginTop: 12 },
+  search: {
+    display: "flex",
+    flex: 1,
+    alignItems: "center",
+    padding: "2px 8px",
+    background: theme.palette.background.default,
+    borderRadius: 18
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+    maxHeight: 280,
+    overflowY: "auto",
+    marginTop: 12
+  },
   tileWrapper: { position: "relative", minHeight: 78 },
-  tile: { width: "100%", minHeight: 78, border: 0, borderRadius: 9, cursor: "pointer", background: "transparent", padding: 5, "&:hover": { background: theme.palette.action.hover } },
+  tile: {
+    width: "100%",
+    minHeight: 78,
+    border: 0,
+    borderRadius: 9,
+    cursor: "pointer",
+    background: "transparent",
+    padding: 5,
+    "&:hover": { background: theme.palette.action.hover }
+  },
   image: { width: "100%", height: 68, objectFit: "contain" },
-  remove: { position: "absolute", right: 0, top: 0, background: "rgba(255,255,255,.88)" },
-  empty: { gridColumn: "1 / -1", padding: theme.spacing(3), textAlign: "center" }
+  remove: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    background: theme.palette.background.paper
+  },
+  empty: {
+    gridColumn: "1 / -1",
+    padding: theme.spacing(3),
+    textAlign: "center"
+  }
 }));
 
 const StickerTile = ({ sticker, onSend, onDelete, canDelete, sending }) => {
@@ -44,14 +76,34 @@ const StickerTile = ({ sticker, onSend, onDelete, canDelete, sending }) => {
   const { blobUrl, error } = useProtectedMedia(sticker.mediaUrl);
   return (
     <div className={classes.tileWrapper}>
-      <button type="button" className={classes.tile} onClick={() => onSend(sticker)} disabled={sending || !blobUrl} title={sticker.name || "Enviar figurinha"}>
+      <button
+        type="button"
+        className={classes.tile}
+        onClick={() => onSend(sticker)}
+        disabled={sending || !blobUrl}
+        title={sticker.name || "Enviar figurinha"}
+      >
         {!blobUrl && !error && <CircularProgress size={22} />}
         {error && <Typography variant="caption">Indisponível</Typography>}
-        {blobUrl && <img className={classes.image} src={blobUrl} alt={sticker.name || "Figurinha salva"} />}
+        {blobUrl && (
+          <img
+            className={classes.image}
+            src={blobUrl}
+            alt={sticker.name || "Figurinha salva"}
+          />
+        )}
       </button>
       {canDelete && (
         <Tooltip title="Excluir da biblioteca">
-          <IconButton className={classes.remove} size="small" onClick={event => { event.stopPropagation(); onDelete(sticker); }}>
+          <IconButton
+            aria-label={`Excluir figurinha ${sticker.name || "salva"}`}
+            className={classes.remove}
+            size="small"
+            onClick={event => {
+              event.stopPropagation();
+              onDelete(sticker);
+            }}
+          >
             <DeleteOutlineIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -71,38 +123,112 @@ export default function StickerPicker({ open, onClose, ticketId }) {
     if (!open) return;
     let active = true;
     setLoading(true);
-    api.get("/stickers").then(({ data }) => { if (active) setStickers(data.stickers || []); }).catch(toastError).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    api
+      .get("/stickers")
+      .then(({ data }) => {
+        if (active) setStickers(data.stickers || []);
+      })
+      .catch(toastError)
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [open]);
-  const visible = useMemo(() => stickers.filter(sticker => (sticker.name || "").toLowerCase().includes(search.trim().toLowerCase())), [stickers, search]);
+  const visible = useMemo(
+    () =>
+      stickers.filter(sticker =>
+        (sticker.name || "").toLowerCase().includes(search.trim().toLowerCase())
+      ),
+    [stickers, search]
+  );
   const send = async sticker => {
     setSending(true);
     try {
       const key = `sticker-${user?.id || 0}-${sticker.id}-${Date.now()}`;
-      const response = await api.post(`/stickers/${sticker.id}/send/${ticketId}`, {}, { headers: { "Idempotency-Key": key } });
-      if (response.status === 202) toast.info("Figurinha adicionada à fila de envio.");
+      const response = await api.post(
+        `/stickers/${sticker.id}/send/${ticketId}`,
+        {},
+        { headers: { "Idempotency-Key": key } }
+      );
+      if (response.status === 202)
+        toast.info("Figurinha adicionada à fila de envio.");
       onClose();
-    } catch (error) { toastError(error); }
-    finally { setSending(false); }
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setSending(false);
+    }
   };
   const remove = async sticker => {
     try {
       await api.delete(`/stickers/${sticker.id}`);
       setStickers(current => current.filter(item => item.id !== sticker.id));
       toast.success("Figurinha removida da biblioteca.");
-    } catch (error) { toastError(error); }
+    } catch (error) {
+      toastError(error);
+    }
   };
   if (!open) return null;
   return (
-    <Paper className={classes.panel} role="dialog" aria-label="Biblioteca de figurinhas">
+    <Paper
+      className={classes.panel}
+      role="dialog"
+      aria-label="Biblioteca de figurinhas"
+      onKeyDown={event => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
       <div className={classes.header}>
-        <div className={classes.search}><SearchIcon fontSize="small" /><InputBase value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar figurinhas" fullWidth /></div>
-        <IconButton size="small" onClick={onClose} aria-label="Fechar figurinhas"><CloseIcon /></IconButton>
+        <div className={classes.search}>
+          <SearchIcon fontSize="small" />
+          <InputBase
+            autoFocus
+            inputProps={{ "aria-label": "Buscar figurinhas" }}
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Buscar figurinhas"
+            fullWidth
+          />
+        </div>
+        <IconButton
+          size="small"
+          onClick={onClose}
+          aria-label="Fechar figurinhas"
+        >
+          <CloseIcon />
+        </IconButton>
       </div>
       <div className={classes.grid}>
-        {loading && <div className={classes.empty}><CircularProgress size={24} /></div>}
-        {!loading && visible.length === 0 && <Typography className={classes.empty} variant="body2" color="textSecondary">Salve uma figurinha recebida para ela aparecer aqui.</Typography>}
-        {!loading && visible.map(sticker => <StickerTile key={sticker.id} sticker={sticker} sending={sending} onSend={send} onDelete={remove} canDelete={user?.profile === "admin" || sticker.createdByUserId === Number(user?.id)} />)}
+        {loading && (
+          <div className={classes.empty}>
+            <CircularProgress size={24} />
+          </div>
+        )}
+        {!loading && visible.length === 0 && (
+          <Typography
+            className={classes.empty}
+            variant="body2"
+            color="textSecondary"
+          >
+            Salve uma figurinha recebida para ela aparecer aqui.
+          </Typography>
+        )}
+        {!loading &&
+          visible.map(sticker => (
+            <StickerTile
+              key={sticker.id}
+              sticker={sticker}
+              sending={sending}
+              onSend={send}
+              onDelete={remove}
+              canDelete={
+                user?.profile === "admin" ||
+                sticker.createdByUserId === Number(user?.id)
+              }
+            />
+          ))}
       </div>
     </Paper>
   );

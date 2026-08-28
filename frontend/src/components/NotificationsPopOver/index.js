@@ -193,7 +193,8 @@ const NotificationsPopOver = () => {
       <IconButton
         onClick={handleClick}
         ref={anchorEl}
-        aria-label="Open Notifications"
+        aria-label="Abrir notificações"
+        aria-expanded={isOpen}
         className={classes.iconButton}
       >
         <Badge badgeContent={notifications.length} color="secondary">

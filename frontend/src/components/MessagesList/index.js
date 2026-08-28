@@ -23,14 +23,20 @@ import MessageOptionsMenu from "../MessageOptionsMenu";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+import PageSkeleton from "../PageSkeleton";
 
 const useStyles = makeStyles(theme => ({
+  "@keyframes arrive": {
+    from: { opacity: 0, transform: "translateY(3px)" },
+    to: { opacity: 1, transform: "translateY(0)" }
+  },
   messagesListWrapper: {
     overflow: "hidden",
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1
+    flexGrow: 1,
+    background: theme.palette.background.default
   },
 
   messagesList: {
@@ -38,10 +44,10 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     flexDirection: "column",
     flexGrow: 1,
-    padding: "20px 20px 20px 20px",
+    padding: "24px clamp(12px, 3vw, 40px)",
     overflowY: "scroll",
     [theme.breakpoints.down("sm")]: {
-      paddingBottom: "16px"
+      padding: "16px 10px"
     },
     ...theme.scrollbarStyles
   },
@@ -56,14 +62,15 @@ const useStyles = makeStyles(theme => ({
   },
 
   messageLeft: {
+    animation: "$arrive 160ms ease-out",
     marginRight: 20,
-    marginTop: 2,
+    marginTop: 3,
     minWidth: 100,
-    maxWidth: 600,
+    maxWidth: "min(72%, 680px)",
     height: "auto",
     display: "block",
     position: "relative",
-    "&:hover #messageActionsButton": {
+    "&:hover $messageActionsButton, &:focus-within $messageActionsButton": {
       display: "flex",
       position: "absolute",
       top: 0,
@@ -75,14 +82,16 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.primary,
     alignSelf: "flex-start",
     borderTopLeftRadius: 0,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    paddingLeft: 5,
-    paddingRight: 5,
-    paddingTop: 5,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    paddingLeft: 7,
+    paddingRight: 7,
+    paddingTop: 7,
     paddingBottom: 0,
-    boxShadow: "0 1px 2px rgba(0,0,0,.08)"
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.productTokens.shadows.soft,
+    [theme.breakpoints.down("xs")]: { maxWidth: "88%" }
   },
 
   quotedContainerLeft: {
@@ -110,14 +119,15 @@ const useStyles = makeStyles(theme => ({
   },
 
   messageRight: {
+    animation: "$arrive 160ms ease-out",
     marginLeft: 20,
     marginTop: 2,
     minWidth: 100,
-    maxWidth: 600,
+    maxWidth: "min(72%, 680px)",
     height: "auto",
     display: "block",
     position: "relative",
-    "&:hover #messageActionsButton": {
+    "&:hover $messageActionsButton, &:focus-within $messageActionsButton": {
       display: "flex",
       position: "absolute",
       top: 0,
@@ -125,18 +135,20 @@ const useStyles = makeStyles(theme => ({
     },
 
     whiteSpace: "pre-wrap",
-    backgroundColor: theme.palette.type === "dark" ? "#21463d" : "#e0f1eb",
+    backgroundColor: theme.palette.type === "dark" ? "#123A3A" : "#DFF3EE",
     color: theme.palette.text.primary,
     alignSelf: "flex-end",
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 8,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 14,
     borderBottomRightRadius: 0,
-    paddingLeft: 5,
-    paddingRight: 5,
-    paddingTop: 5,
+    paddingLeft: 7,
+    paddingRight: 7,
+    paddingTop: 7,
     paddingBottom: 0,
-    boxShadow: "0 1px 2px rgba(0,0,0,.08)"
+    border: "1px solid rgba(12,124,114,.14)",
+    boxShadow: "0 6px 18px rgba(12,124,114,.08)",
+    [theme.breakpoints.down("xs")]: { maxWidth: "88%" }
   },
 
   quotedContainerRight: {
@@ -162,13 +174,16 @@ const useStyles = makeStyles(theme => ({
   },
 
   messageActionsButton: {
-    display: "none",
-    position: "relative",
+    display: "flex",
+    position: "absolute",
+    right: 0,
+    top: 0,
     color: theme.palette.text.secondary,
     zIndex: 1,
     backgroundColor: "inherit",
-    opacity: "90%",
-    "&:hover, &.Mui-focusVisible": { backgroundColor: "inherit" }
+    opacity: 0.25,
+    "&:hover, &.Mui-focusVisible": { backgroundColor: "inherit", opacity: 1 },
+    "@media (hover: none)": { opacity: 1 }
   },
 
   messageContactName: {
@@ -184,7 +199,7 @@ const useStyles = makeStyles(theme => ({
 
   textContentItemDeleted: {
     fontStyle: "italic",
-    color: "rgba(0, 0, 0, 0.36)",
+    color: theme.palette.text.secondary,
     overflowWrap: "break-word",
     padding: "3px 80px 6px 6px"
   },
@@ -192,6 +207,7 @@ const useStyles = makeStyles(theme => ({
   messageMedia: {
     objectFit: "cover",
     width: 250,
+    maxWidth: "100%",
     height: 200,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
@@ -221,16 +237,19 @@ const useStyles = makeStyles(theme => ({
     alignItems: "center",
     textAlign: "center",
     alignSelf: "center",
-    width: "110px",
+    width: "auto",
     backgroundColor: theme.palette.background.paper,
-    margin: "10px",
-    borderRadius: "10px",
-    boxShadow: "0 1px 2px rgba(0,0,0,.08)"
+    margin: "14px",
+    borderRadius: 999,
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: "0 4px 12px rgba(13,41,69,.04)"
   },
 
   dailyTimestampText: {
     color: theme.palette.text.secondary,
-    padding: 8,
+    padding: "5px 12px",
+    fontSize: ".68rem",
+    fontWeight: 700,
     alignSelf: "center",
     marginLeft: "0px"
   },
@@ -488,7 +507,9 @@ const MessagesList = ({ ticketId, isGroup }) => {
       <ProtectedMedia
         message={message}
         className={
-          isStickerMessage(message) ? classes.stickerMedia : classes.messageMedia
+          isStickerMessage(message)
+            ? classes.stickerMedia
+            : classes.messageMedia
         }
       />
     );
@@ -510,46 +531,22 @@ const MessagesList = ({ ticketId, isGroup }) => {
   };
 
   const renderDailyTimestamps = (message, index) => {
-    if (index === 0) {
-      return (
-        <span
-          className={classes.dailyTimestamp}
-          key={`timestamp-${message.id}`}
-        >
-          <div className={classes.dailyTimestampText}>
-            {format(parseISO(messagesList[index].createdAt), "dd/MM/yyyy")}
-          </div>
+    if (
+      index > 0 &&
+      isSameDay(
+        parseISO(message.createdAt),
+        parseISO(messagesList[index - 1].createdAt)
+      )
+    )
+      return null;
+    return (
+      <span className={classes.dailyTimestamp} key={`timestamp-${message.id}`}>
+        <span className={classes.dailyTimestampText}>
+          {format(parseISO(message.createdAt), "dd/MM/yyyy")}
         </span>
-      );
-    }
-    if (index < messagesList.length - 1) {
-      let messageDay = parseISO(messagesList[index].createdAt);
-      let previousMessageDay = parseISO(messagesList[index - 1].createdAt);
-
-      if (!isSameDay(messageDay, previousMessageDay)) {
-        return (
-          <span
-            className={classes.dailyTimestamp}
-            key={`timestamp-${message.id}`}
-          >
-            <div className={classes.dailyTimestampText}>
-              {format(parseISO(messagesList[index].createdAt), "dd/MM/yyyy")}
-            </div>
-          </span>
-        );
-      }
-    }
-    if (index === messagesList.length - 1) {
-      return (
-        <div
-          key={`ref-${message.createdAt}`}
-          ref={lastMessageRef}
-          style={{ float: "left", clear: "both" }}
-        />
-      );
-    }
+      </span>
+    );
   };
-
   const renderMessageDivider = (message, index) => {
     if (index < messagesList.length && index > 0) {
       let messageUser = messagesList[index].fromMe;
@@ -599,7 +596,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
                 <IconButton
                   variant="contained"
                   size="small"
-                  id="messageActionsButton"
+                  aria-label="Opções da mensagem recebida"
                   disabled={message.isDeleted}
                   className={classes.messageActionsButton}
                   onClick={e => handleOpenMessageOptionsMenu(e, message)}
@@ -618,9 +615,10 @@ const MessagesList = ({ ticketId, isGroup }) => {
                   checkMessageMedia(message)}
                 <div className={classes.textContentItem}>
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && (
-                    <MarkdownWrapper>{message.body}</MarkdownWrapper>
-                  )}
+                  {!(
+                    isStickerMessage(message) &&
+                    /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")
+                  ) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                   </span>
@@ -637,7 +635,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
                 <IconButton
                   variant="contained"
                   size="small"
-                  id="messageActionsButton"
+                  aria-label="Opções da mensagem enviada"
                   disabled={message.isDeleted}
                   className={classes.messageActionsButton}
                   onClick={e => handleOpenMessageOptionsMenu(e, message)}
@@ -662,9 +660,10 @@ const MessagesList = ({ ticketId, isGroup }) => {
                     />
                   )}
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && (
-                    <MarkdownWrapper>{message.body}</MarkdownWrapper>
-                  )}
+                  {!(
+                    isStickerMessage(message) &&
+                    /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")
+                  ) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                     {renderMessageAck(message)}
@@ -694,9 +693,18 @@ const MessagesList = ({ ticketId, isGroup }) => {
         className={classes.messagesList}
         onScroll={handleScroll}
       >
-        {messagesList.length > 0 ? renderMessages() : []}
+        {messagesList.length > 0 ? (
+          renderMessages()
+        ) : loading ? (
+          <PageSkeleton messages />
+        ) : (
+          <div style={{ margin: "auto", textAlign: "center" }}>
+            Inicie a conversa com uma mensagem de acolhimento.
+          </div>
+        )}
+        <div ref={lastMessageRef} />
       </div>
-      {loading && (
+      {loading && messagesList.length > 0 && (
         <div>
           <CircularProgress className={classes.circleLoading} />
         </div>

@@ -1,28 +1,39 @@
-import React from "react";
+import React, { useState } from "react";
 import { useParams } from "react-router-dom";
-import { makeStyles, Paper, Typography } from "@material-ui/core";
-import ChatBubbleOutline from "@material-ui/icons/ChatBubbleOutline";
+import { makeStyles } from "@material-ui/core";
 import TicketsManager from "../../components/TicketsManager";
 import Ticket from "../../components/Ticket";
+import ConversationWelcome from "../../components/ConversationWelcome";
+
 const useStyles = makeStyles(theme => ({
   root: {
     flex: 1,
     display: "flex",
     minHeight: 0,
     minWidth: 0,
-    height: "100%",
     overflow: "hidden",
-    background: theme.palette.background.paper
+    gap: 12,
+    padding: 12,
+    background: theme.palette.background.default,
+    [theme.breakpoints.down("sm")]: { gap: 0, padding: 0 }
   },
   list: {
-    width: 330,
-    minWidth: 290,
+    width: 354,
+    minWidth: 300,
     flexShrink: 0,
-    borderRight: `1px solid ${theme.palette.divider}`,
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
-    [theme.breakpoints.down("sm")]: { width: "100%", minWidth: 0 }
+    overflow: "hidden",
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 14,
+    [theme.breakpoints.down("md")]: { width: 320 },
+    [theme.breakpoints.down("sm")]: {
+      width: "100%",
+      minWidth: 0,
+      border: 0,
+      borderRadius: 0
+    }
   },
   hiddenList: { [theme.breakpoints.down("sm")]: { display: "none" } },
   conversation: {
@@ -30,31 +41,34 @@ const useStyles = makeStyles(theme => ({
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    height: "100%"
+    overflow: "hidden",
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 14,
+    [theme.breakpoints.down("sm")]: { border: 0, borderRadius: 0 }
   },
-  hiddenConversation: { [theme.breakpoints.down("sm")]: { display: "none" } },
-  empty: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "column",
-    padding: 32,
-    gap: 16,
-    textAlign: "center",
-    background: theme.palette.background.default
-  }
+  hiddenConversation: { [theme.breakpoints.down("sm")]: { display: "none" } }
 }));
+
 export default function Tickets() {
   const classes = useStyles();
   const { ticketId } = useParams();
+  const [status, setStatus] = useState("open");
+  const [counts, setCounts] = useState({
+    open: null,
+    pending: null,
+    closed: null
+  });
   return (
     <div className={classes.root}>
       <aside
         aria-label="Lista de atendimentos"
         className={`${classes.list} ${ticketId ? classes.hiddenList : ""}`}
       >
-        <TicketsManager />
+        <TicketsManager
+          status={status}
+          onStatusChange={setStatus}
+          onCountsChange={setCounts}
+        />
       </aside>
       <section
         aria-label="Conversa"
@@ -65,14 +79,10 @@ export default function Tickets() {
         {ticketId ? (
           <Ticket />
         ) : (
-          <Paper square elevation={0} className={classes.empty}>
-            <ChatBubbleOutline color="primary" style={{ fontSize: 48 }} />
-            <Typography variant="h5">Pronto para atender</Typography>
-            <Typography color="textSecondary">
-              Selecione uma conversa para consultar o histórico e continuar o
-              atendimento.
-            </Typography>
-          </Paper>
+          <ConversationWelcome
+            counts={counts}
+            onViewQueue={() => setStatus("pending")}
+          />
         )}
       </section>
     </div>

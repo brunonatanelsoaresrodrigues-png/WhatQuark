@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import React, { useState, useEffect, useReducer } from "react";
 import openSocket from "../../services/socket-io";
 
@@ -77,8 +78,10 @@ const reducer = (state, action) => {
 const useStyles = makeStyles(theme => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
+    padding: 0,
+    overflow: "auto",
+    borderRadius: 14,
+    minHeight: 160,
     ...theme.scrollbarStyles
   }
 }));
@@ -102,6 +105,7 @@ const QuickAnswers = () => {
   }, [searchParam]);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     const delayDebounceFn = setTimeout(() => {
       const fetchQuickAnswers = async () => {
@@ -109,16 +113,22 @@ const QuickAnswers = () => {
           const { data } = await api.get("/quickAnswers/", {
             params: { searchParam, pageNumber }
           });
+          if (!active) return;
           dispatch({ type: "LOAD_QUICK_ANSWERS", payload: data.quickAnswers });
           setHasMore(data.hasMore);
           setLoading(false);
         } catch (err) {
+          if (!active) return;
+          setLoading(false);
           toastError(err);
         }
       };
       fetchQuickAnswers();
     }, 500);
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
   }, [searchParam, pageNumber]);
 
   useEffect(() => {
@@ -212,6 +222,8 @@ const QuickAnswers = () => {
           <TextField
             placeholder={i18n.t("quickAnswers.searchPlaceholder")}
             type="search"
+            size="small"
+            inputProps={{ "aria-label": "Buscar registros" }}
             value={searchParam}
             onChange={handleSearch}
             InputProps={{
@@ -236,7 +248,7 @@ const QuickAnswers = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
+        <Table size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -259,6 +271,7 @@ const QuickAnswers = () => {
                   <TableCell align="center">
                     <IconButton
                       size="small"
+                      aria-label={`Editar ${quickAnswer.shortcut}`}
                       onClick={() => handleEditQuickAnswers(quickAnswer)}
                     >
                       <Edit />
@@ -266,7 +279,8 @@ const QuickAnswers = () => {
 
                     <IconButton
                       size="small"
-                      onClick={e => {
+                      aria-label="Excluir registro"
+                      onClick={() => {
                         setConfirmModalOpen(true);
                         setDeletingQuickAnswers(quickAnswer);
                       }}
@@ -276,6 +290,9 @@ const QuickAnswers = () => {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && quickAnswers.length === 0 && (
+                <TableEmptyState columns={3} />
+              )}
               {loading && <TableRowSkeleton columns={3} />}
             </>
           </TableBody>

@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import React, { useEffect, useReducer, useState } from "react";
 
 import openSocket from "../../services/socket-io";
@@ -31,8 +32,10 @@ import ConfirmationModal from "../../components/ConfirmationModal";
 const useStyles = makeStyles(theme => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
+    padding: 0,
+    overflow: "auto",
+    borderRadius: 14,
+    minHeight: 160,
     ...theme.scrollbarStyles
   },
   customTableCell: {
@@ -191,7 +194,7 @@ const Queues = () => {
         </MainHeaderButtonsWrapper>
       </MainHeader>
       <Paper className={classes.mainPaper} variant="outlined">
-        <Table size="small">
+        <Table size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -239,6 +242,7 @@ const Queues = () => {
                   <TableCell align="center">
                     <IconButton
                       size="small"
+                      aria-label={`Editar ${queue.name}`}
                       onClick={() => handleEditQueue(queue)}
                     >
                       <Edit />
@@ -246,6 +250,7 @@ const Queues = () => {
 
                     <IconButton
                       size="small"
+                      aria-label="Excluir registro"
                       onClick={() => {
                         setSelectedQueue(queue);
                         setConfirmModalOpen(true);
@@ -256,6 +261,9 @@ const Queues = () => {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && queues.length === 0 && (
+                <TableEmptyState columns={4} />
+              )}
               {loading && <TableRowSkeleton columns={4} />}
             </>
           </TableBody>

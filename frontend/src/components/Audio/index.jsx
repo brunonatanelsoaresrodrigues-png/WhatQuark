@@ -5,7 +5,7 @@ import { useState } from "react";
 
 const LS_NAME = "audioMessageRate";
 
-export default function ({ url }) {
+export default function AudioMessage({ url }) {
   const audioRef = useRef(null);
   const [audioRate, setAudioRate] = useState(
     parseFloat(localStorage.getItem(LS_NAME) || "1")
@@ -54,16 +54,25 @@ export default function ({ url }) {
   };
 
   return (
-    <>
-      <audio ref={audioRef} src={url} controls preload="metadata" />
+    <div style={{ width: 280, maxWidth: "100%", padding: "4px 0" }}>
+      <audio
+        ref={audioRef}
+        src={url}
+        controls
+        preload="metadata"
+        style={{ width: "100%", maxWidth: "100%", height: 42 }}
+        aria-label="Áudio da conversa"
+      />
       {showButtonRate && (
         <Button
-          style={{ marginLeft: "5px", marginTop: "-45px" }}
+          size="small"
+          aria-label={`Velocidade do áudio: ${audioRate} vezes`}
+          style={{ minHeight: 28, marginTop: 4 }}
           onClick={toogleRate}
         >
           {audioRate}x
         </Button>
       )}
-    </>
+    </div>
   );
 }

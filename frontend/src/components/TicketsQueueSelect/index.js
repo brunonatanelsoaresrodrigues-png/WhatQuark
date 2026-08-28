@@ -19,6 +19,7 @@ const TicketsQueueSelect = ({
     <div style={{ width: 120, marginTop: -4 }}>
       <FormControl fullWidth margin="dense">
         <Select
+          inputProps={{ "aria-label": "Filtrar setores" }}
           multiple
           displayEmpty
           variant="outlined"
@@ -35,7 +36,11 @@ const TicketsQueueSelect = ({
             },
             getContentAnchorEl: null
           }}
-          renderValue={() => i18n.t("ticketsQueueSelect.placeholder")}
+          renderValue={() =>
+            `${i18n.t("ticketsQueueSelect.placeholder")} (${
+              selectedQueueIds.length
+            })`
+          }
         >
           {userQueues?.length > 0 &&
             userQueues.map(queue => (

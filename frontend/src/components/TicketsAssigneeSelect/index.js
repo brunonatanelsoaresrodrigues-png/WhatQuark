@@ -25,6 +25,7 @@ export default function TicketsAssigneeSelect({
   }, [canViewOthers]);
   return (
     <TextField
+      id="ticket-assignee-filter"
       select
       label="Atendente"
       variant="outlined"

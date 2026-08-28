@@ -59,11 +59,13 @@ import MessagingSafetyPanel from "../../components/MessagingSafetyPanel";
 import api from "../../services/api";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
+import PageHeading from "../../components/PageHeading";
+import PageSkeleton from "../../components/PageSkeleton";
 
 const useStyles = makeStyles(theme => ({
   container: {
-    paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(4)
+    padding: theme.spacing(3.5, 4, 4),
+    [theme.breakpoints.down("sm")]: { padding: theme.spacing(2) }
   },
   header: {
     display: "flex",
@@ -82,8 +84,9 @@ const useStyles = makeStyles(theme => ({
   },
   metric: {
     minHeight: 118,
-    padding: theme.spacing(2),
-    borderTop: `4px solid ${theme.palette.primary.main}`
+    padding: theme.spacing(2.5),
+    border: `1px solid ${theme.palette.divider}`,
+    borderTop: `2px solid ${theme.palette.primary.main}`
   },
   metricValue: {
     marginTop: theme.spacing(1),
@@ -493,11 +496,7 @@ const QuarkDashboard = () => {
   );
 
   if (loading && !summary) {
-    return (
-      <div className={classes.loading}>
-        <CircularProgress />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   const notifications = summary?.notifications || {};
@@ -529,34 +528,36 @@ const QuarkDashboard = () => {
 
   return (
     <Container maxWidth="xl" className={classes.container}>
-      <div className={classes.header}>
-        <div>
-          <Typography variant="h5">Automação Quark</Typography>
-          <Typography variant="body2" className={classes.syncText}>
-            Última sincronização:{" "}
-            {formatDateTime(summary?.sync?.lastSuccessfulSyncAt)}
-          </Typography>
-        </div>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={
-            loading ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : (
-              <RefreshIcon />
-            )
-          }
-          onClick={loadDashboard}
-          disabled={loading}
-        >
-          Atualizar
-        </Button>
-      </div>
+      <PageHeading
+        title="Automação Quark"
+        eyebrow="Integração clínica"
+        description={`Última sincronização: ${formatDateTime(
+          summary?.sync?.lastSuccessfulSyncAt
+        )}`}
+        actions={
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={
+              loading ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <RefreshIcon />
+              )
+            }
+            onClick={loadDashboard}
+            disabled={loading}
+          >
+            Atualizar
+          </Button>
+        }
+      />
 
       <MessagingSafetyPanel />
       <Tabs
         value={section}
+        variant="scrollable"
+        scrollButtons="auto"
         onChange={(_, value) => setSection(value)}
         indicatorColor="primary"
         textColor="primary"
@@ -981,9 +982,9 @@ const QuarkDashboard = () => {
             component="div"
             count={appointments.total || 0}
             page={page}
-            onChangePage={(_, nextPage) => setPage(nextPage)}
+            onPageChange={(_, nextPage) => setPage(nextPage)}
             rowsPerPage={pageSize}
-            onChangeRowsPerPage={event => {
+            onRowsPerPageChange={event => {
               setPageSize(Number(event.target.value));
               setPage(0);
             }}

@@ -4,6 +4,7 @@ import openSocket from "../../services/socket-io";
 import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
 import Paper from "@material-ui/core/Paper";
+import Button from "@material-ui/core/Button";
 
 import TicketListItem from "../TicketListItem";
 import TicketsListSkeleton from "../TicketsListSkeleton";
@@ -19,15 +20,15 @@ const useStyles = makeStyles(theme => ({
     height: "100%",
     flexDirection: "column",
     overflow: "hidden",
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0
+    minHeight: 0,
+    borderRadius: 0
   },
 
   ticketsList: {
     flex: 1,
-    overflowY: "scroll",
+    overflowY: "auto",
     ...theme.scrollbarStyles,
-    borderTop: "2px solid rgba(0, 0, 0, 0.12)"
+    background: theme.modeTokens.surfaceMuted
   },
 
   ticketsListHeader: {
@@ -42,14 +43,14 @@ const useStyles = makeStyles(theme => ({
 
   ticketsCount: {
     fontWeight: "normal",
-    color: "rgb(104, 121, 146)",
+    color: theme.palette.text.secondary,
     marginLeft: "8px",
     fontSize: "14px"
   },
 
   noTicketsText: {
     textAlign: "center",
-    color: "rgb(104, 121, 146)",
+    color: theme.palette.text.secondary,
     fontSize: "14px",
     lineHeight: "1.4"
   },
@@ -158,26 +159,41 @@ const TicketsList = props => {
     searchParam,
     showAll,
     assignee,
+    date,
+    withUnreadMessages,
     selectedQueueIds,
     updateCount,
     style
   } = props;
   const classes = useStyles();
   const [pageNumber, setPageNumber] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [ticketsList, dispatch] = useReducer(reducer, []);
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
     dispatch({ type: "RESET" });
     setPageNumber(1);
-  }, [status, searchParam, dispatch, showAll, assignee, selectedQueueIds]);
+  }, [
+    status,
+    searchParam,
+    dispatch,
+    showAll,
+    assignee,
+    selectedQueueIds,
+    date,
+    withUnreadMessages
+  ]);
 
-  const { tickets, hasMore, loading } = useTickets({
+  const { tickets, hasMore, loading, count, error } = useTickets({
     pageNumber,
     searchParam,
     status,
     showAll,
     assignee,
+    date,
+    withUnreadMessages,
+    refreshKey,
     queueIds: JSON.stringify(selectedQueueIds)
   });
 
@@ -187,10 +203,15 @@ const TicketsList = props => {
       type: "LOAD_TICKETS",
       payload: tickets
     });
-  }, [tickets]);
+  }, [tickets, status, searchParam]);
 
   useEffect(() => {
     const socket = openSocket();
+    let refreshTimer;
+    const refreshTotals = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => setRefreshKey(value => value + 1), 400);
+    };
 
     const matchesAssignee = ticket =>
       assignee === "all"
@@ -207,7 +228,10 @@ const TicketsList = props => {
       matchesAssignee(ticket) &&
       (!status || ticket.status === status) &&
       (!ticket.userId || ticket.userId === user?.id || showAll) &&
-      (!ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
+      (!ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1) &&
+      (withUnreadMessages !== "true" || ticket.unreadMessages > 0) &&
+      (!date ||
+        new Date(ticket.createdAt).toLocaleDateString("en-CA") === date);
 
     const notBelongsToUserQueues = ticket =>
       ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
@@ -221,9 +245,11 @@ const TicketsList = props => {
     });
 
     socket.on("ticket", data => {
+      refreshTotals();
       if (data.action === "updateUnread") {
         dispatch({
-          type: "RESET_UNREAD",
+          type:
+            withUnreadMessages === "true" ? "DELETE_TICKET" : "RESET_UNREAD",
           payload: data.ticketId
         });
       }
@@ -239,7 +265,8 @@ const TicketsList = props => {
         data.action === "update" &&
         (!matchesAssignee(data.ticket) ||
           (status && data.ticket.status !== status) ||
-          notBelongsToUserQueues(data.ticket))
+          notBelongsToUserQueues(data.ticket) ||
+          (withUnreadMessages === "true" && !data.ticket.unreadMessages))
       ) {
         dispatch({ type: "DELETE_TICKET", payload: data.ticket.id });
       }
@@ -250,6 +277,7 @@ const TicketsList = props => {
     });
 
     socket.on("appMessage", data => {
+      refreshTotals();
       if (data.action === "create" && shouldUpdateTicket(data.ticket)) {
         dispatch({
           type: "UPDATE_TICKET_UNREAD_MESSAGES",
@@ -268,16 +296,26 @@ const TicketsList = props => {
     });
 
     return () => {
+      clearTimeout(refreshTimer);
       socket.disconnect();
     };
-  }, [status, searchParam, showAll, assignee, user, selectedQueueIds]);
+  }, [
+    status,
+    searchParam,
+    showAll,
+    assignee,
+    user,
+    selectedQueueIds,
+    date,
+    withUnreadMessages
+  ]);
 
   useEffect(() => {
     if (typeof updateCount === "function") {
-      updateCount(ticketsList.length);
+      if (!loading) updateCount(error ? null : count);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticketsList]);
+  }, [count, loading, error]);
 
   const loadMore = () => {
     setPageNumber(prevState => prevState + 1);
@@ -303,8 +341,21 @@ const TicketsList = props => {
         className={classes.ticketsList}
         onScroll={handleScroll}
       >
-        <List style={{ paddingTop: 0 }}>
-          {ticketsList.length === 0 && !loading ? (
+        <List component="div" style={{ padding: 6 }}>
+          {error && (
+            <div role="alert" className={classes.noTicketsDiv}>
+              <p className={classes.noTicketsText}>
+                Não foi possível atualizar os atendimentos.
+              </p>
+              <Button
+                color="primary"
+                onClick={() => setRefreshKey(value => value + 1)}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          {ticketsList.length === 0 && !loading && !error ? (
             <div className={classes.noTicketsDiv}>
               <span className={classes.noTicketsTitle}>
                 {i18n.t("ticketsList.noTicketsTitle")}

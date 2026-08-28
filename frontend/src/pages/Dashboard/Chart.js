@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useTheme } from "@material-ui/core/styles";
 import {
   BarChart,
@@ -9,9 +9,6 @@ import {
   Label,
   ResponsiveContainer
 } from "recharts";
-import { startOfHour, parseISO, format } from "date-fns";
-
-import { i18n } from "../../translate/i18n";
 
 import Title from "./Title";
 import api from "../../services/api";
@@ -44,7 +41,7 @@ const Chart = () => {
       <Title>{`Atendimentos de hoje: ${data?.total ?? "…"} · ${
         data?.timezone || "horário da clínica"
       }`}</Title>
-      <ResponsiveContainer>
+      <ResponsiveContainer width="100%" height="80%">
         <BarChart
           data={chartData}
           barSize={40}
@@ -57,7 +54,11 @@ const Chart = () => {
             left: 24
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke={theme.palette.divider}
+            vertical={false}
+          />
           <XAxis dataKey="time" stroke={theme.palette.text.secondary} />
           <YAxis
             type="number"
@@ -72,7 +73,12 @@ const Chart = () => {
               Atendimentos
             </Label>
           </YAxis>
-          <Bar dataKey="amount" fill={theme.palette.primary.main} />
+          <Bar
+            dataKey="amount"
+            fill={theme.palette.primary.main}
+            radius={[5, 5, 0, 0]}
+            isAnimationActive={false}
+          />
         </BarChart>
       </ResponsiveContainer>
     </React.Fragment>

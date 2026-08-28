@@ -12,19 +12,24 @@ import { toast } from "react-toastify";
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n.js";
 import toastError from "../../errors/toastError";
+import PageHeading from "../../components/PageHeading";
 
 const useStyles = makeStyles(theme => ({
   root: {
     display: "flex",
-    alignItems: "center",
-    padding: theme.spacing(8, 8, 3)
+    alignItems: "flex-start",
+    padding: theme.spacing(4, 2),
+    [theme.breakpoints.down("xs")]: { padding: theme.spacing(2, 0) }
   },
 
   paper: {
-    padding: theme.spacing(2),
+    padding: theme.spacing(3),
     display: "flex",
     alignItems: "center",
-    marginBottom: 12
+    marginBottom: 20,
+    gap: 16,
+    flexWrap: "wrap",
+    border: `1px solid ${theme.palette.divider}`
   },
 
   settingOption: {
@@ -60,7 +65,8 @@ const Settings = () => {
         setSettings(prevState => {
           const aux = [...prevState];
           const settingIndex = aux.findIndex(s => s.key === data.setting.key);
-          aux[settingIndex].value = data.setting.value;
+          if (settingIndex >= 0) aux[settingIndex] = data.setting;
+          else aux.push(data.setting);
           return aux;
         });
       }
@@ -86,16 +92,17 @@ const Settings = () => {
   };
 
   const getSettingValue = key => {
-    const { value } = settings.find(s => s.key === key);
-    return value;
+    return settings.find(s => s.key === key)?.value || "";
   };
 
   return (
     <div className={classes.root}>
-      <Container className={classes.container} maxWidth="sm">
-        <Typography variant="body2" gutterBottom>
-          {i18n.t("settings.title")}
-        </Typography>
+      <Container maxWidth="md">
+        <PageHeading
+          title={i18n.t("settings.title")}
+          eyebrow="Administração"
+          description="Preferências gerais e credenciais de integração da sua operação."
+        />
         <Paper className={classes.paper}>
           <Typography variant="body1">
             {i18n.t("settings.settings.userCreation.name")}
@@ -106,9 +113,8 @@ const Settings = () => {
             native
             id="userCreation-setting"
             name="userCreation"
-            value={
-              settings && settings.length > 0 && getSettingValue("userCreation")
-            }
+            inputProps={{ "aria-label": "Permitir criação de usuários" }}
+            value={getSettingValue("userCreation")}
             className={classes.settingOption}
             onChange={handleChangeSetting}
           >
@@ -124,14 +130,12 @@ const Settings = () => {
         <Paper className={classes.paper}>
           <TextField
             id="api-token-setting"
-            readonly
+            InputProps={{ readOnly: true }}
             label="Token Api"
             margin="dense"
             variant="outlined"
             fullWidth
-            value={
-              settings && settings.length > 0 && getSettingValue("userApiToken")
-            }
+            value={getSettingValue("userApiToken")}
           />
         </Paper>
       </Container>

@@ -13,26 +13,44 @@ import { AuthContext } from "../../context/Auth/AuthContext";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 const useStyles = makeStyles(theme => ({
+  "@keyframes arrive": {
+    from: { opacity: 0, transform: "translateY(3px)" },
+    to: { opacity: 1, transform: "translateY(0)" }
+  },
   row: {
-    borderBottom: `1px solid ${theme.palette.divider}`,
+    animation: "$arrive 160ms ease-out",
+    border: "1px solid transparent",
     borderLeft: "3px solid transparent",
-    padding: "10px 12px",
-    "&:hover": { background: theme.palette.action.hover }
+    padding: "11px 13px 10px",
+    marginBottom: 4,
+    borderRadius: 12,
+    background: theme.palette.background.paper,
+    transition: "background-color 160ms ease, border-color 160ms ease",
+    "&:hover": { background: theme.modeTokens.surfaceMuted }
   },
   selected: {
     borderLeftColor: theme.palette.primary.main,
-    background: theme.palette.action.selected
+    background: theme.modeTokens.surfaceTint,
+    boxShadow: "0 2px 8px rgba(12,124,114,.06)"
   },
   preview: {
     width: "100%",
     display: "flex",
     textAlign: "left",
-    gap: 10,
-    borderRadius: 6,
+    gap: 11,
+    borderRadius: 10,
     padding: "4px 0",
     justifyContent: "flex-start"
   },
   text: { flex: 1, minWidth: 0 },
+  avatar: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
+    fontWeight: 750,
+    color: "#fff",
+    background: "linear-gradient(145deg, #0c7c72, #3978e6)"
+  },
   top: {
     display: "flex",
     gap: 8,
@@ -44,16 +62,31 @@ const useStyles = makeStyles(theme => ({
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
-    margin: "8px 0 0 50px"
+    margin: "8px 0 0 55px"
   },
-  chip: { fontSize: 11, height: 22, maxWidth: "100%" },
+  chip: {
+    height: 22,
+    maxWidth: "100%",
+    fontSize: 10,
+    color: theme.palette.text.secondary,
+    background: theme.modeTokens.surfaceMuted,
+    borderColor: theme.palette.divider
+  },
   unread: {
+    minWidth: 20,
+    height: 20,
+    display: "grid",
+    placeItems: "center",
     borderRadius: 12,
     padding: "1px 6px",
     background: theme.palette.primary.main,
     color: theme.palette.primary.contrastText,
-    fontSize: 11
-  }
+    fontSize: 10,
+    fontWeight: 800,
+    boxShadow: "0 4px 10px rgba(12,124,114,.2)"
+  },
+  lastMessage: { marginTop: 3, fontSize: ".78rem" },
+  ticketTime: { fontSize: ".66rem" }
 }));
 export default function TicketListItem({ ticket }) {
   const classes = useStyles();
@@ -87,7 +120,11 @@ export default function TicketListItem({ ticket }) {
         onClick={() => history.push(`/tickets/${ticket.id}`)}
         aria-label={`Abrir atendimento de ${ticket.contact?.name}`}
       >
-        <Avatar src={ticket.contact?.profilePicUrl} alt="">
+        <Avatar
+          className={classes.avatar}
+          src={ticket.contact?.profilePicUrl}
+          alt=""
+        >
           {ticket.contact?.name?.charAt(0)}
         </Avatar>
         <div className={classes.text}>
@@ -98,6 +135,7 @@ export default function TicketListItem({ ticket }) {
             <Typography
               variant="caption"
               color="textSecondary"
+              className={classes.ticketTime}
               style={{ flexShrink: 0 }}
             >
               {Number.isNaN(date.getTime())
@@ -108,7 +146,12 @@ export default function TicketListItem({ ticket }) {
                   })}
             </Typography>
           </div>
-          <Typography variant="body2" noWrap color="textSecondary">
+          <Typography
+            variant="body2"
+            noWrap
+            color="textSecondary"
+            className={classes.lastMessage}
+          >
             {ticket.lastMessage || "Nenhuma mensagem ainda"}
           </Typography>
         </div>

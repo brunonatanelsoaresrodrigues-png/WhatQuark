@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import React, { useState, useEffect, useReducer, useContext } from "react";
 import openSocket from "../../services/socket-io";
 import { toast } from "react-toastify";
@@ -82,8 +83,10 @@ const reducer = (state, action) => {
 const useStyles = makeStyles(theme => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
+    padding: 0,
+    overflow: "auto",
+    borderRadius: 14,
+    minHeight: 160,
     ...theme.scrollbarStyles
   }
 }));
@@ -110,6 +113,7 @@ const Contacts = () => {
   }, [searchParam]);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     const delayDebounceFn = setTimeout(() => {
       const fetchContacts = async () => {
@@ -117,16 +121,22 @@ const Contacts = () => {
           const { data } = await api.get("/contacts/", {
             params: { searchParam, pageNumber }
           });
+          if (!active) return;
           dispatch({ type: "LOAD_CONTACTS", payload: data.contacts });
           setHasMore(data.hasMore);
           setLoading(false);
         } catch (err) {
+          if (!active) return;
+          setLoading(false);
           toastError(err);
         }
       };
       fetchContacts();
     }, 500);
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
   }, [searchParam, pageNumber]);
 
   useEffect(() => {
@@ -233,7 +243,7 @@ const Contacts = () => {
         }
         open={confirmOpen}
         onClose={setConfirmOpen}
-        onConfirm={e =>
+        onConfirm={() =>
           deletingContact
             ? handleDeleteContact(deletingContact.id)
             : handleimportContact()
@@ -249,6 +259,8 @@ const Contacts = () => {
           <TextField
             placeholder={i18n.t("contacts.searchPlaceholder")}
             type="search"
+            size="small"
+            inputProps={{ "aria-label": "Buscar registros" }}
             value={searchParam}
             onChange={handleSearch}
             InputProps={{
@@ -262,7 +274,7 @@ const Contacts = () => {
           <Button
             variant="contained"
             color="primary"
-            onClick={e => setConfirmOpen(true)}
+            onClick={() => setConfirmOpen(true)}
           >
             {i18n.t("contacts.buttons.import")}
           </Button>
@@ -280,7 +292,7 @@ const Contacts = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
+        <Table size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox" />
@@ -309,12 +321,14 @@ const Contacts = () => {
                   <TableCell align="center">
                     <IconButton
                       size="small"
+                      aria-label={`Abrir atendimento de ${contact.name}`}
                       onClick={() => handleSaveTicket(contact.id)}
                     >
                       <WhatsAppIcon />
                     </IconButton>
                     <IconButton
                       size="small"
+                      aria-label={`Editar ${contact.name}`}
                       onClick={() => hadleEditContact(contact.id)}
                     >
                       <EditIcon />
@@ -325,7 +339,8 @@ const Contacts = () => {
                       yes={() => (
                         <IconButton
                           size="small"
-                          onClick={e => {
+                          aria-label="Excluir registro"
+                          onClick={() => {
                             setConfirmOpen(true);
                             setDeletingContact(contact);
                           }}
@@ -337,6 +352,9 @@ const Contacts = () => {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && contacts.length === 0 && (
+                <TableEmptyState columns={5} />
+              )}
               {loading && <TableRowSkeleton avatar columns={3} />}
             </>
           </TableBody>
