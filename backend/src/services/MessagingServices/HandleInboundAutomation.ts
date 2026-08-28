@@ -91,7 +91,7 @@ export const HandleInboundAutomation = async (input: Input): Promise<void> => {
               }));
             if (!handled && !ticket.queueId) {
               const whatsapp = await ShowWhatsAppService(input.whatsappId);
-              if (!human && whatsapp.queues.length) {
+              if (!human) {
                 const priorStatus = ticket.intakeStatus;
                 const attemptsKey = `intake-attempts:${ticket.id}`;
                 const attempts = await readState(attemptsKey, {
@@ -105,10 +105,11 @@ export const HandleInboundAutomation = async (input: Input): Promise<void> => {
                     whatsapp.queues.find(
                       q => q.id === Number(process.env.BOT_FALLBACK_QUEUE_ID)
                     ) || whatsapp.queues[0];
-                  await UpdateTicketService({
-                    ticketId: ticket.id,
-                    ticketData: { queueId: queue.id }
-                  });
+                  if (queue)
+                    await UpdateTicketService({
+                      ticketId: ticket.id,
+                      ticketData: { queueId: queue.id }
+                    });
                   await reply(
                     "Vou encaminhar sua mensagem para nossa equipe. Você não precisa repetir as informações.",
                     "handoff"

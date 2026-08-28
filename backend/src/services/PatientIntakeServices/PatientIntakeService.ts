@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import RecordTicketEventService from "../TicketServices/RecordTicketEventService";
+import { setPreference } from "../MessagingServices/preferences";
 import FindRegisteredPatientNameService from "./FindRegisteredPatientNameService";
 import BookPatientIntakeAppointmentService, {
   IntakeBookingResult
@@ -72,6 +73,7 @@ export type IntakeReason =
   | "CONFIRM_OR_RESCHEDULE"
   | "CANCEL"
   | "INSURANCE_OR_PRICE"
+  | "NOTICE_CONSENT"
   | "HUMAN";
 
 export interface PatientIntakeResult {
@@ -237,9 +239,32 @@ const startReason = async (
     3: "CONFIRM_OR_RESCHEDULE",
     4: "CANCEL",
     5: "INSURANCE_OR_PRICE",
-    6: "HUMAN"
+    6: "HUMAN",
+    7: "NOTICE_CONSENT"
   };
   const reason = reasons[choice];
+  if (reason === "NOTICE_CONSENT") {
+    await setPreference(
+      ticket.contact.number,
+      "GRANTED",
+      "Paciente selecionou a opção 7 do menu de atendimento no WhatsApp",
+      null,
+      "Solicitante pelo WhatsApp"
+    );
+    await saveIntakeContext(
+      ticket,
+      {},
+      {
+        intakeStatus: "AWAITING_MENU",
+        intakeReason: null
+      }
+    );
+    await sendBotMessage(
+      ticket,
+      `Avisos de consulta ativados para este número. Para desativar, responda PARAR.\n\n${initialMenuMessage()}`
+    );
+    return { handled: true, showQueueMenu: false };
+  }
   if (reason === "HUMAN") {
     await ticket.update({
       intakeReason: reason,
@@ -717,7 +742,7 @@ const runPatientIntake = async (
   if (normalizedBody === "0") return handleBack(ticket, status, context);
 
   if (status === "AWAITING_MENU") {
-    const choice = numberedChoice(body, 6);
+    const choice = numberedChoice(body, 7);
     if (!choice) {
       await sendBotMessage(
         ticket,

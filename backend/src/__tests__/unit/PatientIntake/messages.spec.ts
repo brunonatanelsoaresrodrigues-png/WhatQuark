@@ -22,7 +22,7 @@ describe("Patient intake greeting", () => {
     );
   });
 
-  it("includes the dynamic greeting and all six menu options", () => {
+  it("includes the dynamic greeting, service options and explicit notice consent", () => {
     const body = initialMenuMessage(
       new Date("2026-08-21T11:00:00.000Z"),
       "America/Sao_Paulo",
@@ -32,5 +32,7 @@ describe("Patient intake greeting", () => {
     expect(body).toContain("Bom dia, Maria!");
     expect(body).toContain("1️⃣ Marcar uma consulta");
     expect(body).toContain("6️⃣ Falar com um atendente");
+    expect(body).toContain("7️⃣ Ativar avisos de consulta neste número");
+    expect(body).toContain("você autoriza lembretes e avisos");
   });
 });

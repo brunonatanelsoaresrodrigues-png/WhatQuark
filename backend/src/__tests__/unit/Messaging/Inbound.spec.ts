@@ -169,6 +169,19 @@ it("preserves intake and deduplicates it before processing menu choices", async 
   expect(UpdateTicket).not.toHaveBeenCalled();
 });
 
+it("starts patient intake even when the channel has no linked queue", async () => {
+  (ShowWhatsApp as jest.Mock).mockResolvedValue({ queues: [] });
+  (Intake as jest.Mock).mockResolvedValue({
+    handled: true,
+    showQueueMenu: false
+  });
+
+  await HandleInboundAutomation(input);
+
+  expect(Intake).toHaveBeenCalledTimes(1);
+  expect(UpdateTicket).not.toHaveBeenCalled();
+});
+
 it("hands off an explicit ATENDENTE request during intake", async () => {
   await HandleInboundAutomation({ ...input, body: "ATENDENTE" });
   expect(Intake).not.toHaveBeenCalled();

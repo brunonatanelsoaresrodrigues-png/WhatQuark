@@ -7,6 +7,7 @@ import PatientIntakeService, {
   patientIntakeOwnsNumericInput
 } from "../../../services/PatientIntakeServices/PatientIntakeService";
 import PausePatientIntakeService from "../../../services/PatientIntakeServices/PausePatientIntakeService";
+import { setPreference } from "../../../services/MessagingServices/preferences";
 
 jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
   jest.fn()
@@ -18,6 +19,9 @@ jest.mock(
   "../../../services/PatientIntakeServices/FindRegisteredPatientNameService",
   () => jest.fn()
 );
+jest.mock("../../../services/MessagingServices/preferences", () => ({
+  setPreference: jest.fn()
+}));
 
 const ticket = (overrides: Record<string, unknown> = {}) => {
   const value: any = {
@@ -75,6 +79,26 @@ describe("PatientIntakeService", () => {
     expect(SendWhatsAppMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         body: expect.stringContaining("CPF do paciente")
+      })
+    );
+  });
+
+  it("registers explicit notice consent from menu option 7", async () => {
+    const current = ticket({ intakeStatus: "AWAITING_MENU" });
+
+    await PatientIntakeService(current, "7");
+
+    expect(setPreference).toHaveBeenCalledWith(
+      current.contact.number,
+      "GRANTED",
+      expect.stringContaining("opção 7"),
+      null,
+      "Solicitante pelo WhatsApp"
+    );
+    expect(current.intakeStatus).toBe("AWAITING_MENU");
+    expect(SendWhatsAppMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("Avisos de consulta ativados")
       })
     );
   });

@@ -40,8 +40,11 @@ Para começarmos, escolha uma opção:
 4️⃣ Cancelar uma consulta
 5️⃣ Informações sobre convênios e valores
 6️⃣ Falar com um atendente
+7️⃣ Ativar avisos de consulta neste número
 
-Digite o número da opção desejada ou ATENDENTE para falar com nossa equipe.`;
+Digite o número da opção desejada ou ATENDENTE para falar com nossa equipe.
+
+Ao escolher a opção 7, você autoriza lembretes e avisos sobre agendamentos neste número. Para desativar depois, responda PARAR.`;
 
 export const CPF_PROMPT = `Para iniciarmos, informe o *CPF do paciente*.
 
