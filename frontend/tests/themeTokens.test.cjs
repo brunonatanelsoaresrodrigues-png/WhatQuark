@@ -41,7 +41,10 @@ for (const dark of [false, true]) {
       mode.canvas,
       mode.surface,
       mode.surfaceMuted,
-      mode.surfaceRaised
+      mode.surfaceRaised,
+      mode.conversation,
+      mode.messageIncoming,
+      mode.messageOutgoing
     ]) {
       for (const foreground of [mode.text, mode.textMuted]) {
         assert.ok(
@@ -51,6 +54,7 @@ for (const dark of [false, true]) {
       }
     }
     assert.ok(contrast(mode.navMuted, mode.nav) >= 4.5);
+    assert.ok(contrast(mode.avatarText, mode.avatar) >= 4.5);
   });
   test(`${dark ? "dark" : "light"} mode uses a visible focus indicator`, () => {
     const mode = getModeTokens(dark);
@@ -59,7 +63,7 @@ for (const dark of [false, true]) {
     }
   });
 }
-test("primary button gradient endpoints support white text", () => {
+test("primary button colors support white text", () => {
   for (const background of [
     colors.brand,
     colors.brandDark,

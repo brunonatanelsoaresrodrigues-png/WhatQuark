@@ -12,22 +12,23 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     minWidth: 0,
     overflow: "hidden",
-    gap: 12,
-    padding: 12,
+    gap: 8,
+    padding: "0 10px 10px",
     background: theme.palette.background.default,
     [theme.breakpoints.down("sm")]: { gap: 0, padding: 0 }
   },
   list: {
-    width: 354,
-    minWidth: 300,
+    width: 310,
+    minWidth: 280,
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
     overflow: "hidden",
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 14,
-    [theme.breakpoints.down("md")]: { width: 320 },
+    borderRadius: 10,
+    [theme.breakpoints.down("md")]: { width: 290 },
+    [theme.breakpoints.up("xl")]: { width: 340 },
     [theme.breakpoints.down("sm")]: {
       width: "100%",
       minWidth: 0,
@@ -43,7 +44,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: "column",
     overflow: "hidden",
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 14,
+    borderRadius: 10,
     [theme.breakpoints.down("sm")]: { border: 0, borderRadius: 0 }
   },
   hiddenConversation: { [theme.breakpoints.down("sm")]: { display: "none" } }

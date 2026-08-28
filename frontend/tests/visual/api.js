@@ -1,7 +1,12 @@
-export const queues = [
-  { id: 1, name: "Recepção", color: "#0c7c72" },
-  { id: 2, name: "Agendamento", color: "#3978e6" }
-];
+export const queues = [{
+  id: 1,
+  name: "Recepção",
+  color: "#0c7c72"
+}, {
+  id: 2,
+  name: "Agendamento",
+  color: "#3978e6"
+}];
 export const user = {
   id: 1,
   name: "Marina · Demonstração",
@@ -9,24 +14,14 @@ export const user = {
   queues,
   canAccessQuarkClinic: true
 };
-export const channels = [
-  {
-    id: 1,
-    name: "Essencial Saúde",
-    status: "CONNECTED",
-    isDefault: true,
-    updatedAt: new Date().toISOString()
-  }
-];
-const names = [
-  "Ana Ribeiro",
-  "Carlos Lima",
-  "Beatriz Oliveira",
-  "Lucas Ferreira",
-  "Helena Costa",
-  "Pedro Almeida",
-  "Sofia Martins"
-];
+export const channels = [{
+  id: 1,
+  name: "Essencial Saúde",
+  status: "CONNECTED",
+  isDefault: true,
+  updatedAt: new Date().toISOString()
+}];
+const names = ["Ana Ribeiro", "Carlos Lima", "Beatriz Oliveira", "Lucas Ferreira", "Helena Costa", "Pedro Almeida", "Sofia Martins"];
 export const tickets = names.map((name, index) => ({
   id: index + 1,
   contactId: index + 1,
@@ -34,7 +29,7 @@ export const tickets = names.map((name, index) => ({
   userId: index < 4 ? 1 : null,
   user: index < 4 ? user : null,
   queue: queues[index % 2],
-  queueId: (index % 2) + 1,
+  queueId: index % 2 + 1,
   whatsapp: channels[0],
   whatsappId: 1,
   contact: {
@@ -44,44 +39,34 @@ export const tickets = names.map((name, index) => ({
     email: "exemplo@example.invalid",
     extraInfo: []
   },
-  lastMessage: [
-    "Obrigada pelo retorno!",
-    "Posso confirmar o horário?",
-    "Bom dia, gostaria de agendar uma consulta.",
-    "Vou enviar os documentos."
-  ][index % 4],
+  lastMessage: ["Obrigada pelo retorno!", "Posso confirmar o horário?", "Bom dia, gostaria de agendar uma consulta.", "Vou enviar os documentos."][index % 4],
   unreadMessages: index < 2 ? index + 1 : 0,
   createdAt: new Date().toISOString(),
   updatedAt: new Date(Date.now() - index * 600000).toISOString()
 }));
-const textMessages = [
-  {
-    fromMe: false,
-    body: "Olá! Gostaria de confirmar o horário da minha consulta."
-  },
-  {
-    fromMe: true,
-    body: "Olá, Ana! Sou a Marina, da Essencial Saúde. Vou conferir sua agenda. 😊"
-  },
-  {
-    fromMe: true,
-    body: "Sua consulta está confirmada para amanhã às 10h. Podemos ajudar com mais alguma coisa?"
-  },
-  { fromMe: false, body: "Perfeito! Preciso levar algum documento?" },
-  {
-    fromMe: true,
-    body: "Sim, por favor leve um documento com foto e a carteirinha do convênio."
-  }
-];
+const textMessages = [{
+  fromMe: false,
+  body: "Olá! Gostaria de confirmar o horário da minha consulta."
+}, {
+  fromMe: true,
+  body: "Olá, Ana! Sou a Marina, da Essencial Saúde. Vou conferir sua agenda. 😊"
+}, {
+  fromMe: true,
+  body: "Sua consulta está confirmada para amanhã às 10h. Podemos ajudar com mais alguma coisa?"
+}, {
+  fromMe: false,
+  body: "Perfeito! Preciso levar algum documento?"
+}, {
+  fromMe: true,
+  body: "Sim, por favor leve um documento com foto e a carteirinha do convênio."
+}];
 const messages = textMessages.map((message, i) => ({
   ...message,
   id: `message-${i}`,
   ticketId: 1,
   ack: 3,
   mediaType: "chat",
-  createdAt: new Date(
-    Date.now() - (textMessages.length - i) * 60000
-  ).toISOString()
+  createdAt: new Date(Date.now() - (textMessages.length - i) * 60000).toISOString()
 }));
 messages.push({
   id: "demo-sticker",
@@ -92,15 +77,16 @@ messages.push({
   mediaUrl: "/qa/sticker",
   createdAt: new Date().toISOString()
 });
-const stickerImage =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180"><rect x="12" y="12" width="156" height="156" rx="48" fill="#36BFAE"/><path d="M47 89L77 116L133 61" fill="none" stroke="white" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const stickerImage = '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180"><rect x="12" y="12" width="156" height="156" rx="48" fill="#36BFAE"/><path d="M47 89L77 116L133 61" fill="none" stroke="white" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 export function getAccessToken() {
   return null;
 }
 export function saveSession() {}
 export function clearSession() {}
 export async function refreshSession() {
-  return { user };
+  return {
+    user
+  };
 }
 const requests = [];
 function exposeRequests() {
@@ -111,140 +97,157 @@ export default {
   async get(url, options = {}) {
     await new Promise(resolve => setTimeout(resolve, 120));
     const path = "/" + url.replace(/^\//, "");
-    requests.push({ method: "GET", path, params: options.params });
+    requests.push({
+      method: "GET",
+      path,
+      params: options.params
+    });
     exposeRequests();
     const p = options.params || {};
     let data;
     if (path === "/tickets") {
-      if (p.searchParam === "erro-demo")
-        throw new Error("Falha simulada na consulta");
+      if (p.searchParam === "erro-demo") throw new Error("Falha simulada na consulta");
       let rows = tickets.filter(t => !p.status || t.status === p.status);
-      if (p.searchParam)
-        rows = rows.filter(t =>
-          (t.contact.name + t.lastMessage)
-            .toLowerCase()
-            .includes(p.searchParam.toLowerCase())
-        );
-      if (p.withUnreadMessages === "true")
-        rows = rows.filter(t => t.unreadMessages > 0);
+      if (p.searchParam) rows = rows.filter(t => (t.contact.name + t.lastMessage).toLowerCase().includes(p.searchParam.toLowerCase()));
+      if (p.withUnreadMessages === "true") rows = rows.filter(t => t.unreadMessages > 0);
       if (p.date) rows = rows.filter(t => t.createdAt.startsWith(p.date));
-      data = { tickets: rows, count: rows.length, hasMore: false };
-    } else if (/^\/tickets\/\d+\/context$/.test(path))
       data = {
-        mode: "production",
-        paused: false,
-        official: false,
-        botPaused: true,
-        serviceWindowOpen: true,
-        preference: { consent: "GRANTED" },
-        appointments: [
-          {
-            appointmentId: 1,
-            reference: "Demonstração",
-            status: "CONFIRMADO",
-            scheduledAt: new Date(Date.now() + 86400000).toISOString()
-          }
-        ]
-      };
-    else if (/^\/tickets\/\d+$/.test(path))
-      data =
-        tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];
-    else if (path.startsWith("/messages/")) data = { messages, hasMore: false };
-    else if (path === "/contacts" || path === "/contacts/")
-      data = {
-        contacts: tickets.map(t => t.contact),
-        count: 7,
+        tickets: rows,
+        count: rows.length,
         hasMore: false
       };
-    else if (path.startsWith("/contacts/")) data = tickets[0].contact;
-    else if (path === "/users/assignees") data = [user];
-    else if (path === "/users/")
-      data = { users: [user], count: 1, hasMore: false };
-    else if (path.startsWith("/users/")) data = user;
-    else if (path === "/whatsapp/" || path === "/whatsapp") data = channels;
-    else if (path === "/queue") data = queues;
-    else if (path.startsWith("/quickAnswers"))
-      data = {
-        quickAnswers: [
-          {
-            id: 1,
-            shortcut: "boas-vindas",
-            message: "Olá! Como podemos ajudar?"
-          }
-        ],
-        hasMore: false
-      };
-    else if (path === "/settings")
-      data = [
-        { key: "userCreation", value: "disabled" },
-        { key: "userApiToken", value: "DEMO-SEM-CREDENCIAIS" }
-      ];
-    else if (path === "/ticket-metrics/daily")
-      data = {
-        total: 24,
+    } else if (/^\/tickets\/\d+\/context$/.test(path)) data = {
+      mode: "production",
+      paused: false,
+      official: false,
+      botPaused: true,
+      serviceWindowOpen: true,
+      preference: {
+        consent: "GRANTED"
+      },
+      appointments: [{
+        appointmentId: 1,
+        reference: "Demonstração",
+        status: "CONFIRMADO",
+        scheduledAt: new Date(Date.now() + 86400000).toISOString()
+      }]
+    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (path.startsWith("/messages/")) data = {
+      messages,
+      hasMore: false
+    };else if (path === "/contacts" || path === "/contacts/") data = {
+      contacts: tickets.map(t => t.contact),
+      count: 7,
+      hasMore: false
+    };else if (path.startsWith("/contacts/")) data = tickets[0].contact;else if (path === "/users/assignees") data = [user];else if (path === "/users/") data = {
+      users: [user],
+      count: 1,
+      hasMore: false
+    };else if (path.startsWith("/users/")) data = user;else if (path === "/whatsapp/" || path === "/whatsapp") data = channels;else if (path === "/queue") data = queues;else if (path.startsWith("/quickAnswers")) data = {
+      quickAnswers: [{
+        id: 1,
+        shortcut: "boas-vindas",
+        message: "Olá! Como podemos ajudar?"
+      }],
+      hasMore: false
+    };else if (path === "/settings") data = [{
+      key: "userCreation",
+      value: "disabled"
+    }, {
+      key: "userApiToken",
+      value: "DEMO-SEM-CREDENCIAIS"
+    }];else if (path === "/ticket-metrics/daily") data = {
+      total: 24,
+      timezone: "America/Sao_Paulo",
+      hours: Array.from({
+        length: 12
+      }, (_, i) => ({
+        time: `${i + 7}:00`,
+        amount: [1, 3, 4, 2, 5, 2, 0, 1, 2, 1, 2, 1][i]
+      }))
+    };else if (path === "/messaging/status") data = {
+      mode: "production",
+      paused: false,
+      official: false
+    };else if (path === "/messaging/outbox" || path.endsWith("/calendar-days") || path.endsWith("/timeseries")) data = [];else if (path === "/quark/dashboard/summary") data = {
+      sync: {
+        lastSuccessfulSyncAt: new Date().toISOString()
+      },
+      appointments: {
+        monitored: 12
+      },
+      notifications: {},
+      responses: {}
+    };else if (path.endsWith("/appointments")) data = {
+      rows: [],
+      total: 0
+    };else if (path.endsWith("/breakdown")) data = {
+      eventTypes: [],
+      professionals: []
+    };else if (path === "/daily-reports") data = {
+      config: {
+        reportTime: "17:00",
         timezone: "America/Sao_Paulo",
-        hours: Array.from({ length: 12 }, (_, i) => ({
-          time: `${i + 7}:00`,
-          amount: [1, 3, 4, 2, 5, 2, 0, 1, 2, 1, 2, 1][i]
-        }))
-      };
-    else if (path === "/messaging/status")
-      data = { mode: "production", paused: false, official: false };
-    else if (
-      path === "/messaging/outbox" ||
-      path.endsWith("/calendar-days") ||
-      path.endsWith("/timeseries")
-    )
-      data = [];
-    else if (path === "/quark/dashboard/summary")
-      data = {
-        sync: { lastSuccessfulSyncAt: new Date().toISOString() },
-        appointments: { monitored: 12 },
-        notifications: {},
-        responses: {}
-      };
-    else if (path.endsWith("/appointments")) data = { rows: [], total: 0 };
-    else if (path.endsWith("/breakdown"))
-      data = { eventTypes: [], professionals: [] };
-    else if (path === "/daily-reports")
-      data = {
-        config: {
-          reportTime: "17:00",
-          timezone: "America/Sao_Paulo",
-          enabled: false
-        },
-        recipients: [],
-        runs: []
-      };
-    else if (path === "/stickers")
-      data = {
-        stickers: [
-          {
-            id: 1,
-            name: "Tudo certo · exemplo",
-            mediaUrl: "/qa/sticker",
-            createdByUserId: 1
-          }
-        ]
-      };
-    else if (path === "/qa/sticker")
-      data = new Blob([stickerImage], { type: "image/svg+xml" });
-    else throw new Error(`No fixture for ${path}`);
-    return { status: 200, data };
+        enabled: false
+      },
+      recipients: [],
+      runs: []
+    };else if (path === "/stickers") data = {
+      stickers: [{
+        id: 1,
+        name: "Tudo certo · exemplo",
+        mediaUrl: "/qa/sticker",
+        createdByUserId: 1
+      }]
+    };else if (path === "/qa/sticker") data = new Blob([stickerImage], {
+      type: "image/svg+xml"
+    });else throw new Error(`No fixture for ${path}`);
+    return {
+      status: 200,
+      data
+    };
   },
-  async post(path, body) {
-    requests.push({ method: "POST", path, body });
+  async post(path, body, options = {}) {
+    const summary = body instanceof FormData ? Array.from(body.entries()).map(([key, value]) => [key, value instanceof File ? {
+      name: value.name,
+      type: value.type,
+      size: value.size
+    } : value]) : body;
+    requests.push({
+      method: "POST",
+      path,
+      body: summary,
+      headers: options.headers
+    });
     exposeRequests();
-    return { status: 202, data: {} };
+    if (new URLSearchParams(window.location.search).get("upload") === "fail-once" && path.startsWith("/messages/") && requests.filter(request => request.method === "POST" && request.path === path).length === 1) {
+      throw new Error("QA: simulated upload interruption");
+    }
+    return {
+      status: 202,
+      data: {}
+    };
   },
   async put(path, body) {
-    requests.push({ method: "PUT", path, body });
+    requests.push({
+      method: "PUT",
+      path,
+      body
+    });
     exposeRequests();
-    return { status: 200, data: {} };
+    return {
+      status: 200,
+      data: {}
+    };
   },
   async delete(path) {
-    requests.push({ method: "DELETE", path });
+    requests.push({
+      method: "DELETE",
+      path
+    });
     exposeRequests();
-    return { status: 200, data: {} };
+    return {
+      status: 200,
+      data: {}
+    };
   }
 };

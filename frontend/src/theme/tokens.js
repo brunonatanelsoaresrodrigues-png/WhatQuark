@@ -12,7 +12,6 @@ export const colors = {
   danger: "#C64B55",
   info: "#347E9B"
 };
-
 export const radii = {
   xs: 6,
   sm: 10,
@@ -20,10 +19,13 @@ export const radii = {
   lg: 20,
   pill: 999
 };
-
 export const spacing = [0, 4, 8, 12, 16, 24, 32, 40, 48, 64];
 export const motion = {
-  duration: { micro: 160, transition: 220, panel: 280 },
+  duration: {
+    micro: 160,
+    transition: 220,
+    panel: 280
+  },
   easing: "cubic-bezier(.2,.8,.2,1)"
 };
 export const layers = {
@@ -34,46 +36,77 @@ export const layers = {
   tooltip: 1500
 };
 export const typography = {
-  display: { fontSize: "3rem", fontWeight: 800, letterSpacing: "-.04em" },
-  headingXL: { fontSize: "2rem", fontWeight: 800, letterSpacing: "-.03em" },
-  headingLG: { fontSize: "1.5rem", fontWeight: 750, letterSpacing: "-.025em" },
+  display: {
+    fontSize: "3rem",
+    fontWeight: 650,
+    letterSpacing: "-.04em"
+  },
+  headingXL: {
+    fontSize: "2rem",
+    fontWeight: 650,
+    letterSpacing: "-.03em"
+  },
+  headingLG: {
+    fontSize: "1.5rem",
+    fontWeight: 600,
+    letterSpacing: "-.025em"
+  },
   headingMD: {
     fontSize: "1.125rem",
-    fontWeight: 700,
+    fontWeight: 600,
     letterSpacing: "-.015em"
   },
-  body: { fontSize: ".875rem", lineHeight: 1.6 },
-  bodySM: { fontSize: ".8125rem", lineHeight: 1.5 },
-  caption: { fontSize: ".75rem", lineHeight: 1.5 },
-  overline: { fontSize: ".6875rem", fontWeight: 750, letterSpacing: ".08em" },
-  label: { fontSize: ".8125rem", fontWeight: 700 }
+  body: {
+    fontSize: ".875rem",
+    lineHeight: 1.6
+  },
+  bodySM: {
+    fontSize: ".8125rem",
+    lineHeight: 1.5
+  },
+  caption: {
+    fontSize: ".75rem",
+    lineHeight: 1.5
+  },
+  overline: {
+    fontSize: ".6875rem",
+    fontWeight: 600,
+    letterSpacing: ".08em"
+  },
+  label: {
+    fontSize: ".8125rem",
+    fontWeight: 600
+  }
 };
-
 export const shadows = {
   light: {
-    soft: "0 1px 2px rgba(13, 41, 69, .04), 0 10px 30px rgba(13, 41, 69, .06)",
+    soft: "0 2px 6px rgba(13, 41, 69, .04)",
     raised: "0 18px 46px rgba(13, 41, 69, .12)",
     focus: "0 0 0 4px rgba(57, 120, 230, .16)"
   },
   dark: {
-    soft: "0 1px 2px rgba(0, 0, 0, .2), 0 12px 34px rgba(0, 0, 0, .22)",
+    soft: "0 2px 6px rgba(0, 0, 0, .1)",
     raised: "0 20px 52px rgba(0, 0, 0, .36)",
     focus: "0 0 0 4px rgba(116, 164, 255, .2)"
   }
 };
-
 export const getModeTokens = darkMode => ({
-  canvas: darkMode ? "#0A171E" : "#F5F6F3",
-  surface: darkMode ? "#0D1D2B" : "#FFFFFF",
-  surfaceRaised: darkMode ? "#122638" : "#FFFFFF",
-  surfaceMuted: darkMode ? "#112333" : "#F0F3F2",
-  surfaceTint: darkMode ? "rgba(54, 191, 174, .09)" : "#EAF7F5",
-  text: darkMode ? "#F1F6FB" : "#102A43",
-  textMuted: darkMode ? "#9DB0C2" : "#526A80",
+  canvas: darkMode ? "#07121F" : "#F3F6F8",
+  surface: darkMode ? "#0C1928" : "#FFFFFF",
+  surfaceRaised: darkMode ? "#132335" : "#FFFFFF",
+  surfaceMuted: darkMode ? "#101F30" : "#F1F5F8",
+  surfaceTint: darkMode ? "#102E36" : "#EAF7F5",
+  conversation: darkMode ? "#0A1623" : "#F7F9FA",
+  messageIncoming: darkMode ? "#182736" : "#FFFFFF",
+  messageOutgoing: darkMode ? "#074B45" : "#DEF1EB",
+  avatar: darkMode ? "#183B4D" : "#E0EDF3",
+  avatarText: darkMode ? "#BEE3F1" : "#245769",
+  text: darkMode ? "#E8EEF5" : "#162B3D",
+  textMuted: darkMode ? "#A0B0C1" : "#54697B",
   focus: darkMode ? colors.blueLight : colors.blue,
-  border: darkMode ? "rgba(183, 205, 224, .13)" : "#DDE6EF",
-  borderStrong: darkMode ? "rgba(183, 205, 224, .22)" : "#C8D5E2",
-  nav: darkMode ? "#071827" : "#0B2742",
-  navMuted: darkMode ? "#9DB0C2" : "#B6C7D8",
-  navActive: darkMode ? "rgba(54, 191, 174, .15)" : "rgba(116, 164, 255, .13)"
+  border: darkMode ? "#1A2A3B" : "#E0E7EC",
+  borderStrong: darkMode ? "#2B4155" : "#C6D3DD",
+  nav: darkMode ? "#040F1C" : "#091B2B",
+  navMuted: "#A6B8C9",
+  navActive: "#0B2B35"
 });

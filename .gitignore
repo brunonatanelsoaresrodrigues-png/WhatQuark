@@ -8,6 +8,7 @@ ssl/
 **/node_modules/
 **/dist/
 **/build/
+**/build-visual/
 **/.env
 **/.env.*
 !**/.env.example

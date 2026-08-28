@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useHistory } from "react-router-dom";
-
 import { toast } from "react-toastify";
 import openSocket from "../../services/socket-io";
 import clsx from "clsx";
-
-import { Paper, makeStyles } from "@material-ui/core";
-
+import { Paper, makeStyles, useMediaQuery } from "@material-ui/core";
 import ContactDrawer from "../ContactDrawer";
 import MessageInput from "../MessageInput/";
 import TicketContext from "../TicketContext";
@@ -17,7 +14,6 @@ import MessagesList from "../MessagesList";
 import api from "../../services/api";
 import { ReplyMessageProvider } from "../../context/ReplyingMessage/ReplyingMessageContext";
 import toastError from "../../errors/toastError";
-
 const useStyles = makeStyles(theme => ({
   root: {
     display: "flex",
@@ -26,8 +22,10 @@ const useStyles = makeStyles(theme => ({
     overflow: "hidden",
     background: theme.palette.background.paper
   },
-
-  ticketInfo: { flex: "1 1 180px", minWidth: 0 },
+  ticketInfo: {
+    flex: "1 1 180px",
+    minWidth: 0
+  },
   ticketActionButtons: {
     display: "flex",
     flex: "0 1 auto",
@@ -50,7 +48,6 @@ const useStyles = makeStyles(theme => ({
       duration: theme.transitions.duration.leavingScreen
     })
   },
-
   mainWrapperShift: {
     borderTopRightRadius: 0,
     borderBottomRightRadius: 0,
@@ -67,10 +64,7 @@ const useStyles = makeStyles(theme => ({
     pointerEvents: "none",
     border: `3px dashed ${theme.palette.primary.main}`,
     borderRadius: 18,
-    background:
-      theme.palette.type === "dark"
-        ? "rgba(7,19,31,.94)"
-        : "rgba(255,255,255,.94)",
+    background: theme.palette.type === "dark" ? "rgba(7,19,31,.94)" : "rgba(255,255,255,.94)",
     color: theme.palette.primary.main,
     display: "flex",
     alignItems: "center",
@@ -82,13 +76,15 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(3)
   }
 }));
-
 const Ticket = () => {
-  const { ticketId } = useParams();
+  const {
+    ticketId
+  } = useParams();
   const history = useHistory();
   const classes = useStyles();
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const wideScreen = useMediaQuery("(min-width:1280px)");
+  const [drawerOpen, setDrawerOpen] = useState(wideScreen);
+  useEffect(() => setDrawerOpen(wideScreen), [wideScreen]);
   const [loading, setLoading] = useState(true);
   const [contact, setContact] = useState({});
   const [ticket, setTicket] = useState({});
@@ -100,7 +96,9 @@ const Ticket = () => {
   const loadContext = useCallback(async () => {
     const generation = ++contextGeneration.current;
     try {
-      const { data } = await api.get(`/tickets/${ticketId}/context`);
+      const {
+        data
+      } = await api.get(`/tickets/${ticketId}/context`);
       if (generation === contextGeneration.current) setContext(data);
     } catch {
       if (generation === contextGeneration.current) setContext(null);
@@ -115,15 +113,15 @@ const Ticket = () => {
       clearInterval(timer);
     };
   }, [loadContext, ticket.userId, ticket.status]);
-
   useEffect(() => {
     let active = true;
     setLoading(true);
     const delayDebounceFn = setTimeout(() => {
       const fetchTicket = async () => {
         try {
-          const { data } = await api.get("/tickets/" + ticketId);
-
+          const {
+            data
+          } = await api.get("/tickets/" + ticketId);
           if (!active) return;
           setContact(data.contact);
           setTicket(data);
@@ -141,58 +139,46 @@ const Ticket = () => {
       clearTimeout(delayDebounceFn);
     };
   }, [ticketId, history]);
-
   useEffect(() => {
     const socket = openSocket();
-
     socket.on("connect", () => socket.emit("joinChatBox", ticketId));
-
     socket.on("ticket", data => {
       if (Number(data.ticket?.id || data.ticketId) !== Number(ticketId)) return;
       if (data.action === "update") {
         setTicket(data.ticket);
       }
-
       if (data.action === "delete") {
         toast.success("Atendimento excluído.");
         history.push("/tickets");
       }
     });
-
     socket.on("ticketAccessDenied", () => history.push("/tickets"));
-
     socket.on("contact", data => {
       if (data.action === "update") {
         setContact(prevState => {
           if (prevState.id === data.contact?.id) {
-            return { ...prevState, ...data.contact };
+            return {
+              ...prevState,
+              ...data.contact
+            };
           }
           return prevState;
         });
       }
     });
-
     return () => {
       socket.disconnect();
     };
   }, [ticketId, history]);
-
   const handleDrawerOpen = () => {
     setDrawerOpen(true);
   };
-
   const handleDrawerClose = () => {
     setDrawerOpen(false);
   };
-
-  const sendBlocked =
-    !context ||
-    context.paused ||
-    ["off", "simulation"].includes(context.mode) ||
-    (context.official && !context.serviceWindowOpen);
+  const sendBlocked = !context || context.paused || ["off", "simulation"].includes(context.mode) || context.official && !context.serviceWindowOpen;
   const canDropFiles = ticket.status === "open" && !sendBlocked;
-  const hasDraggedFiles = event =>
-    Array.from(event.dataTransfer?.types || []).includes("Files");
+  const hasDraggedFiles = event => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleDragEnter = event => {
     if (!hasDraggedFiles(event)) return;
     event.preventDefault();
@@ -221,70 +207,28 @@ const Ticket = () => {
     const files = Array.from(event.dataTransfer.files || []);
     if (files.length) setDroppedFiles(files);
   };
-
-  return (
-    <div
-      className={classes.root}
-      id="drawer-container"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {draggingFiles && (
-        <div className={classes.dropOverlay}>
+  return <div className={classes.root} id="drawer-container" onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+      {draggingFiles && <div className={classes.dropOverlay}>
           Solte os arquivos para anexar à conversa
-        </div>
-      )}
-      <Paper
-        variant="outlined"
-        elevation={0}
-        className={clsx(classes.mainWrapper, {
-          [classes.mainWrapperShift]: drawerOpen
-        })}
-      >
+        </div>}
+      <Paper variant="outlined" elevation={0} className={clsx(classes.mainWrapper, {
+      [classes.mainWrapperShift]: drawerOpen
+    })}>
         <TicketHeader loading={loading}>
           <div className={classes.ticketInfo}>
-            <TicketInfo
-              contact={contact}
-              ticket={ticket}
-              onClick={handleDrawerOpen}
-            />
+            <TicketInfo contact={contact} ticket={ticket} onClick={handleDrawerOpen} />
           </div>
           <div className={classes.ticketActionButtons}>
             <TicketActionButtons ticket={ticket} context={context} />
           </div>
         </TicketHeader>
-        <TicketContext
-          ticket={ticket}
-          context={context}
-          onRefresh={loadContext}
-        />
+        <TicketContext ticket={ticket} context={context} onRefresh={loadContext} />
         <ReplyMessageProvider>
-          <MessagesList
-            key={`messages-${ticketId}`}
-            ticketId={ticketId}
-            isGroup={ticket.isGroup}
-          ></MessagesList>
-          <MessageInput
-            key={ticketId}
-            ticketStatus={ticket.status}
-            sendBlocked={sendBlocked}
-            droppedFiles={droppedFiles}
-            onDroppedFilesHandled={() => setDroppedFiles([])}
-          />
+          <MessagesList key={`messages-${ticketId}`} ticketId={ticketId} isGroup={ticket.isGroup}></MessagesList>
+          <MessageInput key={ticketId} ticketStatus={ticket.status} sendBlocked={sendBlocked} droppedFiles={droppedFiles} onDroppedFilesHandled={() => setDroppedFiles([])} />
         </ReplyMessageProvider>
       </Paper>
-      <ContactDrawer
-        open={drawerOpen}
-        handleDrawerClose={handleDrawerClose}
-        contact={contact}
-        ticket={ticket}
-        context={context}
-        loading={loading}
-      />
-    </div>
-  );
+      <ContactDrawer open={drawerOpen} docked={wideScreen} handleDrawerClose={handleDrawerClose} contact={contact} ticket={ticket} context={context} loading={loading} />
+    </div>;
 };
-
 export default Ticket;

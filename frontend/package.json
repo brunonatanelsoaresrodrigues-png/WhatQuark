@@ -35,7 +35,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test tests/*.test.cjs",
-    "test:visual": "node tests/visual/server.mjs"
+    "test:visual": "node tests/visual/server.mjs",
+    "test:visual:build": "vite build --config tests/visual/build.config.mjs"
   },
   "browserslist": {
     "production": [

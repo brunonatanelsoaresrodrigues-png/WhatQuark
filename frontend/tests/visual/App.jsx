@@ -20,21 +20,24 @@ import QuarkClinic from "../../src/pages/QuarkClinic";
 import Login from "../../src/pages/Login";
 import Signup from "../../src/pages/Signup";
 import { user, channels } from "./api";
+import { installSyntheticAudio } from "./audio";
 import "react-toastify/dist/ReactToastify.css";
-window.ENV = { VITE_QUARK_CLINIC_URL: "about:blank" };
-ReactDOM.render(
-  <BrowserRouter>
-    <AuthContext.Provider
-      value={{
-        user,
-        loading: false,
-        isAuth: true,
-        handleLogin() {},
-        handleLogout() {}
-      }}
-    >
+window.ENV = {
+  VITE_QUARK_CLINIC_URL: "about:blank"
+};
+installSyntheticAudio();
+ReactDOM.render(<BrowserRouter>
+    <AuthContext.Provider value={{
+    user,
+    loading: false,
+    isAuth: true,
+    handleLogin() {},
+    handleLogout() {}
+  }}>
       <ThemeProvider>
-        <WhatsAppsContext.Provider value={{ whatsApps: channels }}>
+        <WhatsAppsContext.Provider value={{
+        whatsApps: channels
+      }}>
           <Switch>
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
@@ -61,6 +64,4 @@ ReactDOM.render(
         </WhatsAppsContext.Provider>
       </ThemeProvider>
     </AuthContext.Provider>
-  </BrowserRouter>,
-  document.getElementById("root")
-);
+  </BrowserRouter>, document.getElementById("root"));

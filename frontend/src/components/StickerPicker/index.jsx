@@ -20,8 +20,8 @@ import { AuthContext } from "../../context/Auth/AuthContext";
 const useStyles = makeStyles(theme => ({
   panel: {
     position: "absolute",
-    bottom: 66,
-    left: 8,
+    bottom: 112,
+    left: 12,
     zIndex: 8,
     width: 350,
     maxWidth: "calc(100% - 16px)",
