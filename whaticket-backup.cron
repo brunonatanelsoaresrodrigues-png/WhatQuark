@@ -1,0 +1,1 @@
+35 3 * * * root /opt/whaticket/backup.sh >>/var/log/whaticket-backup.log 2>&1
