@@ -16,6 +16,8 @@ interface Request {
   sentByUserId?: number | null;
   origin?: MessageOrigin;
   policy?: SendPolicy;
+  sendAsSticker?: boolean;
+  removeFileAfterSend?: boolean;
 }
 
 const SendWhatsAppMedia = async ({
@@ -24,7 +26,9 @@ const SendWhatsAppMedia = async ({
   body,
   sentByUserId = null,
   origin = "SYSTEM",
-  policy = {}
+  policy = {},
+  sendAsSticker = false,
+  removeFileAfterSend = true
 }: Request): Promise<ProviderMessage> => {
   try {
     if (!ticket.whatsappId) {
@@ -44,10 +48,19 @@ const SendWhatsAppMedia = async ({
     };
 
     const mediaOptions = {
-      policy: { origin, sentByUserId, ticketId: ticket.id, ...policy },
+      policy: {
+        origin,
+        sentByUserId,
+        ticketId: ticket.id,
+        cleanupMediaPath:
+          removeFileAfterSend && process.env.WHATSAPP_PROVIDER !== "cloud",
+        ...policy
+      },
       caption: hasBody,
       sendAudioAsVoice: true,
+      sendAsSticker,
       sendMediaAsDocument:
+        !sendAsSticker &&
         media.mimetype.startsWith("image/") &&
         !/^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)
     };
@@ -78,7 +91,7 @@ const SendWhatsAppMedia = async ({
       })
     );
 
-    if (process.env.WHATSAPP_PROVIDER !== "cloud")
+    if (removeFileAfterSend && process.env.WHATSAPP_PROVIDER !== "cloud")
       await fs.promises.unlink(media.path).catch(() => undefined);
 
     return sentMessage;

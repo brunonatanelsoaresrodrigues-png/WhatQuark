@@ -13,6 +13,7 @@ import quickAnswerRoutes from "./quickAnswerRoutes";
 import apiRoutes from "./apiRoutes";
 import quarkDashboardRoutes from "./quarkDashboardRoutes";
 import dailyReportRoutes from "./dailyReportRoutes";
+import stickerRoutes from "./stickerRoutes";
 
 import messagingRoutes from "./messagingRoutes";
 
@@ -31,6 +32,7 @@ routes.use(queueRoutes);
 routes.use(quickAnswerRoutes);
 routes.use(quarkDashboardRoutes);
 routes.use(dailyReportRoutes);
+routes.use(stickerRoutes);
 routes.use("/api/messages", apiRoutes);
 
 export default routes;

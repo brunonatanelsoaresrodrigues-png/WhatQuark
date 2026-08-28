@@ -30,9 +30,10 @@ import IconButton from "@material-ui/core/IconButton";
 import MoreVert from "@material-ui/icons/MoreVert";
 import MoodIcon from "@material-ui/icons/Mood";
 import SendIcon from "@material-ui/icons/Send";
-import CancelIcon from "@material-ui/icons/Cancel";
 import ClearIcon from "@material-ui/icons/Clear";
 import MicIcon from "@material-ui/icons/Mic";
+import StopIcon from "@material-ui/icons/Stop";
+import CollectionsBookmarkIcon from "@material-ui/icons/CollectionsBookmark";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import {
@@ -40,7 +41,8 @@ import {
   Hidden,
   Menu,
   MenuItem,
-  Switch
+  Switch,
+  Tooltip
 } from "@material-ui/core";
 import ClickAwayListener from "@material-ui/core/ClickAwayListener";
 
@@ -51,6 +53,9 @@ import { ReplyMessageContext } from "../../context/ReplyingMessage/ReplyingMessa
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import toastError from "../../errors/toastError";
+import MediaPreviewQueue from "../MediaPreviewQueue";
+import StickerPicker from "../StickerPicker";
+import { selectMediaFiles } from "../../services/mediaComposer";
 
 let Mp3Recorder = null;
 const mediaSignature = files =>
@@ -153,7 +158,14 @@ const useStyles = makeStyles(theme => ({
   recorderWrapper: {
     display: "flex",
     alignItems: "center",
-    alignContent: "middle"
+    alignContent: "middle",
+    minWidth: 0
+  },
+
+  audioPreview: {
+    width: 230,
+    maxWidth: "42vw",
+    height: 38
   },
 
   cancelAudioIcon: {
@@ -235,7 +247,12 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const MessageInput = ({ ticketStatus, sendBlocked }) => {
+const MessageInput = ({
+  ticketStatus,
+  sendBlocked,
+  droppedFiles = [],
+  onDroppedFilesHandled
+}) => {
   const classes = useStyles();
   const { ticketId } = useParams();
 
@@ -249,9 +266,13 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
       writeDraft(draftKey, next);
       return next;
     });
-  const submit = async (payload, signature) => {
+  const submit = async (payload, signature, requestConfig = {}) => {
     const response = await api.post(`/messages/${ticketId}`, payload, {
-      headers: { "Idempotency-Key": messageAttempt(draftKey, signature) }
+      ...requestConfig,
+      headers: {
+        ...requestConfig.headers,
+        "Idempotency-Key": messageAttempt(draftKey, signature)
+      }
     });
     if (response.status === 202)
       toast.info(
@@ -261,8 +282,11 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     return response;
   };
   const [showEmoji, setShowEmoji] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [recording, setRecording] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState(null);
   const [quickAnswers, setQuickAnswer] = useState([]);
   const [typeBar, setTypeBar] = useState(false);
   const inputRef = useRef();
@@ -279,16 +303,26 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     () => () => {
       try {
         if (Mp3Recorder) Mp3Recorder.stop();
-      } catch (_) {}
+      } catch (_) {
+        // The recorder may already be stopped by the user.
+      }
     },
     []
+  );
+  useEffect(
+    () => () => {
+      if (recordedAudio?.url) URL.revokeObjectURL(recordedAudio.url);
+    },
+    [recordedAudio]
   );
 
   useEffect(() => {
     inputRef.current?.focus();
     return () => {
       setShowEmoji(false);
+      setShowStickers(false);
       setMedias([]);
+      setRecordedAudio(null);
       setReplyingMessage(null);
     };
   }, [ticketId, setReplyingMessage]);
@@ -308,24 +342,43 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     setInputMessage(prevState => prevState + emoji);
   };
 
-  const handleChangeMedias = e => {
-    if (!e.target.files) {
-      return;
-    }
+  const addMedias = files => {
+    if (!files?.length) return;
+    setMedias(current => {
+      const result = selectMediaFiles(current, files);
+      if (result.rejected.length)
+        toast.warn(
+          `${result.rejected.length} arquivo${
+            result.rejected.length === 1 ? " não foi aceito" : "s não foram aceitos"
+          }: ${result.rejected[0].reason}`
+        );
+      return result.accepted;
+    });
+  };
 
-    const selectedMedias = Array.from(e.target.files);
-    setMedias(selectedMedias);
+  const handleChangeMedias = e => {
+    addMedias(Array.from(e.target.files || []));
+    e.target.value = "";
   };
 
   const handleInputPaste = e => {
     if (e.clipboardData.files[0]) {
-      setMedias([e.clipboardData.files[0]]);
+      addMedias(Array.from(e.clipboardData.files));
     }
   };
+
+  useEffect(() => {
+    if (!droppedFiles.length) return;
+    addMedias(droppedFiles);
+    if (onDroppedFilesHandled) onDroppedFilesHandled();
+    // The parent replaces this array for each drop operation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [droppedFiles]);
 
   const handleUploadMedia = async e => {
     if (loading || sendBlocked || ticketStatus !== "open") return;
     setLoading(true);
+    setUploadProgress(0);
     e.preventDefault();
 
     const formData = new FormData();
@@ -336,13 +389,19 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     });
 
     try {
-      await submit(formData, mediaSignature(medias));
+      await submit(formData, mediaSignature(medias), {
+        onUploadProgress: event => {
+          if (event.total)
+            setUploadProgress(Math.round((event.loaded * 100) / event.total));
+        }
+      });
       setMedias([]);
     } catch (err) {
       toastError(err);
     }
 
     setLoading(false);
+    setUploadProgress(0);
   };
 
   const handleSendMessage = async () => {
@@ -387,7 +446,11 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
       setRecording(true);
       setLoading(false);
     } catch (err) {
-      toastError(err);
+      if (["NotAllowedError", "PermissionDeniedError"].includes(err?.name))
+        toast.error(
+          "Permita o acesso ao microfone no navegador para gravar áudio."
+        );
+      else toastError(err);
       setLoading(false);
     }
   };
@@ -412,7 +475,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     }
   };
 
-  const handleUploadAudio = async () => {
+  const handleStopRecording = async () => {
     setLoading(true);
     try {
       const recorder = await initRecorder();
@@ -421,34 +484,46 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
       }
       const [, blob] = await recorder.stop().getMp3();
       if (blob.size < 10000) {
+        toast.warn("O áudio ficou muito curto. Grave novamente.");
         setLoading(false);
         setRecording(false);
         return;
       }
-
-      const formData = new FormData();
       const filename = `${new Date().getTime()}.mp3`;
-      formData.append("medias", blob, filename);
-      formData.append("body", filename);
-      formData.append("fromMe", true);
-
       const audioFile = new File([blob], filename, { type: "audio/mpeg" });
-      setMedias([audioFile]);
-      await submit(formData, mediaSignature([audioFile]));
-      setMedias([]);
+      setRecordedAudio({ blob, file: audioFile, url: URL.createObjectURL(blob) });
     } catch (err) {
       toastError(err);
     }
-
     setRecording(false);
+    setLoading(false);
+  };
+
+  const handleUploadAudio = async () => {
+    if (!recordedAudio || loading) return;
+    setLoading(true);
+    const formData = new FormData();
+    formData.append("medias", recordedAudio.blob, recordedAudio.file.name);
+    formData.append("body", recordedAudio.file.name);
+    formData.append("fromMe", true);
+    try {
+      await submit(formData, mediaSignature([recordedAudio.file]));
+      setRecordedAudio(null);
+    } catch (err) {
+      toastError(err);
+    }
     setLoading(false);
   };
 
   const handleCancelAudio = async () => {
     try {
-      const recorder = await initRecorder();
-      if (recorder) {
-        await recorder.stop().getMp3();
+      if (recording) {
+        const recorder = await initRecorder();
+        if (recorder) await recorder.stop().getMp3();
+      }
+      if (recordedAudio?.url) {
+        URL.revokeObjectURL(recordedAudio.url);
+        setRecordedAudio(null);
       }
       setRecording(false);
     } catch (err) {
@@ -460,7 +535,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
     setAnchorEl(event.currentTarget);
   };
 
-  const handleMenuItemClick = event => {
+  const handleMenuItemClick = () => {
     setAnchorEl(null);
   };
 
@@ -496,34 +571,17 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
 
   if (medias.length > 0)
     return (
-      <Paper elevation={0} square className={classes.viewMediaInputWrapper}>
-        <IconButton
-          aria-label="Cancelar anexo"
-          component="button"
-          onClick={e => setMedias([])}
-        >
-          <CancelIcon className={classes.sendMessageIcons} />
-        </IconButton>
-
-        {loading ? (
-          <div>
-            <CircularProgress className={classes.circleLoading} />
-          </div>
-        ) : (
-          <span>
-            {medias[0]?.name}
-            {/* <img src={media.preview} alt=""></img> */}
-          </span>
-        )}
-        <IconButton
-          aria-label="Enviar anexo"
-          component="button"
-          onClick={handleUploadMedia}
-          disabled={loading}
-        >
-          <SendIcon className={classes.sendMessageIcons} />
-        </IconButton>
-      </Paper>
+      <MediaPreviewQueue
+        files={medias}
+        loading={loading}
+        progress={uploadProgress}
+        onAdd={addMedias}
+        onRemove={index =>
+          setMedias(current => current.filter((_, itemIndex) => itemIndex !== index))
+        }
+        onClear={() => setMedias([])}
+        onSend={handleUploadMedia}
+      />
     );
   else {
     return (
@@ -531,7 +589,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
         {replyingMessage && renderReplyingMessage(replyingMessage)}
         {showEmoji ? (
           <div className={classes.emojiBox}>
-            <ClickAwayListener onClickAway={e => setShowEmoji(false)}>
+            <ClickAwayListener onClickAway={() => setShowEmoji(false)}>
               <Suspense fallback={<span>Carregando emojis…</span>}>
                 <Picker
                   perLine={8}
@@ -543,6 +601,11 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
             </ClickAwayListener>
           </div>
         ) : null}
+        <StickerPicker
+          open={showStickers}
+          onClose={() => setShowStickers(false)}
+          ticketId={ticketId}
+        />
         <div className={classes.newMessageBox}>
           <Hidden only={["sm", "xs"]}>
             <IconButton
@@ -551,7 +614,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
               disabled={
                 loading || recording || ticketStatus !== "open" || sendBlocked
               }
-              onClick={e => setShowEmoji(prevState => !prevState)}
+              onClick={() => setShowEmoji(prevState => !prevState)}
             >
               <MoodIcon className={classes.sendMessageIcons} />
             </IconButton>
@@ -620,7 +683,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
                     ticketStatus !== "open" ||
                     sendBlocked
                   }
-                  onClick={e => setShowEmoji(prevState => !prevState)}
+                  onClick={() => setShowEmoji(prevState => !prevState)}
                 >
                   <MoodIcon className={classes.sendMessageIcons} />
                 </IconButton>
@@ -674,6 +737,23 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
               </MenuItem>
             </Menu>
           </Hidden>
+          <Tooltip title="Figurinhas salvas">
+            <span>
+              <IconButton
+                aria-label="Abrir biblioteca de figurinhas"
+                component="button"
+                disabled={
+                  loading || recording || ticketStatus !== "open" || sendBlocked
+                }
+                onClick={() => {
+                  setShowEmoji(false);
+                  setShowStickers(current => !current);
+                }}
+              >
+                <CollectionsBookmarkIcon className={classes.sendMessageIcons} />
+              </IconButton>
+            </span>
+          </Tooltip>
           <div className={classes.messageInputWrapper}>
             <InputBase
               inputRef={inputRef}
@@ -712,7 +792,6 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
                       className={classes.messageQuickAnswersWrapperItem}
                       key={index}
                     >
-                      {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                       <a onClick={() => handleQuickAnswersClick(value.message)}>
                         {`${value.shortcut} - ${value.message}`}
                       </a>
@@ -724,16 +803,7 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
               <div></div>
             )}
           </div>
-          {inputMessage ? (
-            <IconButton
-              aria-label="Enviar mensagem"
-              component="button"
-              onClick={handleSendMessage}
-              disabled={loading || sendBlocked || ticketStatus !== "open"}
-            >
-              <SendIcon className={classes.sendMessageIcons} />
-            </IconButton>
-          ) : recording ? (
+          {recording ? (
             <div className={classes.recorderWrapper}>
               <IconButton
                 aria-label="Cancelar gravação"
@@ -753,23 +823,57 @@ const MessageInput = ({ ticketStatus, sendBlocked }) => {
               )}
 
               <IconButton
-                aria-label="Enviar áudio gravado"
+                aria-label="Concluir gravação"
                 component="button"
-                onClick={handleUploadAudio}
+                onClick={handleStopRecording}
                 disabled={loading}
               >
-                <CheckCircleOutlineIcon className={classes.sendAudioIcon} />
+                <StopIcon className={classes.sendAudioIcon} />
               </IconButton>
             </div>
+          ) : recordedAudio ? (
+            <div className={classes.recorderWrapper}>
+              <Tooltip title="Descartar áudio">
+                <IconButton aria-label="Descartar áudio" disabled={loading} onClick={handleCancelAudio}>
+                  <HighlightOffIcon className={classes.cancelAudioIcon} />
+                </IconButton>
+              </Tooltip>
+              <audio className={classes.audioPreview} src={recordedAudio.url} controls preload="metadata" />
+              <Tooltip title="Enviar áudio">
+                <IconButton aria-label="Enviar áudio gravado" disabled={loading} onClick={handleUploadAudio}>
+                  {loading ? <CircularProgress size={20} /> : <CheckCircleOutlineIcon className={classes.sendAudioIcon} />}
+                </IconButton>
+              </Tooltip>
+            </div>
           ) : (
-            <IconButton
-              aria-label="Gravar áudio"
-              component="button"
-              disabled={loading || ticketStatus !== "open" || sendBlocked}
-              onClick={handleStartRecording}
-            >
-              <MicIcon className={classes.sendMessageIcons} />
-            </IconButton>
+            <>
+              <Tooltip title="Gravar e enviar áudio">
+                <span>
+                  <IconButton
+                    aria-label="Gravar áudio"
+                    component="button"
+                    disabled={loading || ticketStatus !== "open" || sendBlocked}
+                    onClick={handleStartRecording}
+                  >
+                    <MicIcon className={classes.sendMessageIcons} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              {inputMessage && (
+                <Tooltip title="Enviar mensagem">
+                  <span>
+                    <IconButton
+                      aria-label="Enviar mensagem"
+                      component="button"
+                      onClick={handleSendMessage}
+                      disabled={loading || sendBlocked || ticketStatus !== "open"}
+                    >
+                      <SendIcon className={classes.sendMessageIcons} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
+            </>
           )}
         </div>
       </Paper>

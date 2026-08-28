@@ -10,6 +10,7 @@ export interface SendPolicy {
   expectedQueueId?: number | null;
   ticketId?: number;
   idempotencyKey?: string;
+  cleanupMediaPath?: boolean;
   proactive?: boolean;
   bot?: boolean;
   botEventId?: string;

@@ -18,8 +18,6 @@ import api from "../../services/api";
 import { ReplyMessageProvider } from "../../context/ReplyingMessage/ReplyingMessageContext";
 import toastError from "../../errors/toastError";
 
-const drawerWidth = 320;
-
 const useStyles = makeStyles(theme => ({
   root: {
     display: "flex",
@@ -61,6 +59,23 @@ const useStyles = makeStyles(theme => ({
       duration: theme.transitions.duration.enteringScreen
     }),
     marginRight: 0
+  },
+  dropOverlay: {
+    position: "absolute",
+    inset: 8,
+    zIndex: 20,
+    pointerEvents: "none",
+    border: `3px dashed ${theme.palette.primary.main}`,
+    borderRadius: 14,
+    background: "rgba(255,255,255,.94)",
+    color: theme.palette.primary.main,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "1.15rem",
+    fontWeight: 600,
+    textAlign: "center",
+    padding: theme.spacing(3)
   }
 }));
 
@@ -74,6 +89,9 @@ const Ticket = () => {
   const [contact, setContact] = useState({});
   const [ticket, setTicket] = useState({});
   const [context, setContext] = useState(null);
+  const [droppedFiles, setDroppedFiles] = useState([]);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const dragDepth = useRef(0);
   const contextGeneration = useRef(0);
   const loadContext = useCallback(async () => {
     const generation = ++contextGeneration.current;
@@ -163,8 +181,57 @@ const Ticket = () => {
     setDrawerOpen(false);
   };
 
+  const sendBlocked =
+    !context ||
+    context.paused ||
+    ["off", "simulation"].includes(context.mode) ||
+    (context.official && !context.serviceWindowOpen);
+  const canDropFiles = ticket.status === "open" && !sendBlocked;
+  const hasDraggedFiles = event =>
+    Array.from(event.dataTransfer?.types || []).includes("Files");
+  const handleDragEnter = event => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    if (!canDropFiles) return;
+    dragDepth.current += 1;
+    setDraggingFiles(true);
+  };
+  const handleDragOver = event => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    if (!canDropFiles) return;
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const handleDragLeave = event => {
+    if (!draggingFiles) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (!dragDepth.current) setDraggingFiles(false);
+  };
+  const handleDrop = event => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    if (!canDropFiles) return;
+    dragDepth.current = 0;
+    setDraggingFiles(false);
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length) setDroppedFiles(files);
+  };
+
   return (
-    <div className={classes.root} id="drawer-container">
+    <div
+      className={classes.root}
+      id="drawer-container"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {draggingFiles && (
+        <div className={classes.dropOverlay}>
+          Solte os arquivos para anexar à conversa
+        </div>
+      )}
       <Paper
         variant="outlined"
         elevation={0}
@@ -197,12 +264,9 @@ const Ticket = () => {
           <MessageInput
             key={ticketId}
             ticketStatus={ticket.status}
-            sendBlocked={
-              !context ||
-              context.paused ||
-              ["off", "simulation"].includes(context.mode) ||
-              (context.official && !context.serviceWindowOpen)
-            }
+            sendBlocked={sendBlocked}
+            droppedFiles={droppedFiles}
+            onDroppedFilesHandled={() => setDroppedFiles([])}
           />
         </ReplyMessageProvider>
       </Paper>

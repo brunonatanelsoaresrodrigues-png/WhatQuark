@@ -5,9 +5,11 @@ import ModalImage from "react-modal-image";
 import Audio from "../Audio";
 import useProtectedMedia from "../../hooks/useProtectedMedia";
 import api from "../../services/api";
+import { isStickerMessage } from "../../services/mediaComposer";
 
 export default function ProtectedMedia({ message, className }) {
-  const preview = ["image", "audio", "video"].includes(message.mediaType);
+  const sticker = isStickerMessage(message);
+  const preview = sticker || ["image", "audio", "video", "ptt"].includes(message.mediaType);
   const { blobUrl, error } = useProtectedMedia(
     preview ? message.mediaUrl : null
   );
@@ -70,6 +72,9 @@ export default function ProtectedMedia({ message, className }) {
     );
   if (!blobUrl)
     return <CircularProgress size={20} aria-label="Carregando anexo" />;
+  if (sticker) {
+    return <img className={className} src={blobUrl} alt="Figurinha da conversa" />;
+  }
   if (message.mediaType === "image") {
     return (
       <ModalImage
@@ -80,6 +85,6 @@ export default function ProtectedMedia({ message, className }) {
       />
     );
   }
-  if (message.mediaType === "audio") return <Audio url={blobUrl} />;
+  if (["audio", "ptt"].includes(message.mediaType)) return <Audio url={blobUrl} />;
   return <video className={className} src={blobUrl} controls />;
 }

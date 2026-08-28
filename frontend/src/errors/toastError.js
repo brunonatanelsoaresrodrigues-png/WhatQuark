@@ -26,7 +26,15 @@ const messages = {
     "Esta ação não está disponível na API oficial.",
   ERR_IDEMPOTENCY_KEY_REQUIRED:
     "Atualize a aplicação antes de enviar mensagens.",
-  ERR_INVALID_MEDIA: "Arquivo inválido ou maior que 20 MB."
+  ERR_INVALID_MEDIA: "Arquivo inválido ou lote acima do limite permitido.",
+  ERR_MEDIA_TOO_LARGE: "Cada arquivo deve ter no máximo 20 MB.",
+  ERR_INVALID_MEDIA_CONTENT:
+    "O conteúdo do arquivo não corresponde ao tipo informado.",
+  ERR_MEDIA_TYPE_NOT_ALLOWED: "Este tipo de arquivo não é permitido.",
+  ERR_NO_STICKER_FOUND: "A figurinha não está mais disponível.",
+  ERR_MESSAGE_IS_NOT_STICKER: "Esta mensagem não contém uma figurinha válida.",
+  ERR_STICKER_PROVIDER_UNSUPPORTED:
+    "O provedor configurado não permite enviar figurinhas."
 };
 const toastError = err => {
   const errorMsg = err.response?.data?.message || err.response?.data?.error;

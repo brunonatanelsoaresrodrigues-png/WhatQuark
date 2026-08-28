@@ -166,6 +166,8 @@ export const CloudWhatsAppProvider: WhatsappProvider = {
     options?: SendMediaOptions
   ) {
     const config = assertChannel(id);
+    if (options?.sendAsSticker)
+      throw new AppError("ERR_STICKER_PROVIDER_UNSUPPORTED", 409);
     if (options?.policy?.template)
       throw new AppError("ERR_MEDIA_TEMPLATE_UNSUPPORTED", 409);
     const content =

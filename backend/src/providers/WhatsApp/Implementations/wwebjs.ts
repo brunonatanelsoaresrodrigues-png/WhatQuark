@@ -358,10 +358,12 @@ const sendMedia = async (
   const mediaOptions: MessageSendOptions = {
     caption: options?.caption,
     sendAudioAsVoice: options?.sendAudioAsVoice,
+    sendMediaAsSticker: options?.sendAsSticker,
     quotedMessageId: options?.quotedMessageId
   };
 
   if (
+    !options?.sendAsSticker &&
     messageMedia.mimetype.startsWith("image/") &&
     !/^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)
   ) {

@@ -8,6 +8,8 @@ import ConfirmationModal from "../ConfirmationModal";
 import { Menu } from "@material-ui/core";
 import { ReplyMessageContext } from "../../context/ReplyingMessage/ReplyingMessageContext";
 import toastError from "../../errors/toastError";
+import { toast } from "react-toastify";
+import { isStickerMessage } from "../../services/mediaComposer";
 
 const MessageOptionsMenu = ({ message, menuOpen, handleClose, anchorEl }) => {
   const { setReplyingMessage } = useContext(ReplyMessageContext);
@@ -26,9 +28,20 @@ const MessageOptionsMenu = ({ message, menuOpen, handleClose, anchorEl }) => {
     handleClose();
   };
 
-  const handleOpenConfirmationModal = e => {
+  const handleOpenConfirmationModal = () => {
     setConfirmationOpen(true);
     handleClose();
+  };
+
+  const handleSaveSticker = async () => {
+    try {
+      const { status } = await api.post("/stickers", { messageId: message.id });
+      if (status === 201) toast.success("Figurinha salva na biblioteca.");
+    } catch (err) {
+      toastError(err);
+    } finally {
+      handleClose();
+    }
   };
 
   return (
@@ -63,6 +76,9 @@ const MessageOptionsMenu = ({ message, menuOpen, handleClose, anchorEl }) => {
         <MenuItem onClick={hanldeReplyMessage}>
           {i18n.t("messageOptionsMenu.reply")}
         </MenuItem>
+        {isStickerMessage(message) && (
+          <MenuItem onClick={handleSaveSticker}>Salvar figurinha</MenuItem>
+        )}
       </Menu>
     </>
   );

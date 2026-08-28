@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { promises as fs } from "fs";
 
 import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import { emitTicketEvent } from "../libs/socket";
@@ -13,6 +14,7 @@ import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
 import { logger } from "../utils/logger";
+import { validateMediaUpload } from "../helpers/ValidateMediaUpload";
 
 type IndexQuery = {
   pageNumber: string;
@@ -63,19 +65,41 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   await PausePatientIntakeService(ticket, Number(req.user.id));
 
   if (medias?.length) {
-    await Promise.all(
-      medias.map(async (media: Express.Multer.File, index: number) => {
-        await SendWhatsAppMedia({
+    const validations = await Promise.all(
+      medias.map(media =>
+        validateMediaUpload(media)
+          .then(() => null)
+          .catch(error => error as Error)
+      )
+    );
+    const invalid = validations.find(error => error);
+    if (invalid) {
+      await Promise.all(
+        medias.map(media => fs.unlink(media.path).catch(() => undefined))
+      );
+      throw invalid;
+    }
+    const results = await Promise.all(
+      medias.map((media: Express.Multer.File, mediaIndex: number) =>
+        SendWhatsAppMedia({
           media,
           ticket,
           sentByUserId: Number(req.user.id),
           origin: "HUMAN",
           policy: {
-            idempotencyKey: `human:${req.user.id}:${requestKey}:${index}`
+            idempotencyKey: `human:${req.user.id}:${requestKey}:${mediaIndex}`
           }
-        });
-      })
+        })
+          .then(() => ({ error: null as Error | null }))
+          .catch(error => ({ error: error as Error }))
+      )
     );
+    const failed = results.find(
+      result => result.error && result.error.message !== "ERR_MESSAGE_QUEUED"
+    );
+    if (failed?.error) throw failed.error;
+    if (results.some(result => result.error))
+      return res.status(202).json({ queued: true, files: medias.length });
   } else {
     await SendWhatsAppMessage({
       body,

@@ -55,9 +55,7 @@ export default function ({ url }) {
 
   return (
     <>
-      <audio ref={audioRef} controls>
-        <source src={url} type="audio/ogg"></source>
-      </audio>
+      <audio ref={audioRef} src={url} controls preload="metadata" />
       {showButtonRate && (
         <Button
           style={{ marginLeft: "5px", marginTop: "-45px" }}

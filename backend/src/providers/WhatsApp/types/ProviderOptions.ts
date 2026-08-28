@@ -11,5 +11,6 @@ export interface SendMediaOptions {
   caption?: string;
   sendAudioAsVoice?: boolean;
   sendMediaAsDocument?: boolean;
+  sendAsSticker?: boolean;
   quotedMessageId?: string;
 }

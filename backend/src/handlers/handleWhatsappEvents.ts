@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/node";
 
 import { emitTicketEvent } from "../libs/socket";
 import { logger } from "../utils/logger";
+import { storedMediaType } from "../helpers/StoredMediaType";
 import { HandleInboundAutomation } from "../services/MessagingServices/HandleInboundAutomation";
 import { recordInbound } from "../services/MessagingServices/preferences";
 import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
@@ -272,9 +273,13 @@ export const handleMessage = async (
     if (mediaPayload && processedMessage.hasMedia) {
       const filename = await saveMediaFile(mediaPayload);
       messageData.mediaUrl = filename;
-      messageData.body = processedMessage.body || filename;
-      const [mediaType] = mediaPayload.mimetype.split("/");
-      messageData.mediaType = mediaType;
+      messageData.body =
+        processedMessage.body ||
+        (processedMessage.type === "sticker" ? "Figurinha" : filename);
+      messageData.mediaType = storedMediaType(
+        processedMessage.type,
+        mediaPayload.mimetype
+      );
     }
 
     if (options.historySync) {

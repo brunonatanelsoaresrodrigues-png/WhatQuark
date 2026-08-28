@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { registerMessageAttribution } from "../MessageServices/MessageAttributionService";
 import { MessageOrigin } from "../../models/MessageAttribution";
 import persistCloudOutbound from "./persistCloudOutbound";
@@ -24,6 +26,7 @@ import { assertExecution, inServiceWindow, SendPolicy } from "./policy";
 import { getPreference } from "./preferences";
 import { digest, readState, withLease } from "./state";
 import { logger } from "../../utils/logger";
+import uploadConfig from "../../config/upload";
 
 interface Transport {
   sendMessage(
@@ -66,6 +69,14 @@ const positive = (value: string | undefined, fallback: number) =>
   Number(value) > 0 ? Number(value) : fallback;
 const codeOf = (error: unknown) =>
   error instanceof Error ? error.message : "ERR_SEND_UNKNOWN";
+const cleanupMediaPath = async (payload: Payload): Promise<void> => {
+  if (!payload.options.policy?.cleanupMediaPath || !payload.media?.path) return;
+  const root = path.resolve(uploadConfig.directory);
+  const candidate = path.resolve(payload.media.path);
+  const relative = path.relative(root, candidate);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+  await fs.promises.unlink(candidate).catch(() => undefined);
+};
 let timer: NodeJS.Timeout | undefined;
 let active: Promise<void> | undefined;
 let stopping = false;
@@ -234,7 +245,9 @@ const runOutbound = async (transport: Transport): Promise<void> => {
   for (const row of accepted) {
     if (!row.messageId || !row.result) continue;
     try {
-      await persistAccepted(JSON.parse(row.result), JSON.parse(row.payload));
+      const payload = JSON.parse(row.payload) as Payload;
+      await persistAccepted(JSON.parse(row.result), payload);
+      await cleanupMediaPath(payload);
       await row.update({ status: "SENT", errorCode: null });
     } catch {
       /* Accepted message is never sent again, only local persistence is retried. */
@@ -391,6 +404,7 @@ const runOutbound = async (transport: Transport): Promise<void> => {
                 result: JSON.stringify(result)
               });
               await persistAccepted(result, payload);
+              await cleanupMediaPath(payload);
             } catch (error) {
               // Do not retry exceptions from transport or post-send storage automatically.
               await row.update({

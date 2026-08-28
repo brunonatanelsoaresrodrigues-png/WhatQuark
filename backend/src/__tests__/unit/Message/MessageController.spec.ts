@@ -6,6 +6,9 @@ import SendWhatsAppMedia from "../../../services/WbotServices/SendWhatsAppMedia"
 import SendWhatsAppMessage from "../../../services/WbotServices/SendWhatsAppMessage";
 
 jest.mock("../../../helpers/SetTicketMessagesAsRead", () => jest.fn());
+jest.mock("../../../helpers/ValidateMediaUpload", () => ({
+  validateMediaUpload: jest.fn().mockResolvedValue(undefined)
+}));
 jest.mock("../../../services/TicketServices/AssertTicketAccess", () => jest.fn());
 jest.mock("../../../libs/socket", () => ({ getIO: jest.fn() }));
 jest.mock("../../../models/Message", () => ({

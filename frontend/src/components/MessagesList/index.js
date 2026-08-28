@@ -18,8 +18,8 @@ import MarkdownWrapper from "../MarkdownWrapper";
 import VcardPreview from "../VcardPreview";
 import LocationPreview from "../LocationPreview";
 import ProtectedMedia from "../ProtectedMedia";
+import { isStickerMessage } from "../../services/mediaComposer";
 import MessageOptionsMenu from "../MessageOptionsMenu";
-import whatsBackground from "../../assets/wa-background.png";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -197,6 +197,16 @@ const useStyles = makeStyles(theme => ({
     borderTopRightRadius: 8,
     borderBottomLeftRadius: 8,
     borderBottomRightRadius: 8
+  },
+
+  stickerMedia: {
+    display: "block",
+    objectFit: "contain",
+    width: 180,
+    height: 180,
+    maxWidth: "65vw",
+    background: "transparent",
+    padding: 6
   },
 
   timestamp: {
@@ -412,7 +422,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
     setSelectedMessage(message);
   };
 
-  const handleCloseMessageOptionsMenu = e => {
+  const handleCloseMessageOptionsMenu = () => {
     setAnchorEl(null);
   };
 
@@ -475,7 +485,12 @@ const MessagesList = ({ ticketId, isGroup }) => {
       } else return (<></>)
     }*/
     return (
-      <ProtectedMedia message={message} className={classes.messageMedia} />
+      <ProtectedMedia
+        message={message}
+        className={
+          isStickerMessage(message) ? classes.stickerMedia : classes.messageMedia
+        }
+      />
     );
   };
 
@@ -603,7 +618,9 @@ const MessagesList = ({ ticketId, isGroup }) => {
                   checkMessageMedia(message)}
                 <div className={classes.textContentItem}>
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  <MarkdownWrapper>{message.body}</MarkdownWrapper>
+                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && (
+                    <MarkdownWrapper>{message.body}</MarkdownWrapper>
+                  )}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                   </span>
@@ -645,7 +662,9 @@ const MessagesList = ({ ticketId, isGroup }) => {
                     />
                   )}
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  <MarkdownWrapper>{message.body}</MarkdownWrapper>
+                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && (
+                    <MarkdownWrapper>{message.body}</MarkdownWrapper>
+                  )}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                     {renderMessageAck(message)}

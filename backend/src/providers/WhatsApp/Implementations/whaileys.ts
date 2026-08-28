@@ -1366,6 +1366,13 @@ const sendMedia = async (
       contextInfo
     };
 
+    if (options?.sendAsSticker) {
+      return {
+        message: { sticker: mediaBuffer, contextInfo },
+        type: "sticker" as MessageType
+      };
+    }
+
     if (media.mimetype.startsWith("image/")) {
       return {
         message: { image: mediaBuffer, ...base },

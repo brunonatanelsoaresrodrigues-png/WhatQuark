@@ -4,6 +4,7 @@ import "express-async-errors";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import multer from "multer";
 import * as Sentry from "@sentry/node";
 
 import "./database";
@@ -34,6 +35,12 @@ app.use(routes);
 app.use(Sentry.Handlers.errorHandler());
 
 app.use(async (err: Error, req: Request, res: Response, _: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    const tooLarge = err.code === "LIMIT_FILE_SIZE";
+    return res.status(tooLarge ? 413 : 400).json({
+      error: tooLarge ? "ERR_MEDIA_TOO_LARGE" : "ERR_INVALID_MEDIA"
+    });
+  }
   if (err instanceof AppError) {
     logger.warn(err);
     return res.status(err.statusCode).json({ error: err.message });
