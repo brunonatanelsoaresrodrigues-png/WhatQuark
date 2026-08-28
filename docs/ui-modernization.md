@@ -6,7 +6,8 @@ Implementação local em 28/08/2026, sobre o commit `66eb693` (figurinhas e comp
 Mantidos React 16, Material UI 4, Vite e contratos HTTP/socket existentes. Não foram alterados
 backend, autenticação, migrações, banco, regras de envio, bot, consentimento ou provedores de WhatsApp.
 A API não oficial permanece; alterações visuais não eliminam o risco de bloqueio pelo WhatsApp.
-Nenhum deploy foi executado nesta etapa.
+Publicada na VPS em 28/08/2026 junto aos recursos de mídia. O procedimento, os backups e a
+conferência de dados/sessão estão em [deploy-ui-media-2026-08-28.md](deploy-ui-media-2026-08-28.md).
 
 ## Auditoria e direção visual
 
@@ -119,10 +120,11 @@ Buscar `erro-demo` simula falha de listagem. Não usar esse servidor como deploy
 
 ## Limites e próximos passos
 
-- Antes de publicar: homologação com banco dedicado e teste controlado ponta a ponta de áudio,
-  figurinha, anexos, bot e notificações; confirmar compatibilidade dos endpoints de mídia do commit anterior.
-- Preparar deploy com backup, verificação dos volumes de sessão/mídia e rollback; não reiniciar
-  o provedor de WhatsApp como parte de uma simples troca de frontend.
+- O deploy conjunto de backend/frontend foi ensaiado em clone isolado e publicado com backup,
+  conferência dos dados e reconexão sem QR. Os endpoints de mídia foram verificados; entrega
+  ponta a ponta de áudio, figurinhas, bot e notificações não foi testada com pacientes reais.
+- Em futuras mudanças exclusivamente visuais, publicar apenas o frontend. Para mudanças no
+  backend, usar encerramento controlado e conferir a sessão, seguindo o registro do deploy.
 - Build ainda avisa sobre um chunk de aproximadamente 571 kB da biblioteca de emojis.
   A biblioteca já é carregada sob demanda; sua substituição merece trabalho separado.
 - Não foram inventadas métricas de espera, filtros por canal/intervalo, tags ou automações de FIFO
