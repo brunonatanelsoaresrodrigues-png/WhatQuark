@@ -16,6 +16,11 @@ import InfoOutlined from "@material-ui/icons/InfoOutlined";
 import { toast } from "react-toastify";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+import {
+  appointmentDateTimeLabel,
+  appointmentDayLabel,
+  appointmentStatusLabel
+} from "../../services/appointmentDisplay";
 
 const useStyles = makeStyles(theme => ({
   contextBar: {
@@ -39,6 +44,22 @@ const useStyles = makeStyles(theme => ({
     background:
       theme.palette.type === "dark" ? "rgba(198,75,85,.12)" : "#FFF0F1",
     borderColor: "rgba(198,75,85,.24)"
+  },
+  appointmentHeading: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: theme.spacing(0.75)
+  },
+  appointmentDay: {
+    display: "inline-flex",
+    padding: theme.spacing(0.25, 0.8),
+    borderRadius: 999,
+    background: theme.modeTokens.surfaceTint,
+    color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
+    fontSize: 11,
+    fontWeight: 700
   }
 }));
 export default function TicketContext({ ticket, context, onRefresh }) {
@@ -88,6 +109,25 @@ export default function TicketContext({ ticket, context, onRefresh }) {
   };
   const blocked =
     !context || context.paused || ["off", "simulation"].includes(context.mode);
+  const appointment = value => (
+    <Box key={value.appointmentId} py={1}>
+      <div className={classes.appointmentHeading}>
+        <Typography variant="body2">
+          {appointmentDateTimeLabel(value.scheduledAt, context?.clinicTimezone)}
+        </Typography>
+        <span className={classes.appointmentDay}>
+          {appointmentDayLabel(
+            value.scheduledAt,
+            context?.serverNow,
+            context?.clinicTimezone
+          )}
+        </span>
+      </div>
+      <Typography variant="caption" color="textSecondary">
+        {appointmentStatusLabel(value.status)} · Referência {value.reference}
+      </Typography>
+    </Box>
+  );
   return (
     <>
       <Box className={classes.contextBar}>
@@ -198,19 +238,18 @@ export default function TicketContext({ ticket, context, onRefresh }) {
               <Box my={2}>
                 <Divider />
               </Box>
+              {context.lastAppointment && (
+                <>
+                  <Typography variant="h6">Última consulta</Typography>
+                  {appointment(context.lastAppointment)}
+                  <Box my={2}>
+                    <Divider />
+                  </Box>
+                </>
+              )}
               <Typography variant="h6">Próximas consultas</Typography>
               {context.appointments?.length ? (
-                context.appointments.map(a => (
-                  <Box key={a.appointmentId} py={1}>
-                    <Typography variant="body2">
-                      {new Date(a.scheduledAt).toLocaleString("pt-BR")} ·{" "}
-                      {a.status}
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      Referência {a.reference}
-                    </Typography>
-                  </Box>
-                ))
+                context.appointments.map(appointment)
               ) : (
                 <Typography color="textSecondary">
                   Nenhuma consulta futura vinculada a este número.

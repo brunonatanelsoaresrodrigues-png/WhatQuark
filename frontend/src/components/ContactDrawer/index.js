@@ -5,6 +5,11 @@ import Skeleton from "@material-ui/lab/Skeleton";
 import ContactModal from "../ContactModal";
 import ContactAvatar from "../ContactAvatar";
 import MarkdownWrapper from "../MarkdownWrapper";
+import {
+  appointmentDateTimeLabel,
+  appointmentDayLabel,
+  appointmentStatusLabel
+} from "../../services/appointmentDisplay";
 const useStyles = makeStyles(theme => ({
   docked: {
     width: 272,
@@ -110,6 +115,31 @@ const useStyles = makeStyles(theme => ({
     fontSize: 12,
     overflowWrap: "anywhere"
   },
+  appointmentHeading: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 600
+  },
+  appointmentDay: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 22,
+    padding: "2px 7px",
+    borderRadius: 999,
+    background: theme.modeTokens.surfaceTint,
+    color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
+    fontSize: 10,
+    fontWeight: 700,
+    whiteSpace: "nowrap"
+  },
+  appointmentMeta: {
+    display: "block",
+    marginTop: 4
+  },
   empty: {
     fontSize: 11,
     lineHeight: 1.7,
@@ -127,6 +157,13 @@ const ContactDrawer = ({
 }) => {
   const classes = useStyles();
   const [modalOpen, setModalOpen] = useState(false);
+  const renderAppointment = appointment => <div key={appointment.appointmentId} className={classes.extraInfo}>
+      <div className={classes.appointmentHeading}>
+        <span>{appointmentDateTimeLabel(appointment.scheduledAt, context?.clinicTimezone)}</span>
+        <span className={classes.appointmentDay}>{appointmentDayLabel(appointment.scheduledAt, context?.serverNow, context?.clinicTimezone)}</span>
+      </div>
+      <Typography variant="caption" color="textSecondary" className={classes.appointmentMeta}>{appointmentStatusLabel(appointment.status)} · {appointment.reference}</Typography>
+    </div>;
   return <Drawer className={docked && open ? classes.docked : undefined} variant={docked ? "persistent" : "temporary"} onClose={handleDrawerClose} anchor="right" open={open} classes={{
     paper: `${classes.drawerPaper} ${docked ? classes.dockedPaper : ""}`
   }} PaperProps={{
@@ -164,12 +201,13 @@ const ContactDrawer = ({
                 <dt>Responsável</dt><dd>{ticket.user?.name || "Aguardando atribuição"}</dd>
               </dl>
             </Paper>}
+            {context?.lastAppointment && <Paper variant="outlined" className={classes.card}>
+              <Typography component="h3">Última consulta</Typography>
+              {renderAppointment(context.lastAppointment)}
+            </Paper>}
             {context && <Paper variant="outlined" className={classes.card}>
               <Typography component="h3">Próximas consultas</Typography>
-              {context.appointments?.length ? context.appointments.map(appointment => <div key={appointment.appointmentId} className={classes.extraInfo}>
-                  <div>{new Date(appointment.scheduledAt).toLocaleString("pt-BR")}</div>
-                  <Typography variant="caption" color="textSecondary">{appointment.status} · {appointment.reference}</Typography>
-                </div>) : <Typography className={classes.empty}>Nenhuma consulta futura vinculada a este número.</Typography>}
+              {context.appointments?.length ? context.appointments.map(renderAppointment) : <Typography className={classes.empty}>Nenhuma consulta futura vinculada a este número.</Typography>}
             </Paper>}
             <Paper variant="outlined" className={classes.card}>
               <Typography component="h3">Informações adicionais</Typography>

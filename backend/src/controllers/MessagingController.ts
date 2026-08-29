@@ -28,6 +28,7 @@ import { getQuarkConfig } from "../services/QuarkClinicServices/config";
 import { getQuarkAppointment } from "../services/QuarkClinicServices/QuarkClinicClient";
 import QuarkAppointmentResponse from "../models/QuarkAppointmentResponse";
 import AutomationState from "../models/AutomationState";
+import ListContactAppointmentsService from "../services/QuarkClinicServices/ListContactAppointmentsService";
 
 export const status = async (_req: Request, res: Response) =>
   res.json(await messagingStatus());
@@ -68,17 +69,7 @@ export const context = async (req: Request, res: Response) => {
     `inbound-time:${ticket.whatsappId}:${phone}`,
     null
   );
-  const appointments = await QuarkAppointment.findAll({
-    where: { phone, scheduledAt: { [Op.gte]: new Date() } },
-    attributes: [
-      "appointmentId",
-      "scheduledAt",
-      "status",
-      "scheduleFingerprint"
-    ],
-    order: [["scheduledAt", "ASC"]],
-    limit: 5
-  });
+  const appointmentContext = await ListContactAppointmentsService({ phone });
   const config = getTicketInactivityConfig();
   const pending = await OutboundMessage.findAll({
     where: {
@@ -103,16 +94,7 @@ export const context = async (req: Request, res: Response) => {
     serviceWindowOpen: inServiceWindow(lastInboundAt),
     inactivityEnabled: config.enabled,
     inactivityTimeoutMinutes: config.timeoutMinutes,
-    appointments: appointments.map(a => ({
-      appointmentId: a.appointmentId,
-      scheduledAt: a.scheduledAt,
-      status: a.status,
-      reference: appointmentReference(
-        a.appointmentId,
-        a.scheduleFingerprint,
-        phone
-      )
-    }))
+    ...appointmentContext
   });
 };
 export const preference = async (req: Request, res: Response) => {

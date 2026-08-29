@@ -125,11 +125,24 @@ export default {
       preference: {
         consent: "GRANTED"
       },
+      clinicTimezone: "America/Sao_Paulo",
+      serverNow: new Date("2026-08-28T15:00:00.000Z").toISOString(),
+      lastAppointment: {
+        appointmentId: "previous-1",
+        reference: "ANTERIOR1",
+        status: "CONFIRMADO",
+        scheduledAt: new Date("2026-08-20T12:30:00.000Z").toISOString()
+      },
       appointments: [{
         appointmentId: 1,
-        reference: "Demonstração",
+        reference: "PROXIMA1",
         status: "CONFIRMADO",
-        scheduledAt: new Date(Date.now() + 86400000).toISOString()
+        scheduledAt: new Date("2026-09-02T12:30:00.000Z").toISOString()
+      }, {
+        appointmentId: 2,
+        reference: "PROXIMA2",
+        status: "AGENDADO",
+        scheduledAt: new Date("2026-09-09T14:00:00.000Z").toISOString()
       }]
     };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (path.startsWith("/messages/")) data = {
       messages,
