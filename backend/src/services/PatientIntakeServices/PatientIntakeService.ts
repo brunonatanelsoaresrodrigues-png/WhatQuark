@@ -124,6 +124,24 @@ export const isValidCpf = (body: string): boolean => {
   return checkDigit(9) === Number(cpf[9]) && checkDigit(10) === Number(cpf[10]);
 };
 
+const persistContactCpf = async (
+  ticket: Ticket,
+  value: string | undefined
+): Promise<void> => {
+  if (!value || !isValidCpf(value) || ticket.contact?.cpf) return;
+  if (!ticket.contact?.update) return;
+  try {
+    await ticket.contact.update({ cpf: value.replace(/\D/g, "") });
+  } catch (error) {
+    logger.error({
+      info: "Validated intake CPF could not be persisted to the contact",
+      ticketId: ticket.id,
+      contactId: ticket.contactId || ticket.contact.id,
+      err: error
+    });
+  }
+};
+
 export const isValidBirthDate = (body: string, now = new Date()): boolean => {
   const match = body.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return false;
@@ -209,6 +227,7 @@ const nextAfterName = async (
   ticket: Ticket,
   context: PatientIntakeContext
 ): Promise<PatientIntakeResult> => {
+  await persistContactCpf(ticket, context.cpf);
   if (
     ticket.intakeReason === "CONFIRM_OR_RESCHEDULE" ||
     ticket.intakeReason === "CANCEL"
@@ -765,6 +784,7 @@ const runPatientIntake = async (
     }
     context = { ...context, cpf: body.replace(/\D/g, "") };
     await saveIntakeContext(ticket, context, { intakeStatus: "AWAITING_NAME" });
+    await persistContactCpf(ticket, context.cpf);
     await sendBotMessage(ticket, withIntakeNavigation(NAME_PROMPT));
     return { handled: true, showQueueMenu: false };
   }

@@ -22,10 +22,13 @@ describe("ShowQuarkClinicContactService", () => {
   beforeEach(() => jest.clearAllMocks());
 
   it("resolves the patient and CPF from the linked Quark appointment", async () => {
-    (Contact.findByPk as jest.Mock).mockResolvedValue({
+    const contact = {
       id: 10,
-      number: "5511999990000"
-    });
+      number: "5511999990000",
+      cpf: null,
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    (Contact.findByPk as jest.Mock).mockResolvedValue(contact);
     (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([
       {
         appointmentId: "42",
@@ -52,12 +55,15 @@ describe("ShowQuarkClinicContactService", () => {
         appointmentId: "42"
       })
     );
+    expect(contact.update).toHaveBeenCalledWith({ cpf: "52998224725" });
   });
 
   it("keeps the local CPF when Quark is temporarily unavailable", async () => {
     (Contact.findByPk as jest.Mock).mockResolvedValue({
       id: 10,
-      number: "5511999990000"
+      number: "5511999990000",
+      cpf: null,
+      update: jest.fn().mockResolvedValue(undefined)
     });
     (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([
       {

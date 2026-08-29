@@ -119,6 +119,49 @@ describe("PatientIntakeService", () => {
     );
   });
 
+  it("persists a validated CPF before a flow can be handed to a human", async () => {
+    const contact: any = {
+      id: 20,
+      number: "5511999990000",
+      cpf: null,
+      update: jest.fn(async (fields: Record<string, unknown>) => {
+        Object.assign(contact, fields);
+      })
+    };
+    const current = ticket({
+      contact,
+      contactId: contact.id,
+      intakeStatus: "AWAITING_CPF",
+      intakeReason: "CANCEL"
+    });
+
+    await PatientIntakeService(current, "529.982.247-25");
+
+    expect(contact.update).toHaveBeenCalledWith({ cpf: "52998224725" });
+    expect(contact.cpf).toBe("52998224725");
+    expect(current.intakeStatus).toBe("AWAITING_NAME");
+  });
+
+  it("does not replace a CPF already reviewed on the contact", async () => {
+    const contact: any = {
+      id: 20,
+      number: "5511999990000",
+      cpf: "11144477735",
+      update: jest.fn()
+    };
+    const current = ticket({
+      contact,
+      contactId: contact.id,
+      intakeStatus: "AWAITING_CPF",
+      intakeReason: "CANCEL"
+    });
+
+    await PatientIntakeService(current, "529.982.247-25");
+
+    expect(contact.update).not.toHaveBeenCalled();
+    expect(contact.cpf).toBe("11144477735");
+  });
+
   it("hands a cancellation request to the team after CPF and patient name", async () => {
     const current = ticket({
       intakeStatus: "AWAITING_NAME",

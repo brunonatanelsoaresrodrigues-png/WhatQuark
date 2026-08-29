@@ -6,6 +6,7 @@ import { quarkCpfFrom } from "./appointmentUtils";
 import { QuarkAppointmentDto } from "./types";
 import { getQuarkConfig } from "./config";
 import { getQuarkAppointment } from "./QuarkClinicClient";
+import { logger } from "../../utils/logger";
 
 export interface QuarkClinicContactDetail {
   contactId: number;
@@ -30,7 +31,7 @@ const ShowQuarkClinicContactService = async (
     throw new AppError("ERR_INVALID_CONTACT_ID", 400);
 
   const contact = await Contact.findByPk(contactId, {
-    attributes: ["id", "number"]
+    attributes: ["id", "number", "cpf"]
   });
   if (!contact) throw new AppError("ERR_NO_CONTACT_FOUND", 404);
 
@@ -84,12 +85,23 @@ const ShowQuarkClinicContactService = async (
   ) as Record<string, unknown> | undefined;
   const cpf =
     quarkCpfFrom(remote as unknown as QuarkAppointmentDto) ||
-    stringValue(stored.cpf);
+    stringValue(stored.cpf) ||
+    stringValue(contact.cpf);
   const birthDate =
     stringValue(remote.dataNascimento) ||
     stringValue(remote.dataNascimentoPaciente) ||
     stringValue(remotePatient?.dataNascimento) ||
     stringValue(stored.dataNascimento);
+
+  if (cpf && !contact.cpf) {
+    await contact.update({ cpf }).catch(error =>
+      logger.error({
+        info: "Quark CPF could not be persisted to the contact",
+        contactId: contact.id,
+        err: error
+      })
+    );
+  }
 
   return {
     contactId: Number(contact.id),
