@@ -8,6 +8,11 @@ import * as TicketController from "../controllers/TicketController";
 import * as TicketMetricsController from "../controllers/TicketMetricsController";
 const ticketRoutes = express.Router();
 ticketRoutes.get(
+  "/ticket-metrics/operations",
+  isAuth,
+  TicketMetricsController.operations
+);
+ticketRoutes.get(
   "/ticket-metrics/daily",
   isAuth,
   TicketMetricsController.daily

@@ -14,6 +14,25 @@ export const user = {
   queues,
   canAccessQuarkClinic: true
 };
+export const assignees = [user, {
+  id: 2,
+  name: "Carlos Alberto",
+  profile: "user",
+  queues,
+  canAccessQuarkClinic: false
+}, {
+  id: 3,
+  name: "Letícia Gomes",
+  profile: "user",
+  queues,
+  canAccessQuarkClinic: true
+}, {
+  id: 4,
+  name: "Rafael Pereira",
+  profile: "user",
+  queues,
+  canAccessQuarkClinic: false
+}];
 export const channels = [{
   id: 1,
   name: "Essencial Saúde",
@@ -179,7 +198,7 @@ export default {
       contacts: tickets.map(t => t.contact),
       count: 7,
       hasMore: false
-    };else if (path.startsWith("/contacts/")) data = tickets[0].contact;else if (path === "/users/assignees") data = [user];else if (path === "/users/") data = {
+    };else if (path.startsWith("/contacts/")) data = tickets[0].contact;else if (path === "/users/assignees") data = assignees;else if (path === "/users/") data = {
       users: [user],
       count: 1,
       hasMore: false
@@ -196,7 +215,85 @@ export default {
     }, {
       key: "userApiToken",
       value: "DEMO-SEM-CREDENCIAIS"
-    }];else if (path === "/ticket-metrics/daily") data = {
+    }];else if (path === "/ticket-metrics/operations") data = {
+      generatedAt: new Date().toISOString(),
+      timezone: "America/Sao_Paulo",
+      period: {
+        label: "Hoje"
+      },
+      slaMinutes: 5,
+      now: {
+        waiting: 10,
+        active: 9,
+        unread: 0,
+        unassigned: 2,
+        maximumWaitSeconds: 522,
+        averageWaitSeconds: 222,
+        aboveSla: 2
+      },
+      today: {
+        entries: 97,
+        resolved: 88,
+        averageWaitSeconds: 198,
+        averageServiceSeconds: 780,
+        resolutionRate: 90.7
+      },
+      comparison: {
+        entriesPercent: 12,
+        resolvedPercent: 8,
+        averageWaitSeconds: -42,
+        averageServiceSeconds: -30,
+        resolutionPoints: 1.4
+      },
+      flow: Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        time: `${String(hour).padStart(2, "0")}:00`,
+        entries: [4, 2, 2, 1, 2, 4, 11, 18, 25, 31, 42, 46, 41, 38, 34, 30, 23, 18, 15, 11, 7, 4, 2, 1][hour],
+        resolved: [2, 1, 1, 1, 1, 3, 7, 14, 20, 24, 33, 36, 35, 36, 31, 27, 20, 15, 12, 8, 5, 3, 2, 1][hour]
+      })),
+      attention: {
+        highestDemandQueue: {
+          id: 1,
+          name: "Recepção",
+          total: 12
+        },
+        peakHour: "11:00",
+        peakEntries: 46
+      },
+      agents: [{
+        id: 1,
+        name: "Marina Silva",
+        active: 4,
+        resolved: 23,
+        averageWaitSeconds: 182,
+        averageServiceSeconds: 720,
+        status: "WITHIN_SLA"
+      }, {
+        id: 2,
+        name: "Carlos Alberto",
+        active: 3,
+        resolved: 18,
+        averageWaitSeconds: 225,
+        averageServiceSeconds: 810,
+        status: "WITHIN_SLA"
+      }, {
+        id: 3,
+        name: "Letícia Gomes",
+        active: 5,
+        resolved: 19,
+        averageWaitSeconds: 261,
+        averageServiceSeconds: 930,
+        status: "ATTENTION"
+      }, {
+        id: 4,
+        name: "Rafael Pereira",
+        active: 2,
+        resolved: 15,
+        averageWaitSeconds: 178,
+        averageServiceSeconds: 690,
+        status: "WITHIN_SLA"
+      }]
+    };else if (path === "/ticket-metrics/daily") data = {
       total: 24,
       timezone: "America/Sao_Paulo",
       hours: Array.from({

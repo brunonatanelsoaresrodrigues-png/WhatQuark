@@ -46,6 +46,9 @@ const ids = table => query(`SELECT id FROM ${table}`);
     const queues = await ids("Queues");
     await read(`/tickets?showAll=true&queueIds=${encodeURIComponent(JSON.stringify(queues.map(row => row.id)))}`);
     await read("/users/assignees");
+    const dashboard = await read("/ticket-metrics/operations");
+    assert(dashboard.now && dashboard.today && Array.isArray(dashboard.flow) && Array.isArray(dashboard.agents), "Operational dashboard response invalid");
+    assert.strictEqual(dashboard.flow.length, 24, "Operational dashboard must return 24 hourly slots");
     const day = new Date().toISOString().slice(0, 10);
     for (const route of ["summary", "timeseries", "breakdown", "calendar-days", "appointments"])
       await read(`/quark/dashboard/${route}?from=${day}&to=${day}`);

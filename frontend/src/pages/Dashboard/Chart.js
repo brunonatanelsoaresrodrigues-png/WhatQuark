@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useTheme } from "@material-ui/core/styles";
 import {
   BarChart,
@@ -6,52 +6,24 @@ import {
   Bar,
   XAxis,
   YAxis,
-  Label,
-  ResponsiveContainer
+  Legend,
+  ResponsiveContainer,
+  Tooltip
 } from "recharts";
 
-import Title from "./Title";
-import api from "../../services/api";
-import toastError from "../../errors/toastError";
-
-const Chart = () => {
+const Chart = ({ data = [] }) => {
   const theme = useTheme();
-
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        const response = await api.get("/ticket-metrics/daily");
-        if (active) setData(response.data);
-      } catch (e) {
-        if (active) toastError(e);
-      }
-    };
-    load();
-    const timer = setInterval(load, 60000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, []);
-  const chartData = data?.hours || [];
   return (
-    <React.Fragment>
-      <Title>{`Atendimentos de hoje: ${data?.total ?? "…"} · ${
-        data?.timezone || "horário da clínica"
-      }`}</Title>
-      <ResponsiveContainer width="100%" height="80%">
+    <ResponsiveContainer width="100%" height="100%">
         <BarChart
-          data={chartData}
-          barSize={40}
-          width={730}
-          height={250}
+          data={data}
+          barGap={2}
+          barCategoryGap="28%"
           margin={{
-            top: 16,
-            right: 16,
-            bottom: 0,
-            left: 24
+            top: 12,
+            right: 8,
+            bottom: 2,
+            left: -14
           }}
         >
           <CartesianGrid
@@ -59,29 +31,51 @@ const Chart = () => {
             stroke={theme.palette.divider}
             vertical={false}
           />
-          <XAxis dataKey="time" stroke={theme.palette.text.secondary} />
+          <XAxis
+            dataKey="time"
+            stroke={theme.palette.text.secondary}
+            tickLine={false}
+            axisLine={false}
+            interval={1}
+            fontSize={11}
+          />
           <YAxis
             type="number"
             allowDecimals={false}
             stroke={theme.palette.text.secondary}
-          >
-            <Label
-              angle={270}
-              position="left"
-              style={{ textAnchor: "middle", fill: theme.palette.text.primary }}
-            >
-              Atendimentos
-            </Label>
-          </YAxis>
+            tickLine={false}
+            axisLine={false}
+            fontSize={11}
+          />
+          <Tooltip
+            cursor={{ fill: theme.palette.action.hover }}
+            contentStyle={{
+              color: theme.palette.text.primary,
+              background: theme.palette.background.paper,
+              border: `1px solid ${theme.palette.divider}`,
+              borderRadius: 10,
+              boxShadow: theme.shadows[3]
+            }}
+          />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
           <Bar
-            dataKey="amount"
-            fill={theme.palette.primary.main}
-            radius={[5, 5, 0, 0]}
+            dataKey="entries"
+            name="Entradas"
+            fill="#0C8C92"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={16}
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="resolved"
+            name="Finalizados"
+            fill="#77C95B"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={16}
             isAnimationActive={false}
           />
         </BarChart>
       </ResponsiveContainer>
-    </React.Fragment>
   );
 };
 

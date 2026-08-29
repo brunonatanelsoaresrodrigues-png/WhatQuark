@@ -8,6 +8,25 @@ import {
   dateParts,
   clinicTimezone
 } from "../services/QuarkClinicServices/clinicTime";
+import AppError from "../errors/AppError";
+import OperationalDashboardService from "../services/TicketServices/OperationalDashboardService";
+
+const optionalPositiveInteger = (value: unknown): number | undefined => {
+  if (value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0)
+    throw new AppError("ERR_INVALID_DASHBOARD_FILTER", 400);
+  return parsed;
+};
+
+export const operations = async (req: Request, res: Response) =>
+  res.json(
+    await OperationalDashboardService({
+      requesterUserId: req.user.id,
+      queueId: optionalPositiveInteger(req.query.queueId),
+      assigneeId: optionalPositiveInteger(req.query.assigneeId)
+    })
+  );
 
 export const daily = async (req: Request, res: Response) => {
   const user = await ShowUserService(req.user.id);
