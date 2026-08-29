@@ -14,6 +14,12 @@ contactRoutes.post(
 
 contactRoutes.get("/contacts", isAuth, ContactController.index);
 
+contactRoutes.post(
+  "/contacts/profile-pictures/refresh",
+  isAuth,
+  ContactController.refreshProfilePictures
+);
+
 contactRoutes.get("/contacts/:contactId", isAuth, ContactController.show);
 
 contactRoutes.post("/contacts", isAuth, ContactController.store);

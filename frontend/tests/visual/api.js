@@ -41,6 +41,7 @@ export const channels = [{
   updatedAt: new Date().toISOString()
 }];
 const names = ["Ana Ribeiro", "Carlos Lima", "Beatriz Oliveira", "Lucas Ferreira", "Helena Costa", "Pedro Almeida", "Sofia Martins"];
+const avatarDataUri = id => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="48" fill="${id % 2 ? "#BCE8DF" : "#C9DDF6"}"/><circle cx="48" cy="38" r="18" fill="#466A75"/><path d="M18 92c3-23 16-34 30-34s27 11 30 34" fill="#466A75"/></svg>`)}`;
 export const tickets = names.map((name, index) => ({
   id: index + 1,
   contactId: index + 1,
@@ -57,6 +58,7 @@ export const tickets = names.map((name, index) => ({
     number: "5500000000000",
     email: "exemplo@example.invalid",
     cpf: index === 0 ? "52998224725" : null,
+    profilePicUrl: index === 2 ? "https://expired.example.invalid/avatar.jpg" : "",
     extraInfo: []
   },
   lastMessage: ["Obrigada pelo retorno!", "Posso confirmar o horário?", "Bom dia, gostaria de agendar uma consulta.", "Vou enviar os documentos."][index % 4],
@@ -475,6 +477,18 @@ export default {
     exposeRequests();
     if (new URLSearchParams(window.location.search).get("upload") === "fail-once" && path.startsWith("/messages/") && requests.filter(request => request.method === "POST" && request.path === path).length === 1) {
       throw new Error("QA: simulated upload interruption");
+    }
+    if (path === "/contacts/profile-pictures/refresh") {
+      return {
+        status: 200,
+        data: {
+          contacts: (body.contacts || []).map(contact => ({
+            id: contact.id,
+            profilePicUrl: contact.id <= 2 || contact.force ? avatarDataUri(contact.id) : "",
+            refreshed: contact.id <= 2 || contact.force
+          }))
+        }
+      };
     }
     return {
       status: 202,

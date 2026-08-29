@@ -13,6 +13,7 @@ import CheckIsValidContact from "../services/WbotServices/CheckIsValidContact";
 import GetProfilePicUrl from "../services/WbotServices/GetProfilePicUrl";
 import AppError from "../errors/AppError";
 import GetContactService from "../services/ContactServices/GetContactService";
+import RefreshContactProfilePicturesService from "../services/ContactServices/RefreshContactProfilePicturesService";
 
 type IndexQuery = {
   searchParam: string;
@@ -70,6 +71,38 @@ export const getContact = async (
   return res.status(200).json(contact);
 };
 
+export const refreshProfilePictures = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const entries: Array<{ id?: unknown; force?: unknown }> = Array.isArray(
+    req.body?.contacts
+  )
+    ? req.body.contacts
+    : [];
+  if (
+    entries.length === 0 ||
+    entries.length > 20 ||
+    entries.some(
+      entry =>
+        !entry || !Number.isInteger(Number(entry.id)) || Number(entry.id) <= 0
+    )
+  ) {
+    throw new AppError("ERR_INVALID_CONTACT_PICTURE_REQUEST", 400);
+  }
+
+  const contacts = await RefreshContactProfilePicturesService({
+    contacts: entries.map(entry => ({
+      id: Number(entry.id),
+      force: entry.force === true
+    })),
+    userId: Number(req.user.id)
+  });
+
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.json({ contacts });
+};
+
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const newContact: ContactData = req.body;
   newContact.number = newContact.number.replace("-", "").replace(" ", "");
@@ -88,15 +121,13 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   }
 
   await CheckIsValidContact(newContact.number);
-  const validNumber: any = await CheckContactNumber(newContact.number);
+  const validNumber = await CheckContactNumber(newContact.number);
 
   const profilePicUrl = await GetProfilePicUrl(validNumber);
 
-  let name = newContact.name;
-  let number = validNumber;
-  let email = newContact.email;
+  const { name, email, extraInfo } = newContact;
+  const number = validNumber;
   const cpf = normalizeCpf(newContact.cpf);
-  let extraInfo = newContact.extraInfo;
 
   const contact = await CreateContactService({
     name,

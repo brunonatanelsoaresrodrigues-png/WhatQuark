@@ -25,6 +25,9 @@ const server = await createServer(mergeConfig(base, {
   },
   resolve: {
     alias: [{
+      find: "./api",
+      replacement: resolve(root, "tests/visual/api.js")
+    }, {
       find: /.*\/services\/api$/,
       replacement: resolve(root, "tests/visual/api.js")
     }, {

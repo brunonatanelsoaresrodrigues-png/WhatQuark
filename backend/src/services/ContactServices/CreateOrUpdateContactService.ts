@@ -58,7 +58,10 @@ const CreateOrUpdateContactService = async ({
 
     await contactByNumber.update({
       lid: contactByLid.lid,
-      profilePicUrl,
+      profilePicUrl:
+        profilePicUrl ||
+        contactByNumber.profilePicUrl ||
+        contactByLid.profilePicUrl,
       isInternal:
         contactByNumber.isInternal || contactByLid.isInternal || isInternal
     });
@@ -77,7 +80,7 @@ const CreateOrUpdateContactService = async ({
   if (contactByNumber) {
     await contactByNumber.update({
       lid: lid || contactByNumber.lid,
-      profilePicUrl,
+      ...(profilePicUrl ? { profilePicUrl } : {}),
       isInternal: contactByNumber.isInternal || isInternal
     });
 
@@ -89,7 +92,7 @@ const CreateOrUpdateContactService = async ({
   if (contactByLid) {
     await contactByLid.update({
       number: number || contactByLid.number,
-      profilePicUrl,
+      ...(profilePicUrl ? { profilePicUrl } : {}),
       isInternal: contactByLid.isInternal || isInternal
     });
 

@@ -12,7 +12,6 @@ import TableHead from "@material-ui/core/TableHead";
 import TableRow from "@material-ui/core/TableRow";
 import Paper from "@material-ui/core/Paper";
 import Button from "@material-ui/core/Button";
-import Avatar from "@material-ui/core/Avatar";
 import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
@@ -26,6 +25,7 @@ import api from "../../services/api";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
 import ContactModal from "../../components/ContactModal";
 import ConfirmationModal from "../../components/ConfirmationModal/";
+import ContactAvatar from "../../components/ContactAvatar";
 
 import { i18n } from "../../translate/i18n";
 import MainHeader from "../../components/MainHeader";
@@ -313,7 +313,7 @@ const Contacts = () => {
               {contacts.map(contact => (
                 <TableRow key={contact.id}>
                   <TableCell style={{ paddingRight: 0 }}>
-                    {<Avatar src={contact.profilePicUrl} />}
+                    <ContactAvatar contact={contact} />
                   </TableCell>
                   <TableCell>{contact.name}</TableCell>
                   <TableCell align="center">{contact.number}</TableCell>
