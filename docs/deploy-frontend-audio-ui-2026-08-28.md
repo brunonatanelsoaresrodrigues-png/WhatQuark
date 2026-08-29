@@ -67,3 +67,20 @@ troca e só então considerada publicada.
 A troca final terminou às 20:52:37 no horário de Brasília. Para rollback, o backup contém o
 `compose.yaml` anterior e a inspeção dos containers; basta restaurar a imagem anterior do
 frontend e recriar apenas esse serviço.
+
+## Ajuste incremental — 28/08/2026 às 21:02
+
+- Código: `172d23d`.
+- Frontend: `whaticket-frontend:ticket-cleanup-172d23d`.
+- Release na VPS: `/opt/whaticket/releases/frontend-cleanup-172d23d-20260829T000240Z`.
+- Backup anterior: `/var/backups/whaticket/frontend-cleanup-172d23d-20260829T000240Z`.
+
+O filtro **Todos** voltou a carregar a resposta já fornecida pela API, os nomes técnicos gerados
+para imagens deixaram de aparecer na conversa sem ocultar legendas reais ou nomes de documentos,
+e Automação Quark recebeu um ícone de agenda distinto do gráfico de Relatórios Diários.
+
+Foram aprovados 24 testes automatizados, lint dos arquivos alterados, build de produção e teste
+visual isolado com os sete status combinados. Na VPS, apenas o frontend foi recriado. Backend,
+MariaDB e Redis preservaram IDs, horários de início e zero reinícios. A conferência posterior
+manteve 11.997 mensagens, 1.162 conversas e 902 contatos; o provedor `whaileys` permaneceu em
+`production`, `CONNECTED`, com sessão presente e QR vazio.
