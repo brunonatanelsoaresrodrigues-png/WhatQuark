@@ -22,7 +22,15 @@ const useAuth = () => {
       setUser(event.detail || {});
       setIsAuth(Boolean(event.detail));
     };
+    const onUserUpdated = event => {
+      setUser(current =>
+        Number(current?.id) === Number(event.detail?.id)
+          ? { ...current, ...event.detail }
+          : current
+      );
+    };
     window.addEventListener("auth:session", onSession);
+    window.addEventListener("auth:user-updated", onUserUpdated);
     const initialize = async () => {
       try {
         if (getAccessToken()) await refreshSession();
@@ -36,6 +44,7 @@ const useAuth = () => {
     return () => {
       active = false;
       window.removeEventListener("auth:session", onSession);
+      window.removeEventListener("auth:user-updated", onUserUpdated);
     };
   }, []);
 

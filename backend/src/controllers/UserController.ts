@@ -10,6 +10,12 @@ import UpdateUserService from "../services/UserServices/UpdateUserService";
 import ShowUserService from "../services/UserServices/ShowUserService";
 import DeleteUserService from "../services/UserServices/DeleteUserService";
 import ListTicketAssigneesService from "../services/UserServices/ListTicketAssigneesService";
+import { SerializeUser } from "../helpers/SerializeUser";
+import {
+  deleteUserAvatar,
+  resolveUserAvatar,
+  saveUserAvatar
+} from "../services/UserServices/UserAvatarService";
 
 type IndexQuery = {
   searchParam: string;
@@ -76,7 +82,7 @@ export const show = async (req: Request, res: Response): Promise<Response> => {
 
   const user = await ShowUserService(userId);
 
-  return res.status(200).json(user);
+  return res.status(200).json(SerializeUser(user));
 };
 
 export const signup = async (
@@ -142,4 +148,51 @@ export const remove = async (
   });
 
   return res.status(200).json({ message: "User deleted" });
+};
+
+const emitUserUpdate = (user: ReturnType<typeof SerializeUser>): void => {
+  getIO().to("admin").emit("user", { action: "update", user });
+};
+
+export const storeAvatar = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const user = await saveUserAvatar({
+    userId: req.params.userId,
+    requester: req.user,
+    file: req.file
+  });
+  const serialized = SerializeUser(user);
+  emitUserUpdate(serialized);
+  return res.status(200).json(serialized);
+};
+
+export const removeAvatar = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const user = await deleteUserAvatar({
+    userId: req.params.userId,
+    requester: req.user
+  });
+  const serialized = SerializeUser(user);
+  emitUserUpdate(serialized);
+  return res.status(200).json(serialized);
+};
+
+export const showAvatar = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { file, mimeType } = await resolveUserAvatar(req.params.userId);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+  res.type(mimeType);
+  await new Promise<void>((resolve, reject) => {
+    res.sendFile(file, { cacheControl: false }, error =>
+      error ? reject(error) : resolve()
+    );
+  });
 };

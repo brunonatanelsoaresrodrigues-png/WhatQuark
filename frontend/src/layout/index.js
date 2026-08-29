@@ -18,6 +18,7 @@ import { i18n } from "../translate/i18n";
 import MainListItems from "./MainListItems";
 import CommandMenu from "../components/CommandMenu";
 import BrandMark from "../components/BrandMark";
+import UserAvatar from "../components/UserAvatar";
 const drawerWidth = 216;
 const collapsedWidth = 64;
 const useStyles = makeStyles(theme => ({
@@ -276,7 +277,6 @@ const LoggedInLayout = ({
   const [anchorEl, setAnchorEl] = useState(null);
   const routeDetails = getRouteDetails(location.pathname);
   const connectedChannels = whatsApps.filter(item => item.status === "CONNECTED").length;
-  const userInitials = (user?.name || "Usuário").split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase();
   useEffect(() => setDrawerOpen(!isNotebook), [isNotebook]);
   const closeAccountMenu = () => setAnchorEl(null);
   const drawerClose = () => isMobile && setDrawerOpen(false);
@@ -313,7 +313,7 @@ const LoggedInLayout = ({
         <div className={clsx(classes.profilePanel, {
         [classes.profilePanelCompact]: !drawerOpen
       })}>
-          <Avatar className={classes.profileAvatar}>{userInitials}</Avatar>
+          <UserAvatar user={user} className={classes.profileAvatar} />
           {drawerOpen && <div>
               <div className={classes.profileName}>
                 {user?.name || "Usuário"}
@@ -353,7 +353,7 @@ const LoggedInLayout = ({
           {user.id && <NotificationsPopOver className={classes.iconButton} />}
           <span className={classes.headerUserName}>{user?.name}</span>
           <IconButton aria-label="Menu da conta" aria-controls="menu-appbar" aria-haspopup="true" onClick={event => setAnchorEl(event.currentTarget)} className={classes.iconButton}>
-            <Avatar className={classes.profileAvatar}>{userInitials}</Avatar>
+            <UserAvatar user={user} className={classes.profileAvatar} />
           </IconButton>
           <Menu id="menu-appbar" anchorEl={anchorEl} getContentAnchorEl={null} anchorOrigin={{
           vertical: "bottom",

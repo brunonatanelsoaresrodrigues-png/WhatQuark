@@ -30,6 +30,7 @@ import TableRowSkeleton from "../../components/TableRowSkeleton";
 import UserModal from "../../components/UserModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
+import UserAvatar from "../../components/UserAvatar";
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_USERS") {
@@ -83,6 +84,20 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 14,
     minHeight: 160,
     ...theme.scrollbarStyles
+  },
+  userCell: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+    minWidth: 180,
+    textAlign: "left"
+  },
+  userAvatar: {
+    width: 34,
+    height: 34,
+    fontSize: ".72rem",
+    color: theme.modeTokens.avatarText,
+    background: theme.modeTokens.avatar
   }
 }));
 
@@ -268,7 +283,12 @@ const Users = () => {
             <>
               {users.map(user => (
                 <TableRow key={user.id}>
-                  <TableCell align="center">{user.name}</TableCell>
+                  <TableCell align="center">
+                    <span className={classes.userCell}>
+                      <UserAvatar user={user} className={classes.userAvatar} />
+                      <span>{user.name}</span>
+                    </span>
+                  </TableCell>
                   <TableCell align="center">{user.email}</TableCell>
                   <TableCell align="center">{user.profile}</TableCell>
                   <TableCell align="center">{user.whatsapp?.name}</TableCell>

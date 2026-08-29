@@ -56,6 +56,9 @@ class User extends Model<User> {
   @Column
   canViewOtherAgentsTickets: boolean;
 
+  @Column(DataType.STRING)
+  avatar: string | null;
+
   @ForeignKey(() => Whatsapp)
   @Column
   whatsappId: number;

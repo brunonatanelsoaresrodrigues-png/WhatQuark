@@ -19,10 +19,12 @@ import {
   InputAdornment,
   IconButton,
   FormControlLabel,
-  Switch
+  Switch,
+  Avatar,
+  Typography,
 } from "@material-ui/core";
 
-import { Visibility, VisibilityOff } from "@material-ui/icons";
+import { PhotoCamera, Visibility, VisibilityOff } from "@material-ui/icons";
 
 import { makeStyles } from "@material-ui/core/styles";
 import { green } from "@material-ui/core/colors";
@@ -35,21 +37,22 @@ import QueueSelect from "../QueueSelect";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../Can";
 import useWhatsApps from "../../hooks/useWhatsApps";
+import UserAvatar from "../UserAvatar";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => ({
   root: {
     display: "flex",
-    flexWrap: "wrap"
+    flexWrap: "wrap",
   },
   multFieldLine: {
     display: "flex",
     "& > *:not(:last-child)": {
-      marginRight: theme.spacing(1)
-    }
+      marginRight: theme.spacing(1),
+    },
   },
 
   btnWrapper: {
-    position: "relative"
+    position: "relative",
   },
 
   buttonProgress: {
@@ -58,12 +61,48 @@ const useStyles = makeStyles(theme => ({
     top: "50%",
     left: "50%",
     marginTop: -12,
-    marginLeft: -12
+    marginLeft: -12,
   },
   formControl: {
     margin: theme.spacing(1),
-    minWidth: 120
-  }
+    minWidth: 120,
+  },
+  avatarSection: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(2),
+    marginBottom: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 12,
+    background: theme.palette.background.default,
+  },
+  avatarPreview: {
+    width: 72,
+    height: 72,
+    flexShrink: 0,
+    color: theme.modeTokens.avatarText,
+    background: theme.modeTokens.avatar,
+    fontSize: "1rem",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  avatarActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1),
+  },
+  avatarHint: {
+    color: theme.palette.text.secondary,
+    fontSize: ".73rem",
+  },
+  hiddenInput: {
+    display: "none",
+  },
 }));
 
 const UserSchema = Yup.object().shape({
@@ -72,7 +111,7 @@ const UserSchema = Yup.object().shape({
     .max(50, "Too Long!")
     .required("Required"),
   password: Yup.string().min(5, "Too Short!").max(50, "Too Long!"),
-  email: Yup.string().email("Invalid email").required("Required")
+  email: Yup.string().email("Invalid email").required("Required"),
 });
 
 const UserModal = ({ open, onClose, userId }) => {
@@ -84,7 +123,7 @@ const UserModal = ({ open, onClose, userId }) => {
     password: "",
     profile: "user",
     canAccessQuarkClinic: false,
-    canViewOtherAgentsTickets: false
+    canViewOtherAgentsTickets: false,
   };
 
   const { user: loggedInUser } = useContext(AuthContext);
@@ -93,6 +132,9 @@ const UserModal = ({ open, onClose, userId }) => {
   const [selectedQueueIds, setSelectedQueueIds] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
   const [whatsappId, setWhatsappId] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const [avatarRemoved, setAvatarRemoved] = useState(false);
   const { loading, whatsApps } = useWhatsApps();
 
   useEffect(() => {
@@ -100,10 +142,10 @@ const UserModal = ({ open, onClose, userId }) => {
       if (!userId) return;
       try {
         const { data } = await api.get(`/users/${userId}`);
-        setUser(prevState => {
+        setUser((prevState) => {
           return { ...prevState, ...data };
         });
-        const userQueueIds = data.queues?.map(queue => queue.id);
+        const userQueueIds = data.queues?.map((queue) => queue.id);
         setSelectedQueueIds(userQueueIds);
         setWhatsappId(data.whatsappId ? data.whatsappId : "");
       } catch (err) {
@@ -114,24 +156,87 @@ const UserModal = ({ open, onClose, userId }) => {
     fetchUser();
   }, [userId, open]);
 
+  useEffect(
+    () => () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    },
+    [avatarPreview]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setAvatarFile(null);
+    setAvatarPreview("");
+    setAvatarRemoved(false);
+  }, [open, userId]);
+
   const handleClose = () => {
     onClose();
     setUser(initialState);
+    setAvatarFile(null);
+    setAvatarPreview("");
+    setAvatarRemoved(false);
   };
 
-  const handleSaveUser = async values => {
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Escolha uma imagem JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A foto deve ter no máximo 5 MB.");
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarRemoved(false);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview("");
+    setAvatarRemoved(true);
+  };
+
+  const handleSaveUser = async (values) => {
     const userData = { ...values, whatsappId, queueIds: selectedQueueIds };
     try {
-      if (userId) {
-        await api.put(`/users/${userId}`, userData);
-      } else {
-        await api.post("/users", userData);
+      let savedUser = user;
+      if (loggedInUser.profile === "admin") {
+        const response = userId
+          ? await api.put(`/users/${userId}`, userData)
+          : await api.post("/users", userData);
+        savedUser = response.data;
+      }
+      const targetId = userId || savedUser.id;
+      if (avatarFile) {
+        const formData = new FormData();
+        formData.append("avatar", avatarFile);
+        savedUser = (await api.post(`/users/${targetId}/avatar`, formData))
+          .data;
+      } else if (avatarRemoved && targetId) {
+        savedUser = (await api.delete(`/users/${targetId}/avatar`)).data;
+      }
+      if (Number(targetId) === Number(loggedInUser.id)) {
+        window.dispatchEvent(
+          new CustomEvent("auth:user-updated", { detail: savedUser })
+        );
+      }
+      if (avatarFile || avatarRemoved) {
+        window.dispatchEvent(
+          new CustomEvent("user-avatar-updated", { detail: savedUser })
+        );
       }
       toast.success(i18n.t("userModal.success"));
     } catch (err) {
       toastError(err);
+      return false;
     }
     handleClose();
+    return true;
   };
 
   return (
@@ -152,16 +257,70 @@ const UserModal = ({ open, onClose, userId }) => {
           initialValues={user}
           enableReinitialize={true}
           validationSchema={UserSchema}
-          onSubmit={(values, actions) => {
-            setTimeout(() => {
-              handleSaveUser(values);
-              actions.setSubmitting(false);
-            }, 400);
+          onSubmit={async (values, actions) => {
+            await handleSaveUser(values);
+            actions.setSubmitting(false);
           }}
         >
           {({ touched, errors, isSubmitting, values, setFieldValue }) => (
             <Form>
               <DialogContent dividers>
+                <div className={classes.avatarSection}>
+                  {avatarPreview ? (
+                    <Avatar className={classes.avatarPreview}>
+                      <img
+                        src={avatarPreview}
+                        alt="Prévia da foto do atendente"
+                        className={classes.avatarImage}
+                      />
+                    </Avatar>
+                  ) : (
+                    <UserAvatar
+                      user={{
+                        ...user,
+                        hasAvatar: user.hasAvatar && !avatarRemoved,
+                      }}
+                      className={classes.avatarPreview}
+                    />
+                  )}
+                  <div>
+                    <Typography variant="subtitle2">
+                      Foto do atendente
+                    </Typography>
+                    <div className={classes.avatarHint}>
+                      JPEG, PNG ou WebP · máximo de 5 MB
+                    </div>
+                    <div className={classes.avatarActions}>
+                      <input
+                        id="user-avatar-input"
+                        className={classes.hiddenInput}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleAvatarChange}
+                      />
+                      <label htmlFor="user-avatar-input">
+                        <Button
+                          component="span"
+                          size="small"
+                          variant="outlined"
+                          startIcon={<PhotoCamera />}
+                        >
+                          Escolher foto
+                        </Button>
+                      </label>
+                      {(avatarPreview ||
+                        (user.hasAvatar && !avatarRemoved)) && (
+                        <Button
+                          size="small"
+                          color="secondary"
+                          onClick={handleRemoveAvatar}
+                        >
+                          Remover
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <div className={classes.multFieldLine}>
                   <Field
                     as={TextField}
@@ -173,6 +332,7 @@ const UserModal = ({ open, onClose, userId }) => {
                     variant="outlined"
                     margin="dense"
                     fullWidth
+                    disabled={loggedInUser.profile !== "admin"}
                   />
                   <Field
                     as={TextField}
@@ -188,14 +348,15 @@ const UserModal = ({ open, onClose, userId }) => {
                         <InputAdornment position="end">
                           <IconButton
                             aria-label="toggle password visibility"
-                            onClick={() => setShowPassword(e => !e)}
+                            onClick={() => setShowPassword((e) => !e)}
                           >
                             {showPassword ? <VisibilityOff /> : <Visibility />}
                           </IconButton>
                         </InputAdornment>
-                      )
+                      ),
                     }}
                     fullWidth
+                    disabled={loggedInUser.profile !== "admin"}
                   />
                 </div>
                 <div className={classes.multFieldLine}>
@@ -208,6 +369,7 @@ const UserModal = ({ open, onClose, userId }) => {
                     variant="outlined"
                     margin="dense"
                     fullWidth
+                    disabled={loggedInUser.profile !== "admin"}
                   />
                   <FormControl
                     variant="outlined"
@@ -245,7 +407,7 @@ const UserModal = ({ open, onClose, userId }) => {
                   yes={() => (
                     <QueueSelect
                       selectedQueueIds={selectedQueueIds}
-                      onChange={values => setSelectedQueueIds(values)}
+                      onChange={(values) => setSelectedQueueIds(values)}
                     />
                   )}
                 />
@@ -266,11 +428,11 @@ const UserModal = ({ open, onClose, userId }) => {
                         <Field
                           as={Select}
                           value={whatsappId}
-                          onChange={e => setWhatsappId(e.target.value)}
+                          onChange={(e) => setWhatsappId(e.target.value)}
                           label={i18n.t("userModal.form.whatsapp")}
                         >
                           <MenuItem value={""}>&nbsp;</MenuItem>
-                          {whatsApps.map(whatsapp => (
+                          {whatsApps.map((whatsapp) => (
                             <MenuItem key={whatsapp.id} value={whatsapp.id}>
                               {whatsapp.name}
                             </MenuItem>
@@ -288,7 +450,7 @@ const UserModal = ({ open, onClose, userId }) => {
                       control={
                         <Switch
                           checked={Boolean(values.canAccessQuarkClinic)}
-                          onChange={event =>
+                          onChange={(event) =>
                             setFieldValue(
                               "canAccessQuarkClinic",
                               event.target.checked
@@ -306,7 +468,7 @@ const UserModal = ({ open, onClose, userId }) => {
                     control={
                       <Switch
                         checked={Boolean(values.canViewOtherAgentsTickets)}
-                        onChange={event =>
+                        onChange={(event) =>
                           setFieldValue(
                             "canViewOtherAgentsTickets",
                             event.target.checked

@@ -37,6 +37,7 @@ interface WaitRow {
 interface DurationRow {
   agentId: number | null;
   agentName: string | null;
+  agentAvatar: string | null;
   occurredAt: Date | string;
   seconds: number | string | null;
 }
@@ -235,7 +236,7 @@ const OperationalDashboardService = async ({
       replacements
     ),
     queryRows<DurationRow>(
-      `SELECT e.performedByUserId AS agentId,u.name AS agentName,e.occurredAt,
+      `SELECT e.performedByUserId AS agentId,u.name AS agentName,u.avatar AS agentAvatar,e.occurredAt,
          GREATEST(0,TIMESTAMPDIFF(SECOND,
            COALESCE((
              SELECT MAX(qe.occurredAt)
@@ -252,7 +253,7 @@ const OperationalDashboardService = async ({
       replacements
     ),
     queryRows<DurationRow>(
-      `SELECT e.performedByUserId AS agentId,u.name AS agentName,e.occurredAt,
+      `SELECT e.performedByUserId AS agentId,u.name AS agentName,u.avatar AS agentAvatar,e.occurredAt,
          TIMESTAMPDIFF(SECOND,(
            SELECT MAX(ae.occurredAt)
            FROM TicketEvents ae
@@ -293,12 +294,17 @@ const OperationalDashboardService = async ({
        ORDER BY total DESC`,
       replacements
     ),
-    queryRows<{ agentId: number; agentName: string; total: unknown }>(
-      `SELECT t.userId AS agentId,u.name AS agentName,COUNT(*) AS total
+    queryRows<{
+      agentId: number;
+      agentName: string;
+      agentAvatar: string | null;
+      total: unknown;
+    }>(
+      `SELECT t.userId AS agentId,u.name AS agentName,u.avatar AS agentAvatar,COUNT(*) AS total
        FROM Tickets t
        INNER JOIN Users u ON u.id=t.userId
        WHERE ${access.sql} AND t.status='open' AND t.userId IS NOT NULL
-       GROUP BY t.userId,u.name`,
+       GROUP BY t.userId,u.name,u.avatar`,
       replacements
     )
   ]);
@@ -342,17 +348,23 @@ const OperationalDashboardService = async ({
     {
       id: number;
       name: string;
+      avatar: string | null;
       active: number;
       resolved: number;
       waits: number[];
       services: number[];
     }
   >();
-  const ensureAgent = (id: number, name: string | null) => {
+  const ensureAgent = (
+    id: number,
+    name: string | null,
+    avatar: string | null
+  ) => {
     if (!agents.has(id))
       agents.set(id, {
         id,
         name: name || `Atendente ${id}`,
+        avatar,
         active: 0,
         resolved: 0,
         waits: [],
@@ -361,7 +373,7 @@ const OperationalDashboardService = async ({
     return agents.get(id)!;
   };
   activeAgents.forEach(row => {
-    ensureAgent(Number(row.agentId), row.agentName).active = numberValue(
+    ensureAgent(Number(row.agentId), row.agentName, row.agentAvatar).active = numberValue(
       row.total
     );
   });
@@ -374,7 +386,7 @@ const OperationalDashboardService = async ({
     .forEach(row => {
       const seconds = Number(row.seconds);
       if (Number.isFinite(seconds) && seconds >= 0)
-        ensureAgent(Number(row.agentId), row.agentName).waits.push(seconds);
+        ensureAgent(Number(row.agentId), row.agentName, row.agentAvatar).waits.push(seconds);
     });
   serviceRows
     .filter(
@@ -383,7 +395,11 @@ const OperationalDashboardService = async ({
         new Date(row.occurredAt).getTime() >= periodStart.getTime()
     )
     .forEach(row => {
-      const agent = ensureAgent(Number(row.agentId), row.agentName);
+      const agent = ensureAgent(
+        Number(row.agentId),
+        row.agentName,
+        row.agentAvatar
+      );
       agent.resolved += 1;
       const seconds = Number(row.seconds);
       if (Number.isFinite(seconds) && seconds >= 0)
@@ -469,6 +485,7 @@ const OperationalDashboardService = async ({
         return {
           id: agent.id,
           name: agent.name,
+          hasAvatar: Boolean(agent.avatar),
           active: agent.active,
           resolved: agent.resolved,
           averageWaitSeconds: agentWait,

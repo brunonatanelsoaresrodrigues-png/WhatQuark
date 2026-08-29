@@ -46,6 +46,7 @@ import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
 import useWhatsApps from "../../hooks/useWhatsApps";
 import Chart from "./Chart";
+import UserAvatar from "../../components/UserAvatar";
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -886,9 +887,10 @@ const Dashboard = () => {
                   <TableRow key={agent.id} hover>
                     <TableCell>
                       <div className={classes.agent}>
-                        <Avatar className={classes.agentAvatar}>
-                          {initials(agent.name)}
-                        </Avatar>
+                        <UserAvatar
+                          user={agent}
+                          className={classes.agentAvatar}
+                        />
                         <strong>{agent.name}</strong>
                       </div>
                     </TableCell>
