@@ -118,6 +118,7 @@ export default function MediaPreviewQueue({
   files,
   loading,
   progress,
+  sendDisabled = false,
   onAdd,
   onRemove,
   onClear,
@@ -171,15 +172,19 @@ export default function MediaPreviewQueue({
             </Button>
           </label>
         </div>
-        <Button
-          color="primary"
-          variant="contained"
-          startIcon={loading ? <CircularProgress size={18} /> : <SendIcon />}
-          onClick={onSend}
-          disabled={loading}
-        >
-          {loading ? "Enviando" : "Enviar arquivos"}
-        </Button>
+        <Tooltip title={sendDisabled ? "Envio indisponível — consulte Contexto" : "Enviar arquivos"}>
+          <span>
+            <Button
+              color="primary"
+              variant="contained"
+              startIcon={loading ? <CircularProgress size={18} /> : <SendIcon />}
+              onClick={onSend}
+              disabled={loading || sendDisabled}
+            >
+              {loading ? "Enviando" : "Enviar arquivos"}
+            </Button>
+          </span>
+        </Tooltip>
       </div>
       {loading && (
         <LinearProgress

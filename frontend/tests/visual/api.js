@@ -118,7 +118,7 @@ export default {
         hasMore: false
       };
     } else if (/^\/tickets\/\d+\/context$/.test(path)) data = {
-      mode: "production",
+      mode: new URLSearchParams(window.location.search).get("context") === "blocked" ? "off" : "production",
       paused: false,
       official: false,
       botPaused: true,

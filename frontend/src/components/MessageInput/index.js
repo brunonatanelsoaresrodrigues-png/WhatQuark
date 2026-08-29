@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useContext, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import "emoji-mart/css/emoji-mart.css";
 import { useParams } from "react-router-dom";
-const Picker = lazy(() => import("emoji-mart").then(module => ({
-  default: module.Picker
-})));
+import { Picker } from "emoji-mart";
 import { toast } from "react-toastify";
 import { readDraft, writeDraft, messageAttempt, finishMessageAttempt } from "../../services/messageDrafts";
 import clsx from "clsx";
@@ -36,6 +34,7 @@ import MediaPreviewQueue from "../MediaPreviewQueue";
 import StickerPicker from "../StickerPicker";
 import { selectMediaFiles } from "../../services/mediaComposer";
 import { createAudioRecorder, audioErrorMessage } from "../../services/audioRecorder";
+import { getComposerAvailability } from "../../services/composerAvailability";
 const mediaSignature = files => JSON.stringify(files.map(file => [file.name, file.size, file.lastModified]));
 const useStyles = makeStyles(theme => ({
   mainWrapper: {
@@ -417,7 +416,7 @@ const MessageInput = ({
     setReplyingMessage(null);
   };
   const handleStartRecording = async () => {
-    if (loading || recording || recordedAudio || sendBlocked || ticketStatus !== "open") return;
+    if (loading || recording || recordedAudio || ticketStatus !== "open") return;
     setLoading(true);
     setShowEmoji(false);
     setShowStickers(false);
@@ -513,18 +512,27 @@ const MessageInput = ({
             {message.body}
           </div>
         </div>
-        <IconButton aria-label="Cancelar resposta à mensagem" component="button" disabled={loading || ticketStatus !== "open" || sendBlocked} onClick={() => setReplyingMessage(null)}>
+        <IconButton aria-label="Cancelar resposta à mensagem" component="button" disabled={loading || ticketStatus !== "open"} onClick={() => setReplyingMessage(null)}>
           <ClearIcon className={classes.sendMessageIcons} />
         </IconButton>
       </div>;
   };
-  const composerDisabled = loading || recording || !!recordedAudio || ticketStatus !== "open" || sendBlocked;
+  const {
+    composeDisabled,
+    sendDisabled
+  } = getComposerAvailability({
+    loading,
+    recording,
+    hasRecordedAudio: !!recordedAudio,
+    ticketStatus,
+    sendBlocked
+  });
   const openQuickAnswers = () => {
     setInputMessage("/");
     handleLoadQuickAnswer("/");
     inputRef.current?.focus();
   };
-  if (medias.length > 0) return <MediaPreviewQueue files={medias} loading={loading} progress={uploadProgress} onAdd={addMedias} onRemove={index => setMedias(current => current.filter((_, itemIndex) => itemIndex !== index))} onClear={() => setMedias([])} onSend={handleUploadMedia} />;
+  if (medias.length > 0) return <MediaPreviewQueue files={medias} loading={loading} progress={uploadProgress} sendDisabled={sendDisabled} onAdd={addMedias} onRemove={index => setMedias(current => current.filter((_, itemIndex) => itemIndex !== index))} onClear={() => setMedias([])} onSend={handleUploadMedia} />;
   return <Paper square elevation={0} className={classes.mainWrapper}>
       {replyingMessage && renderReplyingMessage(replyingMessage)}
       <span className={classes.composerLabel}>{recording ? "Gravando áudio" : recordedAudio ? "Ouça antes de enviar" : "Responder"}</span>
@@ -543,12 +551,7 @@ const MessageInput = ({
       role: "dialog",
       "aria-label": "Escolher emoji"
     }} disableRestoreFocus>
-        <Suspense fallback={<div style={{
-        width: 340,
-        height: 320,
-        padding: 16
-      }}>Carregando emojis…</div>}>
-          <Picker native autoFocus perLine={8} showPreview={false} showSkinTones={false} theme={theme.palette.type} onSelect={handleAddEmoji} style={{
+        <Picker native autoFocus perLine={8} showPreview={false} showSkinTones={false} theme={theme.palette.type} onSelect={handleAddEmoji} style={{
           width: 340,
           height: 320,
           maxWidth: "calc(100vw - 24px)"
@@ -569,11 +572,10 @@ const MessageInput = ({
             custom: "Personalizados"
           }
         }} />
-        </Suspense>
       </Popover>
       <StickerPicker open={showStickers} onClose={() => setShowStickers(false)} ticketId={ticketId} />
       <div className={classes.newMessageBox}>
-        <input multiple type="file" ref={fileInputRef} className={classes.uploadInput} disabled={composerDisabled} onChange={handleChangeMedias} />
+        <input multiple type="file" ref={fileInputRef} className={classes.uploadInput} disabled={composeDisabled} onChange={handleChangeMedias} />
         {recording ? <div className={classes.recorderWrapper}>
             <IconButton aria-label="Cancelar gravação" disabled={loading} onClick={handleCancelAudio}><HighlightOffIcon className={classes.cancelAudioIcon} /></IconButton>
             {loading ? <CircularProgress size={24} /> : <RecordingTimer />}
@@ -581,15 +583,15 @@ const MessageInput = ({
           </div> : recordedAudio ? <div className={classes.recorderWrapper}>
             <Tooltip title="Descartar áudio"><span><IconButton aria-label="Descartar áudio" disabled={loading} onClick={handleCancelAudio}><HighlightOffIcon className={classes.cancelAudioIcon} /></IconButton></span></Tooltip>
             <audio className={classes.audioPreview} src={recordedAudio.url} controls preload="metadata" aria-label="Prévia do áudio gravado" />
-            <Tooltip title="Enviar áudio"><span><IconButton aria-label="Enviar áudio gravado" disabled={loading || sendBlocked || ticketStatus !== "open"} onClick={handleUploadAudio}>
+            <Tooltip title={sendBlocked ? "Envio indisponível — consulte Contexto" : "Enviar áudio"}><span><IconButton aria-label="Enviar áudio gravado" disabled={sendDisabled} onClick={handleUploadAudio}>
               {loading ? <CircularProgress size={20} /> : <CheckCircleOutlineIcon className={classes.sendAudioIcon} />}
             </IconButton></span></Tooltip>
           </div> : <>
             <div className={classes.messageInputWrapper}>
               <InputBase inputRef={inputRef} inputProps={{
             "aria-label": "Mensagem para o paciente"
-          }} className={classes.messageInput} placeholder={sendBlocked ? "Envio indisponível — consulte Contexto" : ticketStatus === "open" ? "Digite sua mensagem…" : i18n.t("messagesInput.placeholderClosed")} multiline minRows={2} maxRows={5} value={inputMessage} onChange={handleChangeInput} disabled={composerDisabled} onPaste={e => {
-            if (!composerDisabled) handleInputPaste(e);
+          }} className={classes.messageInput} placeholder={sendBlocked ? "Prepare a resposta; o envio aguarda a validação do contexto" : ticketStatus === "open" ? "Digite sua mensagem…" : i18n.t("messagesInput.placeholderClosed")} multiline minRows={2} maxRows={5} value={inputMessage} onChange={handleChangeInput} disabled={composeDisabled} onPaste={e => {
+            if (!composeDisabled) handleInputPaste(e);
           }} onKeyPress={e => {
             if (loading || e.shiftKey || e.nativeEvent.isComposing) return;
             if (e.key === "Enter") {
@@ -604,23 +606,23 @@ const MessageInput = ({
               </ul>}
             </div>
             <div className={classes.toolbar}>
-              <Tooltip title="Emojis"><span><IconButton ref={emojiButtonRef} aria-label="Adicionar emoji" aria-haspopup="dialog" aria-expanded={showEmoji} aria-controls={showEmoji ? "composer-emojis" : undefined} disabled={composerDisabled} onClick={() => {
+              <Tooltip title="Emojis"><span><IconButton ref={emojiButtonRef} aria-label="Adicionar emoji" aria-haspopup="dialog" aria-expanded={showEmoji} aria-controls={showEmoji ? "composer-emojis" : undefined} disabled={composeDisabled} onClick={() => {
                 setShowStickers(false);
-                setShowEmoji(true);
+                setShowEmoji(current => !current);
               }}><MoodIcon /></IconButton></span></Tooltip>
-              <Tooltip title="Anexar arquivo · ou arraste para a conversa"><span><IconButton aria-label="Anexar arquivo" disabled={composerDisabled} onClick={() => fileInputRef.current?.click()}><AttachFileIcon /></IconButton></span></Tooltip>
-              <Tooltip title="Figurinhas salvas"><span><IconButton aria-label="Abrir biblioteca de figurinhas" disabled={composerDisabled} onClick={() => {
+              <Tooltip title="Anexar arquivo · ou arraste para a conversa"><span><IconButton aria-label="Anexar arquivo" disabled={composeDisabled} onClick={() => fileInputRef.current?.click()}><AttachFileIcon /></IconButton></span></Tooltip>
+              <Tooltip title="Figurinhas salvas"><span><IconButton aria-label="Abrir biblioteca de figurinhas" disabled={sendDisabled} onClick={() => {
                 setShowEmoji(false);
                 setShowStickers(current => !current);
               }}><CollectionsBookmarkIcon /></IconButton></span></Tooltip>
-              <Tooltip title="Resposta rápida"><span><IconButton aria-label="Inserir resposta rápida" disabled={composerDisabled} onClick={openQuickAnswers}><QuickReplyIcon /></IconButton></span></Tooltip>
-              <Tooltip title="Opções da mensagem"><span><IconButton aria-label="Opções da mensagem" aria-controls="composer-menu" aria-haspopup="true" aria-expanded={Boolean(anchorEl)} onClick={handleOpenMenuClick} disabled={composerDisabled}><MoreHorizIcon /></IconButton></span></Tooltip>
+              <Tooltip title="Resposta rápida"><span><IconButton aria-label="Inserir resposta rápida" disabled={composeDisabled} onClick={openQuickAnswers}><QuickReplyIcon /></IconButton></span></Tooltip>
+              <Tooltip title="Opções da mensagem"><span><IconButton aria-label="Opções da mensagem" aria-controls="composer-menu" aria-haspopup="true" aria-expanded={Boolean(anchorEl)} onClick={handleOpenMenuClick} disabled={composeDisabled}><MoreHorizIcon /></IconButton></span></Tooltip>
               <Menu id="composer-menu" anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuItemClick}>
                 <MenuItem><FormControlLabel label={i18n.t("messagesInput.signMessage")} control={<Switch size="small" checked={signMessage} onChange={event => setSignMessage(event.target.checked)} color="primary" />} /></MenuItem>
               </Menu>
               <div className={classes.toolbarSpacer} />
-              <Tooltip title="Gravar áudio"><span><IconButton aria-label="Gravar áudio" disabled={composerDisabled} onClick={handleStartRecording}>{loading && !inputMessage ? <CircularProgress size={20} /> : <MicIcon />}</IconButton></span></Tooltip>
-              <Tooltip title="Enviar mensagem · Enter"><span><IconButton className={classes.sendButton} aria-label="Enviar mensagem" onClick={handleSendMessage} disabled={composerDisabled || !inputMessage.trim()}><SendIcon /></IconButton></span></Tooltip>
+              <Tooltip title="Gravar áudio"><span><IconButton aria-label="Gravar áudio" disabled={composeDisabled} onClick={handleStartRecording}>{loading && !inputMessage ? <CircularProgress size={20} /> : <MicIcon />}</IconButton></span></Tooltip>
+              <Tooltip title={sendBlocked ? "Envio indisponível — consulte Contexto" : "Enviar mensagem · Enter"}><span><IconButton className={classes.sendButton} aria-label="Enviar mensagem" onClick={handleSendMessage} disabled={sendDisabled || !inputMessage.trim()}><SendIcon /></IconButton></span></Tooltip>
             </div>
           </>}
       </div>

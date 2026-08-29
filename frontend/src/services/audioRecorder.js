@@ -1,3 +1,5 @@
+import MicRecorder from "mic-recorder-to-mp3";
+
 const makeError = code => Object.assign(new Error(code), {
   code
 });
@@ -21,7 +23,7 @@ export function prepareRecordedAudio(blob, now = Date.now()) {
   });
 }
 export function createAudioRecorder({
-  loadRecorder = () => import("mic-recorder-to-mp3").then(module => module.default),
+  loadRecorder = async () => MicRecorder,
   supported = () => typeof window !== "undefined" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && !!(window.AudioContext || window.webkitAudioContext)
 } = {}) {
   let recorder;

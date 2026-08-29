@@ -15,6 +15,47 @@ const loaded = new Module(__filename, module);
 loaded._compile(source, __filename);
 const media = loaded.exports;
 
+const availabilitySource = buildSync({
+  entryPoints: [path.join(__dirname, "../src/services/composerAvailability.js")],
+  bundle: true, write: false, platform: "node", format: "cjs"
+}).outputFiles[0].text;
+const availabilityModule = new Module(__filename, module);
+availabilityModule._compile(availabilitySource, __filename);
+const { getComposerAvailability } = availabilityModule.exports;
+
+test("context validation blocks sending without disabling emoji, typing or audio capture", () => {
+  assert.deepEqual(getComposerAvailability({
+    loading: false,
+    recording: false,
+    hasRecordedAudio: false,
+    ticketStatus: "open",
+    sendBlocked: true
+  }), {
+    composeDisabled: false,
+    sendDisabled: true
+  });
+});
+
+test("closed or busy conversations disable composing and sending", () => {
+  assert.deepEqual(getComposerAvailability({
+    loading: false,
+    recording: false,
+    hasRecordedAudio: false,
+    ticketStatus: "closed",
+    sendBlocked: false
+  }), {
+    composeDisabled: true,
+    sendDisabled: true
+  });
+  assert.equal(getComposerAvailability({
+    loading: false,
+    recording: true,
+    hasRecordedAudio: false,
+    ticketStatus: "open",
+    sendBlocked: false
+  }).composeDisabled, true);
+});
+
 const file = (name, size = 1024, lastModified = 1) => ({
   name,
   size,
@@ -67,6 +108,7 @@ const audioSource = buildSync({
   external: ["mic-recorder-to-mp3"]
 }).outputFiles[0].text;
 const audioModule = new Module(__filename, module);
+audioModule.paths = Module._nodeModulePaths(__dirname);
 audioModule._compile(audioSource, __filename);
 const { createAudioRecorder, prepareRecordedAudio, audioErrorMessage } = audioModule.exports;
 
