@@ -66,6 +66,7 @@ const valuesForPersistence = (
     procedimentoId: snapshot.raw.procedimentoId || null,
     procedimentoNome: snapshot.raw.procedimento?.nome || null,
     statusMarcacao: snapshot.status,
+    cpf: snapshot.cpf,
     phones: snapshot.phones
   }),
   lastSeenAt: now,

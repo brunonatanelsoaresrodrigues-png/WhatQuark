@@ -153,6 +153,15 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+const formatCpf = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length !== 11) return value || "";
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(
+    6,
+    9
+  )}-${digits.slice(9)}`;
+};
+
 const QuarkClinic = () => {
   const classes = useStyles();
   const { user } = useContext(AuthContext);
@@ -162,12 +171,16 @@ const QuarkClinic = () => {
   const [frameKey, setFrameKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [appointment, setAppointment] = useState(null);
+  const [patient, setPatient] = useState(null);
+  const [patientLoading, setPatientLoading] = useState(false);
+  const [patientError, setPatientError] = useState("");
   const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [appointmentError, setAppointmentError] = useState("");
   const [appointmentReload, setAppointmentReload] = useState(0);
   const quarkClinicUrl = getQuarkClinicUrl();
   const search = new URLSearchParams(location.search);
   const appointmentId = search.get("appointmentId") || "";
+  const patientId = search.get("patientId") || "";
   const returnTo = safeQuarkReturnPath(search.get("returnTo"));
 
   useEffect(() => {
@@ -203,6 +216,36 @@ const QuarkClinic = () => {
       active = false;
     };
   }, [appointmentId, appointmentReload]);
+
+  useEffect(() => {
+    let active = true;
+    if (!patientId) {
+      setPatient(null);
+      setPatientError("");
+      return () => {
+        active = false;
+      };
+    }
+    setPatientLoading(true);
+    setPatientError("");
+    api
+      .get(`/quark/clinic/patients/${encodeURIComponent(patientId)}`)
+      .then(({ data }) => {
+        if (active) setPatient(data);
+      })
+      .catch(() => {
+        if (active) {
+          setPatient(null);
+          setPatientError("Não foi possível atualizar este cadastro no Quark.");
+        }
+      })
+      .finally(() => {
+        if (active) setPatientLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [patientId, appointmentReload]);
 
   if (!user?.canAccessQuarkClinic) {
     return <Redirect to="/tickets" />;
@@ -337,6 +380,47 @@ const QuarkClinic = () => {
               {detail("Especialidade", appointment.specialtyName)}
               {detail("Clínica", appointment.clinicName)}
               {detail("Referência no Quark", appointment.appointmentId)}
+            </div>
+          ) : null}
+        </Paper>
+      )}
+
+      {patientId && (
+        <Paper className={classes.selectedAppointment} variant="outlined" square>
+          <div className={classes.selectedTop}>
+            <div className={classes.selectedTitle}>
+              <Typography component="h2" variant="subtitle2">
+                Cadastro selecionado
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                Paciente #{patientId}
+              </Typography>
+            </div>
+            <div className={classes.selectedActions}>
+              {returnTo && (
+                <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => history.push(returnTo)}>
+                  Voltar ao atendimento
+                </Button>
+              )}
+              <Button size="small" startIcon={<RefreshIcon />} disabled={patientLoading} onClick={() => setAppointmentReload(value => value + 1)}>
+                Atualizar
+              </Button>
+              <Button size="small" startIcon={<CloseIcon />} onClick={closeAppointment}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+          {patientLoading ? (
+            <div className={classes.selectedLoading}><CircularProgress size={20} /><Typography variant="body2">Consultando o Quark…</Typography></div>
+          ) : patientError ? (
+            <Typography variant="body2" className={classes.selectedError}>{patientError} Use “Atualizar” para tentar novamente.</Typography>
+          ) : patient ? (
+            <div className={classes.detailGrid}>
+              {detail("Paciente", patient.patientName)}
+              {detail("CPF", formatCpf(patient.cpf))}
+              {detail("Nascimento", patient.birthDate)}
+              {detail("Paciente no Quark", patient.patientId)}
+              {detail("Consulta vinculada", patient.appointmentId)}
             </div>
           ) : null}
         </Paper>

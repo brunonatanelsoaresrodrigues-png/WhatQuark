@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 import { makeStyles, Typography, IconButton, Drawer, Link, Button, Paper } from "@material-ui/core";
 import { Close, EditOutlined, WhatsApp } from "@material-ui/icons";
@@ -11,7 +11,12 @@ import {
   appointmentDayLabel,
   appointmentStatusLabel
 } from "../../services/appointmentDisplay";
-import { buildQuarkAppointmentPath } from "../../services/quarkClinicNavigation";
+import api from "../../services/api";
+import { AuthContext } from "../../context/Auth/AuthContext";
+import {
+  buildQuarkAppointmentPath,
+  buildQuarkPatientPath
+} from "../../services/quarkClinicNavigation";
 const useStyles = makeStyles(theme => ({
   docked: {
     width: 272,
@@ -159,6 +164,18 @@ const useStyles = makeStyles(theme => ({
     fontSize: 11,
     lineHeight: 1.7,
     color: theme.palette.text.secondary
+  },
+  quarkSource: {
+    display: "block",
+    marginTop: 2,
+    fontSize: 10,
+    color: theme.palette.text.secondary
+  },
+  quarkLink: {
+    marginTop: 10,
+    padding: "3px 6px",
+    fontSize: 10,
+    textTransform: "none"
   }
 }));
 const ContactDrawer = ({
@@ -172,7 +189,56 @@ const ContactDrawer = ({
 }) => {
   const classes = useStyles();
   const history = useHistory();
+  const { user } = useContext(AuthContext);
   const [modalOpen, setModalOpen] = useState(false);
+  const [quarkPatient, setQuarkPatient] = useState(null);
+  const [quarkLoading, setQuarkLoading] = useState(false);
+  const [importedCpf, setImportedCpf] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setQuarkPatient(null);
+    setImportedCpf("");
+    if (!open || !contact?.id || !user?.canAccessQuarkClinic) {
+      setQuarkLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setQuarkLoading(true);
+    api
+      .get(`/quark/clinic/contacts/${contact.id}`)
+      .then(({ data }) => {
+        if (!active) return;
+        setQuarkPatient(data);
+        if (data.cpf && !contact.cpf) {
+          api
+            .put(`/contacts/${contact.id}`, { cpf: data.cpf })
+            .then(() => {
+              if (active) setImportedCpf(data.cpf);
+            })
+            .catch(() => undefined);
+        }
+      })
+      .catch(() => {
+        if (active) setQuarkPatient(null);
+      })
+      .finally(() => {
+        if (active) setQuarkLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, contact?.id, contact?.cpf, user?.canAccessQuarkClinic]);
+
+  const formatCpf = value => {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length !== 11) return value || "";
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(
+      6,
+      9
+    )}-${digits.slice(9)}`;
+  };
   const renderAppointment = appointment => <div key={appointment.appointmentId} className={classes.extraInfo}>
       <div className={classes.appointmentHeading}>
         <span>{appointmentDateTimeLabel(appointment.scheduledAt, context?.clinicTimezone)}</span>
@@ -216,7 +282,42 @@ const ContactDrawer = ({
                 <dt>Nome</dt><dd>{contact.name || "Não informado"}</dd>
                 <dt>Telefone</dt><dd>{contact.number ? <Link href={`tel:${contact.number}`}>{contact.number}</Link> : "Não informado"}</dd>
                 <dt>E-mail</dt><dd>{contact.email || "Não informado"}</dd>
+                <dt>CPF</dt>
+                <dd>
+                  {formatCpf(contact.cpf || importedCpf || quarkPatient?.cpf) ||
+                    "Não informado"}
+                  {(importedCpf || quarkPatient?.cpf) && !contact.cpf && (
+                    <Typography className={classes.quarkSource}>
+                      Sincronizado do Quark
+                    </Typography>
+                  )}
+                </dd>
+                {quarkPatient?.birthDate && (
+                  <>
+                    <dt>Nascimento</dt>
+                    <dd>{quarkPatient.birthDate}</dd>
+                  </>
+                )}
               </dl>
+              {quarkPatient && (
+                <Button
+                  className={classes.quarkLink}
+                  color="primary"
+                  size="small"
+                  onClick={() =>
+                    history.push(
+                      buildQuarkPatientPath(quarkPatient.patientId, ticket?.id)
+                    )
+                  }
+                >
+                  Ver cadastro no Quark
+                </Button>
+              )}
+              {quarkLoading && (
+                <Typography className={classes.quarkSource}>
+                  Consultando dados do Quark…
+                </Typography>
+              )}
             </Paper>
             {ticket && <Paper variant="outlined" className={classes.card}>
               <Typography component="h3">Atendimento atual</Typography>

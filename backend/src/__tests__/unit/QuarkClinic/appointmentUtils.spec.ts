@@ -4,9 +4,15 @@ import {
   parseConfirmationChoice,
   parseConfirmationReply,
   parseQuarkScheduledAt,
-  selectQuarkPhones
+  selectQuarkPhones,
+  quarkCpfFrom
 } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
+
+it("extracts and validates CPF fields returned by Quark", () => {
+  expect(quarkCpfFrom({ id: 1, cpf: "529.982.247-25" })).toBe("52998224725");
+  expect(quarkCpfFrom({ id: 1, paciente: { cpf: "11111111111" } })).toBeNull();
+});
 
 const config: QuarkConfig = {
   baseUrl: "https://api.example.test",

@@ -37,6 +37,7 @@ export const tickets = names.map((name, index) => ({
     name,
     number: "5500000000000",
     email: "exemplo@example.invalid",
+    cpf: index === 0 ? "52998224725" : null,
     extraInfo: []
   },
   lastMessage: ["Obrigada pelo retorno!", "Posso confirmar o horário?", "Bom dia, gostaria de agendar uma consulta.", "Vou enviar os documentos."][index % 4],
@@ -144,7 +145,22 @@ export default {
         status: "AGENDADO",
         scheduledAt: new Date("2026-09-09T14:00:00.000Z").toISOString()
       }]
-    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (/^\/quark\/clinic\/appointments\/[^/]+$/.test(path)) data = {
+    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (/^\/quark\/clinic\/contacts\/\d+$/.test(path)) data = {
+      contactId: Number(path.split("/").pop()),
+      patientId: "7001",
+      patientName: "Ana Ribeiro",
+      cpf: "52998224725",
+      birthDate: "01/01/1990",
+      appointmentId: "1",
+      refreshedAt: new Date().toISOString()
+    };else if (/^\/quark\/clinic\/patients\/[^/]+$/.test(path)) data = {
+      patientId: decodeURIComponent(path.split("/").pop()),
+      patientName: "Ana Ribeiro",
+      cpf: "52998224725",
+      birthDate: "01/01/1990",
+      appointmentId: "1",
+      refreshedAt: new Date().toISOString()
+    };else if (/^\/quark\/clinic\/appointments\/[^/]+$/.test(path)) data = {
       appointmentId: decodeURIComponent(path.split("/").pop()),
       patientName: "Ana Ribeiro",
       scheduledAt: "2026-09-02T12:30:00.000Z",

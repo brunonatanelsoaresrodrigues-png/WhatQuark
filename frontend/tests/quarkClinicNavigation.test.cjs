@@ -24,6 +24,13 @@ test("builds an internal Quark Clinic path for the exact appointment", () => {
   );
 });
 
+test("builds an internal Quark Clinic path for the patient registration", () => {
+  assert.equal(
+    navigation.buildQuarkPatientPath("7001", 1153),
+    "/quark-clinic?patientId=7001&returnTo=%2Ftickets%2F1153"
+  );
+});
+
 test("only accepts ticket routes as return destinations", () => {
   assert.equal(
     navigation.safeQuarkReturnPath("/tickets/1153"),

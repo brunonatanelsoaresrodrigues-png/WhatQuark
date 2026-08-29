@@ -9,6 +9,7 @@ export interface AppointmentSnapshot {
   phone: string | null;
   phones: AppointmentPhone[];
   patientName: string;
+  cpf: string | null;
   status: string;
   scheduledAt: Date | null;
   scheduleFingerprint: string;
@@ -35,6 +36,36 @@ export const quarkPhoneKey = (phone: string): string =>
 
 const digitsOnly = (value: string | undefined): string =>
   (value || "").replace(/\D/g, "");
+
+const validCpf = (value: unknown): string | null => {
+  const digits =
+    typeof value === "string" || typeof value === "number"
+      ? String(value).replace(/\D/g, "")
+      : "";
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return null;
+  return digits;
+};
+
+export const quarkCpfFrom = (
+  appointment: QuarkAppointmentDto
+): string | null => {
+  const value = appointment as Record<string, unknown>;
+  const nested = [value.paciente, value.patient].find(
+    item => item && typeof item === "object"
+  ) as Record<string, unknown> | undefined;
+  return (
+    [
+      value.cpf,
+      value.cpfPaciente,
+      value.pacienteCpf,
+      value.documentoCpf,
+      nested?.cpf,
+      nested?.cpfPaciente
+    ]
+      .map(validCpf)
+      .find(Boolean) || null
+  );
+};
 
 export const normalizeQuarkPhone = (
   value: string | undefined,
@@ -167,6 +198,7 @@ export const buildAppointmentSnapshot = (
     phone: phones[0]?.phone || null,
     phones,
     patientName: appointment.nomePaciente || "Paciente",
+    cpf: quarkCpfFrom(appointment),
     status: appointment.statusMarcacao || "DESCONHECIDO",
     scheduledAt,
     scheduleFingerprint: hash(scheduleIdentity),

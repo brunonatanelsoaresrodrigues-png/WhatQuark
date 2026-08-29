@@ -220,6 +220,12 @@ const BookPatientIntakeAppointmentService = async (
       return { status: "SLOT_UNAVAILABLE" };
     }
 
+    // Keep the local contact registration useful for the team without
+    // replacing a CPF that was already entered manually.
+    if (ticket.contact?.update && !ticket.contact.cpf) {
+      await ticket.contact.update({ cpf: context.cpf });
+    }
+
     const agenda = await getIntakeAgenda(slot.agendaId);
     if (!agenda) throw new Error("QUARK_AGENDA_NOT_FOUND");
     const unitId = numericId(agenda.clinicaId);

@@ -32,6 +32,7 @@ interface StoredSnapshot {
   profissionalNome?: string | null;
   procedimentoId?: number | string | null;
   procedimentoNome?: string | null;
+  cpf?: string | null;
 }
 
 const parseStoredSnapshot = (value: string): StoredSnapshot => {
@@ -95,7 +96,8 @@ export const appointmentSnapshotFrom = (
           nome: stored.procedimentoNome
         }
       : undefined,
-    statusMarcacao: record.status
+    statusMarcacao: record.status,
+    cpf: stored.cpf || undefined
   };
 
   return {
@@ -104,6 +106,7 @@ export const appointmentSnapshotFrom = (
     phone: record.phone,
     phones,
     patientName: record.patientName,
+    cpf: stored.cpf || null,
     status: record.status,
     scheduledAt: record.scheduledAt,
     scheduleFingerprint: record.scheduleFingerprint,

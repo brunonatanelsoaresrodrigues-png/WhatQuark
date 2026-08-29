@@ -11,6 +11,8 @@ import EnqueueManualQuarkReminderService from "../services/QuarkClinicServices/E
 import ConfirmQuarkAppointmentFromDashboardService from "../services/QuarkClinicServices/ConfirmQuarkAppointmentFromDashboardService";
 import EnsureQuarkAutomationAccessService from "../services/QuarkClinicServices/EnsureQuarkAutomationAccessService";
 import ShowQuarkClinicAppointmentService from "../services/QuarkClinicServices/ShowQuarkClinicAppointmentService";
+import ShowQuarkClinicContactService from "../services/QuarkClinicServices/ShowQuarkClinicContactService";
+import ShowQuarkClinicPatientService from "../services/QuarkClinicServices/ShowQuarkClinicPatientService";
 
 const ensureAdmin = (req: Request): void => {
   if (req.user.profile !== "admin") {
@@ -85,6 +87,22 @@ export const showClinicAppointment = async (
   return res.json(
     await ShowQuarkClinicAppointmentService(req.params.appointmentId)
   );
+};
+
+export const showClinicContact = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  await ensureViewAccess(req);
+  return res.json(await ShowQuarkClinicContactService(req.params.contactId));
+};
+
+export const showClinicPatient = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  await ensureViewAccess(req);
+  return res.json(await ShowQuarkClinicPatientService(req.params.patientId));
 };
 
 export const calendarDays = async (

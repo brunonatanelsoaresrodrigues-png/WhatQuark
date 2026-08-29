@@ -32,8 +32,18 @@ interface ContactData {
   name: string;
   number: string;
   email?: string;
+  cpf?: string | null;
   extraInfo?: ExtraInfo[];
 }
+
+const normalizeCpf = (value: unknown): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const cpf = String(value).replace(/\D/g, "");
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf))
+    throw new AppError("Invalid CPF format", 400);
+  return cpf;
+};
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
   const { searchParam, pageNumber } = req.query as IndexQuery;
@@ -85,12 +95,14 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   let name = newContact.name;
   let number = validNumber;
   let email = newContact.email;
+  const cpf = normalizeCpf(newContact.cpf);
   let extraInfo = newContact.extraInfo;
 
   const contact = await CreateContactService({
     name,
     number,
     email,
+    cpf,
     extraInfo,
     profilePicUrl
   });
@@ -117,6 +129,7 @@ export const update = async (
   res: Response
 ): Promise<Response> => {
   const contactData: ContactData = req.body;
+  contactData.cpf = normalizeCpf(contactData.cpf);
 
   const schema = Yup.object().shape({
     name: Yup.string(),
@@ -132,7 +145,8 @@ export const update = async (
     throw new AppError(err.message);
   }
 
-  await CheckIsValidContact(contactData.number);
+  if (contactData.number !== undefined)
+    await CheckIsValidContact(contactData.number);
 
   const { contactId } = req.params;
 

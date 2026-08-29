@@ -58,7 +58,15 @@ const ContactSchema = Yup.object().shape({
     .max(50, "Too Long!")
     .required("Required"),
   number: Yup.string().min(8, "Too Short!").max(50, "Too Long!"),
-  email: Yup.string().email("Invalid email")
+  email: Yup.string().email("Invalid email"),
+  cpf: Yup.string().test(
+    "cpf",
+    "CPF inválido",
+    value => {
+      const digits = String(value || "").replace(/\D/g, "");
+      return !digits || (digits.length === 11 && !/^(\d)\1{10}$/.test(digits));
+    }
+  )
 });
 
 const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
@@ -68,7 +76,8 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
   const initialState = {
     name: "",
     number: "",
-    email: ""
+    email: "",
+    cpf: ""
   };
 
   const [contact, setContact] = useState(initialState);
@@ -184,6 +193,17 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
                     variant="outlined"
                   />
                 </div>
+                <Field
+                  as={TextField}
+                  label="CPF"
+                  name="cpf"
+                  error={touched.cpf && Boolean(errors.cpf)}
+                  helperText={touched.cpf && errors.cpf}
+                  placeholder="000.000.000-00"
+                  inputProps={{ inputMode: "numeric", maxLength: 14 }}
+                  margin="dense"
+                  variant="outlined"
+                />
                 <Typography
                   style={{ marginBottom: 8, marginTop: 12 }}
                   variant="subtitle1"

@@ -53,9 +53,16 @@ const ids = table => query(`SELECT id FROM ${table}`);
     assert(appointment, "Synced Quark appointment required");
     const appointmentDetail = await read(`/quark/clinic/appointments/${encodeURIComponent(appointment.appointmentId)}`);
     assert.strictEqual(String(appointmentDetail.appointmentId), String(appointment.appointmentId));
+    const [quarkContact] = await query("SELECT c.id FROM Contacts c INNER JOIN QuarkAppointments a ON a.phone = c.number WHERE a.patientId IS NOT NULL ORDER BY a.lastSeenAt DESC LIMIT 1");
+    if (quarkContact) {
+      const contactDetail = await read(`/quark/clinic/contacts/${encodeURIComponent(quarkContact.id)}`);
+      assert(contactDetail.patientId, "Quark contact did not resolve a patient");
+      const patientDetail = await read(`/quark/clinic/patients/${encodeURIComponent(contactDetail.patientId)}`);
+      assert.strictEqual(String(patientDetail.patientId), String(contactDetail.patientId));
+    }
     const channels = await query("SELECT id, status, LENGTH(session) AS sessionLength, LENGTH(COALESCE(qrcode, '')) AS qrLength FROM Whatsapps");
     assert(channels.some(row => row.id === 1 && row.status === "CONNECTED" && row.sessionLength > 0 && row.qrLength === 0), "WhatsApp not reconnected");
-    console.log(JSON.stringify({ result: "PASS", authenticatedAPI: true, preservedMessageContents: before.messages.length, currentMessages: current.messages.length, preservedTickets: before.tickets.length, currentTickets: current.tickets.length, preservedContacts: before.contacts.length, provider: mode.provider, mode: mode.mode, channels }));
+    console.log(JSON.stringify({ result: "PASS", authenticatedAPI: true, preservedMessageContents: before.messages.length, currentMessages: current.messages.length, preservedTickets: before.tickets.length, currentTickets: current.tickets.length, preservedContacts: before.contacts.length, quarkContact: !!quarkContact, provider: mode.provider, mode: mode.mode, channels }));
   }
   await db.close();
 })().catch(error => { console.error("PRODUCTION_CHECK_FAILED:", error.message); process.exitCode = 1; db.close(); });
