@@ -15,9 +15,9 @@ As proteções abaixo reduzem mensagens indevidas e repetidas. **Não garantem a
 | Área | Regra aplicada |
 | --- | --- |
 | Saída central | Bot, Quark, atendentes, API HTTP, despedidas, inatividade e relatórios passam pela mesma fila persistida. |
-| Consentimento | Avisos proativos exigem autorização registrada. Importar um telefone do Quark não o autoriza. |
+| Avisos de consulta | Lembretes, remarcações e cancelamentos de uma consulta real no Quark podem ser enviados sem registro manual no atendimento. A opção é controlada por `QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN` e vem desativada (`false`) por padrão. Outros envios proativos continuam exigindo autorização. |
 | Descadastro | `PARAR`, `SAIR`, `STOP` e `CANCELAR AVISOS` desativam avisos e suprimem os pendentes. O paciente pode continuar solicitando atendimento. |
-| Destinatário | A notificação Quark usa somente o destinatário principal selecionado e autorizado; não dispara para todos os números alternativos. |
+| Destinatário | A notificação Quark usa somente o número principal da consulta e nunca um número que pediu descadastro; não dispara para todos os números alternativos. |
 | Limites | Tentativas de todas as origens contam para o limite horário do canal; avisos têm limite adicional por destinatário e intervalo mínimo de uma hora. |
 | Horários | Avisos proativos respeitam o período de silêncio. Respostas humanas solicitadas não ficam limitadas a esse horário. |
 | Duplicidades | Chaves estáveis por operação, registros únicos e travas no banco evitam repetir intenções simultâneas. |
@@ -28,15 +28,18 @@ As proteções abaixo reduzem mensagens indevidas e repetidas. **Não garantem a
 
 Os padrões são **limites internos do produto**, não limites aprovados pelo WhatsApp: `MESSAGING_MAX_PER_HOUR=100`, `MESSAGING_MIN_INTERVAL_SECONDS=2`, `MESSAGING_MAX_NOTICES_PER_DAY=3` por janela móvel de 24 horas. Os intervalos adicionais do worker Quark continuam aplicáveis. Não aumente volume para testar essas proteções em números reais.
 
-## Atendimento e consentimento
+## Atendimento e preferência de avisos
 
 1. A primeira mensagem apresenta o assistente e os setores disponíveis. Números de setor só são interpretados depois que o menu foi apresentado.
 2. `ATENDENTE`, `HUMANO`, `AJUDA` ou uma segunda resposta não compreendida encaminham à equipe. Configure `BOT_FALLBACK_QUEUE_ID` para a fila desejada; na ausência dele, usa-se a primeira fila configurada.
 3. Ao encaminhar, o bot fica pausado. Um ticket com atendente responsável não recebe decisões automáticas de confirmação/cancelamento.
-4. Na conversa, **Contexto** mostra autorização, modo de execução, automação, prazo de inatividade, consultas e pendências de envio. Registrar autorização exige evidência e vínculo com o paciente.
-5. A frase exata `AUTORIZO AVISOS DE CONSULTA` registra autorização pelo WhatsApp. `SIM` isolado não autoriza avisos. Não preencha consentimento em massa sem evidência.
+4. Na conversa, **Contexto** mostra se os avisos de consulta estão ativos ou se o número pediu descadastro, além do modo de execução, automação, prazo de inatividade, consultas e pendências de envio.
+5. Com `QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN=false`, a existência e o estado atual da consulta no Quark liberam somente seus avisos operacionais. Não há formulário manual de autorização no atendimento.
+6. `PARAR`, `SAIR`, `STOP` e `CANCELAR AVISOS` bloqueiam imediatamente novos avisos e suprimem os pendentes. A frase `AUTORIZO AVISOS DE CONSULTA` pode reativar um número que havia pedido o bloqueio. `SIM` isolado não altera a preferência.
 
-A autorização atual é por número e tem versão `appointment-notices-v1`. Confirme o vínculo antes de usar telefones compartilhados. Respostas a uma solicitação recebida nas últimas 24 horas podem continuar mesmo após o descadastro, sem reativar avisos. Fora desse contexto, é exigida autorização. No transporte atual não é exigido template da Meta; a regra de template aplica-se apenas ao adaptador Cloud opcional.
+A preferência continua sendo armazenada por número e tem versão `appointment-notices-v1`. Respostas a uma solicitação recebida nas últimas 24 horas podem continuar mesmo após o descadastro, sem reativar avisos. Fora desse contexto, envios proativos que não sejam avisos vinculados à consulta continuam exigindo autorização. No transporte atual não é exigido template da Meta; a regra de template aplica-se apenas ao adaptador Cloud opcional.
+
+Essa configuração elimina a etapa manual dentro do sistema, mas não cria por si só uma base jurídica nem uma permissão perante o WhatsApp. A clínica deve informar no agendamento como usará o número, manter o cadastro correto e respeitar a legislação, os contratos e as políticas aplicáveis. Para restaurar a barreira anterior, defina `QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN=true` e reinicie somente o backend.
 
 Relatórios internos continuam sujeitos às barreiras da fila. Verificar o cadastro do gestor não substitui a autorização; a finalidade de relatórios internos deve ser documentada antes de ativá-los. O comando de autorização de consultas não deve ser usado como autorização genérica para outras finalidades.
 
@@ -80,6 +83,7 @@ O portal incorporado Quark continua com autenticação independente; esta atuali
 3. Em banco exclusivo de homologação, rode `npm run db:migrate` no backend. A migration `20260828000000-messaging-safety` cria `AutomationStates`, `OutboundMessages`, índices e o campo de auditoria `actorUserId`. As migrations anteriores de segurança também são necessárias. Não execute seeds de demonstração em produção.
 4. Publique backend e frontend da mesma revisão. Os arquivos `compose.production.yaml` e `compose.lowmem.yaml` usam imagens locais já nomeadas: **é preciso reconstruir essas imagens com o código novo**, pois apenas executar `compose up` pode reutilizar código antigo. Confirme o Dockerfile e as tags usados pela sua implantação. Os Dockerfiles em `deploy/vps` permitem publicar sobre os runtimes já usados na VPS, sem reinstalar nem atualizar o provedor.
 5. Comece com `MESSAGING_MODE=simulation` e `QUARK_DRY_RUN=true`. São os padrões novos. Eles impedem envio e escrita no Quark, mas permitem analisar o painel. Instalar esta revisão sem configurar o modo deixará os envios pausados, de forma intencional.
+   Defina `QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN=false` para o fluxo operacional sem registro manual. O valor `true` restaura a exigência de autorização explícita.
 6. Passe para `MESSAGING_MODE=test` apenas com `MESSAGING_TEST_ALLOWLIST` contendo números autorizados e isolados de teste. Mantenha o conector não oficial atual. Para testar escritas no Quark, use uma conta/agenda de homologação autorizada, `QUARK_INTEGRATION_ENABLED=true`, `QUARK_DRY_RUN=false`, `QUARK_TEST_ALLOWLIST` restrita e `QUARK_WHATSAPP_ID` explícito. Modo de teste realiza efeitos reais apenas para os destinatários permitidos; não é um simulador.
 7. Valide os cenários abaixo antes de colocar `MESSAGING_MODE=production`. Configure o modo explicitamente, sem alterar o provedor. Mantenha `QUARK_DRY_RUN=true` até aprovar separadamente as alterações de agenda. Retomar fila no painel não altera variáveis do servidor.
 
@@ -89,13 +93,13 @@ As migrations preservam mensagens e sessões. A compatibilidade bloqueia notific
 
 O conector WhatsApp não foi substituído, mas clientes próprios que chamam a API HTTP do aplicativo precisam enviar `Idempotency-Key` com 16–100 caracteres (letras, números, `_` ou `-`). Use uma chave única por intenção de envio e repita a mesma em retentativas da mesma intenção. Não gere nova chave para contornar um resultado incerto. O frontend atualizado já faz isso.
 
-HTTP 202 significa que a intenção ficou na fila; não repita com outra chave. Respostas 409 com `ERR_CONSENT_REQUIRED`, `ERR_RECIPIENT_OPTED_OUT`, `ERR_APPOINTMENT_CHANGED` ou `ERR_SEND_OUTCOME_UNKNOWN` exigem tratar a causa. A autenticação Bearer da atualização anterior permanece obrigatória. Esse ajuste deve ser homologado com qualquer sistema externo que use o endpoint de envio.
+HTTP 202 significa que a intenção ficou na fila; não repita com outra chave. `ERR_CONSENT_REQUIRED` ainda se aplica a envios proativos genéricos e ao modo estrito; `ERR_RECIPIENT_OPTED_OUT` continua sendo uma barreira obrigatória para qualquer aviso. `ERR_APPOINTMENT_CHANGED` e `ERR_SEND_OUTCOME_UNKNOWN` exigem conferência, sem nova tentativa cega. A autenticação Bearer da atualização anterior permanece obrigatória. Esse ajuste deve ser homologado com qualquer sistema externo que use o endpoint de envio.
 
 ### Roteiro de homologação
 
 - Administrador e dois atendentes de filas diferentes: permissões, aceitar, transferir, devolver, resolver, logout e anexos.
 - Dois processos disputando a mesma mensagem: uma intenção persistida, sem envio duplicado. Reinício durante o transporte e falha do banco após aceitação devem exigir conferência, nunca novo envio automático.
-- `PARAR` com aviso pendente, autorização ausente e revogação durante a fila: avisos bloqueados. A mensagem já aceita pelo fornecedor não pode ser recolhida pela pausa.
+- Aviso de consulta sem registro manual: apenas o número principal da consulta atual entra na fila. `PARAR` antes do envio ou durante a fila bloqueia os avisos pendentes. A mensagem já aceita pelo fornecedor não pode ser recolhida.
 - Repetir o mesmo evento recebido, alternar consultas, responder texto ambíguo, cancelar sem segunda confirmação e enviar mensagem após assumir o atendimento: nenhuma alteração indevida no Quark.
 - Remarcação externa, troca de telefone/paciente, timeout de PATCH e atualização remota durante polling: estado conferido e operação incerta bloqueada.
 - Mesmo envio reenviado por erro HTTP: mesma chave, um envio. Rascunho preservado; 202 exibido como pendente.

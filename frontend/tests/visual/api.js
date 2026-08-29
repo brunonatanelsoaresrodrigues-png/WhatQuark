@@ -121,10 +121,11 @@ export default {
       mode: new URLSearchParams(window.location.search).get("context") === "blocked" ? "off" : "production",
       paused: false,
       official: false,
+      appointmentNoticesRequireOptIn: false,
       botPaused: true,
       serviceWindowOpen: true,
       preference: {
-        consent: "GRANTED"
+        consent: "UNKNOWN"
       },
       clinicTimezone: "America/Sao_Paulo",
       serverNow: new Date("2026-08-28T15:00:00.000Z").toISOString(),

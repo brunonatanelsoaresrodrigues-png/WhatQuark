@@ -250,6 +250,7 @@ export const processNotification = async (
       {
         idempotencyKey: `quark-notice:${notification.id}`,
         proactive: true,
+        appointmentNotice: true,
         appointmentId: notification.appointmentId,
         scheduleFingerprint: payload.scheduleFingerprint,
         expiresAt: payload.validUntil || undefined,

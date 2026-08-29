@@ -3,6 +3,7 @@ import { getQuarkConfig } from "../../../services/QuarkClinicServices/config";
 import { emitQuarkDashboardUpdate } from "../../../services/QuarkClinicServices/dashboardEvents";
 import EnqueueManualQuarkReminderService from "../../../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
 import { createQuarkNotificationOnce } from "../../../services/QuarkClinicServices/notificationLedger";
+import { getPreference } from "../../../services/MessagingServices/preferences";
 
 jest.mock("../../../services/MessagingServices/policy", () => ({
   assertExecution: jest.fn().mockResolvedValue(undefined)
@@ -11,6 +12,7 @@ jest.mock("../../../services/MessagingServices/state", () => ({
   withLease: (_: string, fn: Function) => fn()
 }));
 jest.mock("../../../services/MessagingServices/preferences", () => ({
+  ...jest.requireActual("../../../services/MessagingServices/preferences"),
   getPreference: jest.fn().mockResolvedValue({ consent: "GRANTED" })
 }));
 jest.mock("../../../models/QuarkAppointment", () => ({
@@ -49,12 +51,14 @@ const appointment = {
 describe("EnqueueManualQuarkReminderService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
     (getQuarkConfig as jest.Mock).mockReturnValue({
       timezone: "America/Sao_Paulo",
       clinicAddress: "Avenida Ulisses Bezerra, 2227"
     });
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(appointment);
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
+    (getPreference as jest.Mock).mockResolvedValue({ consent: "GRANTED" });
   });
 
   it("queues a confirmation reminder through the protected outbox", async () => {
@@ -93,6 +97,28 @@ describe("EnqueueManualQuarkReminderService", () => {
     ).resolves.toEqual({ queued: true, recipients: 1 });
 
     expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues an operational reminder without manual opt-in", async () => {
+    (getPreference as jest.Mock).mockResolvedValue({ consent: "UNKNOWN" });
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).resolves.toEqual({ queued: true, recipients: 1 });
+  });
+
+  it("rejects a reminder after the patient opts out", async () => {
+    (getPreference as jest.Mock).mockResolvedValue({ consent: "REVOKED" });
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).rejects.toEqual(
+      expect.objectContaining({
+        statusCode: 409,
+        message: "ERR_RECIPIENT_OPTED_OUT"
+      })
+    );
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 
   it("rejects a duplicate manual reminder on the same day", async () => {

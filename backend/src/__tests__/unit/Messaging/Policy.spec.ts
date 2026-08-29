@@ -5,7 +5,10 @@ import {
   modeFrom
 } from "../../../services/MessagingServices/policy";
 import { readState } from "../../../services/MessagingServices/state";
-import { preferenceCommand } from "../../../services/MessagingServices/preferences";
+import {
+  canReceiveAppointmentNotices,
+  preferenceCommand
+} from "../../../services/MessagingServices/preferences";
 import { validSignature } from "../../../services/MessagingServices/cloudSignature";
 jest.mock("../../../services/MessagingServices/state", () => ({
   readState: jest.fn().mockResolvedValue(false)
@@ -89,6 +92,45 @@ it.each(["PARAR", "sair", "STOP", "Cancelar avisos"])(
 it("does not infer consent from arbitrary affirmative text", () => {
   expect(preferenceCommand("sim")).toBeNull();
   expect(preferenceCommand("AUTORIZO AVISOS DE CONSULTA")).toBe("GRANTED");
+});
+it("allows operational appointment notices without a manual opt-in", () => {
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
+  expect(
+    canReceiveAppointmentNotices({
+      consent: "UNKNOWN",
+      changedAt: null,
+      source: null,
+      actorUserId: null,
+      relationship: null,
+      version: "appointment-notices-v1"
+    })
+  ).toBe(true);
+});
+it("keeps opt-out as a hard block for appointment notices", () => {
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
+  expect(
+    canReceiveAppointmentNotices({
+      consent: "REVOKED",
+      changedAt: new Date().toISOString(),
+      source: "PARAR recebido pelo WhatsApp",
+      actorUserId: null,
+      relationship: "Próprio paciente",
+      version: "appointment-notices-v1"
+    })
+  ).toBe(false);
+});
+it("can restore the stricter opt-in policy through configuration", () => {
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "true";
+  expect(
+    canReceiveAppointmentNotices({
+      consent: "UNKNOWN",
+      changedAt: null,
+      source: null,
+      actorUserId: null,
+      relationship: null,
+      version: "appointment-notices-v1"
+    })
+  ).toBe(false);
 });
 it("verifies the exact raw webhook body and rejects tampering", () => {
   const body = Buffer.from('{"hello":"test"}');

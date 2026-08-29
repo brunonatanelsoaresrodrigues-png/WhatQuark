@@ -23,7 +23,11 @@ import {
   SendMessageOptions
 } from "../../providers/WhatsApp/types";
 import { assertExecution, inServiceWindow, SendPolicy } from "./policy";
-import { getPreference } from "./preferences";
+import {
+  canReceiveAppointmentNotices,
+  getPreference,
+  MessagingPreference
+} from "./preferences";
 import { digest, readState, withLease } from "./state";
 import { logger } from "../../utils/logger";
 import uploadConfig from "../../config/upload";
@@ -77,6 +81,25 @@ const cleanupMediaPath = async (payload: Payload): Promise<void> => {
   if (relative.startsWith("..") || path.isAbsolute(relative)) return;
   await fs.promises.unlink(candidate).catch(() => undefined);
 };
+
+export const consentErrorForSend = (
+  preference: MessagingPreference,
+  policy: SendPolicy,
+  windowOpen: boolean
+): string | null => {
+  if (!policy.proactive && windowOpen) return null;
+  if (preference.consent === "GRANTED") return null;
+  if (
+    policy.appointmentNotice === true &&
+    !!policy.appointmentId &&
+    canReceiveAppointmentNotices(preference)
+  )
+    return null;
+  return preference.consent === "REVOKED"
+    ? "ERR_RECIPIENT_OPTED_OUT"
+    : "ERR_CONSENT_REQUIRED";
+};
+
 let timer: NodeJS.Timeout | undefined;
 let active: Promise<void> | undefined;
 let stopping = false;
@@ -105,13 +128,8 @@ export const validateSend = async (
   );
   const windowOpen = inServiceWindow(lastInbound);
   const preference = await getPreference(phone);
-  if ((policy.proactive || !windowOpen) && preference.consent !== "GRANTED")
-    throw new AppError(
-      preference.consent === "REVOKED"
-        ? "ERR_RECIPIENT_OPTED_OUT"
-        : "ERR_CONSENT_REQUIRED",
-      409
-    );
+  const consentError = consentErrorForSend(preference, policy, windowOpen);
+  if (consentError) throw new AppError(consentError, 409);
   if (
     process.env.WHATSAPP_PROVIDER === "cloud" &&
     !windowOpen &&

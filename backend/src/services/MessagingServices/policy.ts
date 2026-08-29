@@ -12,6 +12,7 @@ export interface SendPolicy {
   idempotencyKey?: string;
   cleanupMediaPath?: boolean;
   proactive?: boolean;
+  appointmentNotice?: boolean;
   bot?: boolean;
   botEventId?: string;
   expiresAt?: string;
@@ -32,7 +33,9 @@ export const messagingStatus = async () => ({
   mode: modeFrom(),
   paused: await readState("messaging:paused", false),
   provider: process.env.WHATSAPP_PROVIDER || "wwebjs",
-  official: process.env.WHATSAPP_PROVIDER === "cloud"
+  official: process.env.WHATSAPP_PROVIDER === "cloud",
+  appointmentNoticesRequireOptIn:
+    process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN === "true"
 });
 export const assertExecution = async (
   phone?: string,

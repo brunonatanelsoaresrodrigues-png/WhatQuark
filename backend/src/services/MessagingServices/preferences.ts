@@ -23,6 +23,16 @@ const empty: MessagingPreference = {
 };
 export const getPreference = (phone: string) =>
   readState(`preference:${phone}`, empty);
+
+export const appointmentNoticesRequireOptIn = (): boolean =>
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN === "true";
+
+export const canReceiveAppointmentNotices = (
+  preference: MessagingPreference
+): boolean =>
+  preference.consent !== "REVOKED" &&
+  (!appointmentNoticesRequireOptIn() || preference.consent === "GRANTED");
+
 export const setPreference = async (
   phone: string,
   consent: "GRANTED" | "REVOKED",

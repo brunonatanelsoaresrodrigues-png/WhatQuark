@@ -58,6 +58,7 @@ jest.mock("../../../services/MessagingServices/state", () => ({
   writeState: jest.fn()
 }));
 jest.mock("../../../services/MessagingServices/preferences", () => ({
+  ...jest.requireActual("../../../services/MessagingServices/preferences"),
   getPreference: jest.fn().mockResolvedValue({ consent: "GRANTED" })
 }));
 jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
@@ -125,6 +126,7 @@ const mockSyncState = (status: "BASELINING" | "ACTIVE") => {
 describe("SyncQuarkAppointmentsService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
     (readState as jest.Mock).mockImplementation((_: string, fallback: any) =>
       Promise.resolve(fallback)
     );
@@ -227,7 +229,7 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(record.update).not.toHaveBeenCalled();
     expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
-  it("suppresses unsolicited notices and queues only the primary recipient", async () => {
+  it("queues an operational notice without manual opt-in for only the primary recipient", async () => {
     mockSyncState("ACTIVE");
     const dto = { ...appointment(), telefoneOutroComDDI: "5511999992222" };
     (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
@@ -240,6 +242,23 @@ describe("SyncQuarkAppointmentsService", () => {
       expect.any(String),
       "CREATED",
       expect.objectContaining({ phone: "5511999990000" }),
+      "PENDING",
+      expect.anything()
+    );
+  });
+  it("suppresses notices after the patient opts out", async () => {
+    mockSyncState("ACTIVE");
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([appointment()]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
+    (getPreference as jest.Mock).mockResolvedValue({ consent: "REVOKED" });
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
+      "42",
+      expect.any(String),
+      "CREATED",
+      expect.anything(),
       "SUPPRESSED",
       expect.anything()
     );

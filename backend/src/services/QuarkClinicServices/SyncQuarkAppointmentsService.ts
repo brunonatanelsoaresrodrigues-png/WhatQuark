@@ -30,7 +30,10 @@ import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
 import { clinicDay, dateParts } from "./clinicTime";
 import { withLease, readState, writeState } from "../MessagingServices/state";
-import { getPreference } from "../MessagingServices/preferences";
+import {
+  canReceiveAppointmentNotices,
+  getPreference
+} from "../MessagingServices/preferences";
 import { dueReminder } from "./reminderTiming";
 const FINGERPRINT_VERSION = 4;
 const SYNC_STATE_KEY = "appointments";
@@ -113,7 +116,9 @@ const queueNotice = async (
       scheduleFingerprint: snapshot.scheduleFingerprint,
       sendOnlyOnWeekday
     },
-    suppressed || preference.consent !== "GRANTED" ? "SUPPRESSED" : "PENDING",
+    suppressed || !canReceiveAppointmentNotices(preference)
+      ? "SUPPRESSED"
+      : "PENDING",
     transaction
   );
 };

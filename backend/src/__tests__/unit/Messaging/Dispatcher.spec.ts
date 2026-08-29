@@ -7,6 +7,7 @@ import { assertExecution } from "../../../services/MessagingServices/policy";
 import { getPreference } from "../../../services/MessagingServices/preferences";
 import { readState } from "../../../services/MessagingServices/state";
 import {
+  consentErrorForSend,
   enqueueOutbound,
   processOutbound,
   stopDispatcher,
@@ -43,6 +44,7 @@ jest.mock("../../../services/MessagingServices/policy", () => ({
   assertExecution: jest.fn()
 }));
 jest.mock("../../../services/MessagingServices/preferences", () => ({
+  ...jest.requireActual("../../../services/MessagingServices/preferences"),
   getPreference: jest.fn()
 }));
 jest.mock("../../../services/MessagingServices/state", () => ({
@@ -62,6 +64,7 @@ beforeEach(() => {
   process.env.MESSAGING_MAX_PER_HOUR = "100";
   process.env.QUARK_QUIET_HOURS_START = "00:00";
   process.env.QUARK_QUIET_HOURS_END = "00:00";
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
   (getPreference as jest.Mock).mockResolvedValue({ consent: "GRANTED" });
   (Whatsapp.findByPk as jest.Mock).mockResolvedValue({ status: "CONNECTED" });
   (readState as jest.Mock).mockImplementation((key, fallback) =>
@@ -99,6 +102,38 @@ beforeEach(() => {
     body: "test",
     fromMe: true
   });
+});
+
+const preference = (consent: "UNKNOWN" | "GRANTED" | "REVOKED") => ({
+  consent,
+  changedAt: null,
+  source: null,
+  actorUserId: null,
+  relationship: null,
+  version: "appointment-notices-v1"
+});
+
+it("allows only appointment-bound operational notices without manual opt-in", () => {
+  expect(
+    consentErrorForSend(
+      preference("UNKNOWN"),
+      { proactive: true, appointmentNotice: true, appointmentId: "42" },
+      false
+    )
+  ).toBeNull();
+  expect(
+    consentErrorForSend(preference("UNKNOWN"), { proactive: true }, false)
+  ).toBe("ERR_CONSENT_REQUIRED");
+});
+
+it("never bypasses an appointment notice opt-out", () => {
+  expect(
+    consentErrorForSend(
+      preference("REVOKED"),
+      { proactive: true, appointmentNotice: true, appointmentId: "42" },
+      false
+    )
+  ).toBe("ERR_RECIPIENT_OPTED_OUT");
 });
 
 it("stores PROCESSING before calling transport and then persists success", async () => {

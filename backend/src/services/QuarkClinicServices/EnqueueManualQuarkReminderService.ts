@@ -14,7 +14,10 @@ import { createQuarkNotificationOnce } from "./notificationLedger";
 import { QuarkAppointmentDto } from "./types";
 
 import { assertExecution } from "../MessagingServices/policy";
-import { getPreference } from "../MessagingServices/preferences";
+import {
+  canReceiveAppointmentNotices,
+  getPreference
+} from "../MessagingServices/preferences";
 import { withLease } from "../MessagingServices/state";
 
 interface Request {
@@ -156,8 +159,14 @@ const EnqueueManualQuarkReminderService = async ({
     let recipients = 0;
     if (!record.phone) throw new AppError("ERR_INVALID_RECIPIENT", 409);
     await assertExecution(record.phone, true);
-    if ((await getPreference(record.phone)).consent !== "GRANTED")
-      throw new AppError("ERR_CONSENT_REQUIRED", 409);
+    const preference = await getPreference(record.phone);
+    if (!canReceiveAppointmentNotices(preference))
+      throw new AppError(
+        preference.consent === "REVOKED"
+          ? "ERR_RECIPIENT_OPTED_OUT"
+          : "ERR_CONSENT_REQUIRED",
+        409
+      );
     for (const recipient of snapshot.phones
       .filter(p => p.phone === record.phone)
       .slice(0, 1)) {
