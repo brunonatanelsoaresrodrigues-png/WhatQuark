@@ -144,7 +144,18 @@ export default {
         status: "AGENDADO",
         scheduledAt: new Date("2026-09-09T14:00:00.000Z").toISOString()
       }]
-    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (path.startsWith("/messages/")) data = {
+    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (/^\/quark\/clinic\/appointments\/[^/]+$/.test(path)) data = {
+      appointmentId: decodeURIComponent(path.split("/").pop()),
+      patientName: "Ana Ribeiro",
+      scheduledAt: "2026-09-02T12:30:00.000Z",
+      status: "CONFIRMADO",
+      clinicName: "Essencial Saúde",
+      professionalName: "Dra. Mariana Silva",
+      procedureName: "Consulta clínica",
+      specialtyName: "Clínica geral",
+      clinicTimezone: "America/Sao_Paulo",
+      refreshedAt: new Date().toISOString()
+    };else if (path.startsWith("/messages/")) data = {
       messages,
       hasMore: false
     };else if (path === "/contacts" || path === "/contacts/") data = {

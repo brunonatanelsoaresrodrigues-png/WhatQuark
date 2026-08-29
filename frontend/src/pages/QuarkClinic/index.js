@@ -1,22 +1,30 @@
-import React, { useContext, useRef, useState } from "react";
-import { Redirect } from "react-router-dom";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Redirect, useHistory, useLocation } from "react-router-dom";
 import { Button, CircularProgress, Paper, Typography } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
+import ArrowBackIcon from "@material-ui/icons/ArrowBack";
+import CloseIcon from "@material-ui/icons/Close";
 import OpenInNewIcon from "@material-ui/icons/OpenInNew";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import FullscreenIcon from "@material-ui/icons/Fullscreen";
 
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { getQuarkClinicUrl } from "../../config";
+import api from "../../services/api";
+import {
+  appointmentDateTimeLabel,
+  appointmentStatusLabel,
+} from "../../services/appointmentDisplay";
+import { safeQuarkReturnPath } from "../../services/quarkClinicNavigation";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => ({
   root: {
     flex: 1,
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    backgroundColor: theme.palette.background.default
+    backgroundColor: theme.palette.background.default,
   },
   header: {
     display: "flex",
@@ -31,33 +39,101 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.down("xs")]: {
       alignItems: "flex-start",
       flexDirection: "column",
-      gap: theme.spacing(1)
-    }
+      gap: theme.spacing(1),
+    },
   },
   heading: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
   },
   description: {
-    color: theme.palette.text.secondary
+    color: theme.palette.text.secondary,
   },
   actions: {
     display: "flex",
     gap: theme.spacing(1),
-    flexWrap: "wrap"
+    flexWrap: "wrap",
+  },
+  selectedAppointment: {
+    flexShrink: 0,
+    padding: theme.spacing(1.5, 3),
+    borderRadius: 0,
+    borderLeft: 0,
+    borderRight: 0,
+    borderTop: 0,
+    background: theme.modeTokens.surfaceTint,
+    [theme.breakpoints.down("xs")]: {
+      padding: theme.spacing(1.5),
+    },
+  },
+  selectedTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    [theme.breakpoints.down("xs")]: {
+      alignItems: "flex-start",
+      flexDirection: "column",
+    },
+  },
+  selectedTitle: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: theme.spacing(1),
+    flexWrap: "wrap",
+  },
+  selectedActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(0.5),
+    flexWrap: "wrap",
+  },
+  detailGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(120px, 1fr))",
+    gap: theme.spacing(1, 2),
+    [theme.breakpoints.down("sm")]: {
+      gridTemplateColumns: "repeat(2, minmax(120px, 1fr))",
+    },
+    [theme.breakpoints.down("xs")]: {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  detailLabel: {
+    display: "block",
+    color: theme.palette.text.secondary,
+    fontSize: 10,
+    lineHeight: 1.4,
+  },
+  detailValue: {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1.5,
+    overflowWrap: "anywhere",
+  },
+  selectedLoading: {
+    minHeight: 42,
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+  },
+  selectedError: {
+    color: theme.palette.error.main,
   },
   frameContainer: {
     position: "relative",
     flex: 1,
     minHeight: 0,
-    backgroundColor: "#fff"
+    backgroundColor: "#fff",
   },
   frame: {
     width: "100%",
     height: "100%",
     display: "block",
     border: 0,
-    backgroundColor: "#fff"
+    backgroundColor: "#fff",
   },
   loading: {
     position: "absolute",
@@ -66,24 +142,67 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.palette.background.default
+    backgroundColor: theme.palette.background.default,
   },
   notice: {
     padding: theme.spacing(0.75, 2),
     color: theme.palette.text.secondary,
     backgroundColor: theme.palette.background.paper,
     borderTop: `1px solid ${theme.palette.divider}`,
-    flexShrink: 0
-  }
+    flexShrink: 0,
+  },
 }));
 
 const QuarkClinic = () => {
   const classes = useStyles();
   const { user } = useContext(AuthContext);
+  const history = useHistory();
+  const location = useLocation();
   const frameContainerRef = useRef(null);
   const [frameKey, setFrameKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [appointment, setAppointment] = useState(null);
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentError, setAppointmentError] = useState("");
+  const [appointmentReload, setAppointmentReload] = useState(0);
   const quarkClinicUrl = getQuarkClinicUrl();
+  const search = new URLSearchParams(location.search);
+  const appointmentId = search.get("appointmentId") || "";
+  const returnTo = safeQuarkReturnPath(search.get("returnTo"));
+
+  useEffect(() => {
+    let active = true;
+    if (!appointmentId) {
+      setAppointment(null);
+      setAppointmentError("");
+      return () => {
+        active = false;
+      };
+    }
+
+    setAppointmentLoading(true);
+    setAppointmentError("");
+    api
+      .get(`/quark/clinic/appointments/${encodeURIComponent(appointmentId)}`)
+      .then(({ data }) => {
+        if (active) setAppointment(data);
+      })
+      .catch(() => {
+        if (active) {
+          setAppointment(null);
+          setAppointmentError(
+            "Não foi possível atualizar esta consulta no Quark."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setAppointmentLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [appointmentId, appointmentReload]);
 
   if (!user?.canAccessQuarkClinic) {
     return <Redirect to="/tickets" />;
@@ -91,7 +210,7 @@ const QuarkClinic = () => {
 
   const reloadFrame = () => {
     setLoading(true);
-    setFrameKey(previousKey => previousKey + 1);
+    setFrameKey((previousKey) => previousKey + 1);
   };
 
   const openFullscreen = async () => {
@@ -99,6 +218,15 @@ const QuarkClinic = () => {
       await frameContainerRef.current.requestFullscreen();
     }
   };
+
+  const closeAppointment = () => history.replace("/quark-clinic");
+
+  const detail = (label, value) => (
+    <div>
+      <span className={classes.detailLabel}>{label}</span>
+      <span className={classes.detailValue}>{value || "Não informado"}</span>
+    </div>
+  );
 
   return (
     <div className={classes.root}>
@@ -141,6 +269,78 @@ const QuarkClinic = () => {
           </Button>
         </div>
       </Paper>
+
+      {appointmentId && (
+        <Paper
+          className={classes.selectedAppointment}
+          variant="outlined"
+          square
+        >
+          <div className={classes.selectedTop}>
+            <div className={classes.selectedTitle}>
+              <Typography component="h2" variant="subtitle2">
+                Consulta selecionada
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                #{appointmentId}
+              </Typography>
+            </div>
+            <div className={classes.selectedActions}>
+              {returnTo && (
+                <Button
+                  size="small"
+                  startIcon={<ArrowBackIcon />}
+                  onClick={() => history.push(returnTo)}
+                >
+                  Voltar ao atendimento
+                </Button>
+              )}
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                disabled={appointmentLoading}
+                onClick={() => setAppointmentReload((value) => value + 1)}
+              >
+                Atualizar
+              </Button>
+              <Button
+                size="small"
+                startIcon={<CloseIcon />}
+                onClick={closeAppointment}
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+          {appointmentLoading ? (
+            <div className={classes.selectedLoading}>
+              <CircularProgress size={20} />
+              <Typography variant="body2">Consultando o Quark…</Typography>
+            </div>
+          ) : appointmentError ? (
+            <Typography variant="body2" className={classes.selectedError}>
+              {appointmentError} Use “Atualizar” para tentar novamente.
+            </Typography>
+          ) : appointment ? (
+            <div className={classes.detailGrid}>
+              {detail("Paciente", appointment.patientName)}
+              {detail(
+                "Data e horário",
+                appointmentDateTimeLabel(
+                  appointment.scheduledAt,
+                  appointment.clinicTimezone
+                )
+              )}
+              {detail("Status", appointmentStatusLabel(appointment.status))}
+              {detail("Profissional", appointment.professionalName)}
+              {detail("Procedimento", appointment.procedureName)}
+              {detail("Especialidade", appointment.specialtyName)}
+              {detail("Clínica", appointment.clinicName)}
+              {detail("Referência no Quark", appointment.appointmentId)}
+            </div>
+          ) : null}
+        </Paper>
+      )}
 
       <div className={classes.frameContainer} ref={frameContainerRef}>
         {loading && (

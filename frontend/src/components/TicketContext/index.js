@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useHistory } from "react-router-dom";
 import {
   Box,
   Button,
@@ -21,6 +22,7 @@ import {
   appointmentDayLabel,
   appointmentStatusLabel
 } from "../../services/appointmentDisplay";
+import { buildQuarkAppointmentPath } from "../../services/quarkClinicNavigation";
 
 const useStyles = makeStyles(theme => ({
   contextBar: {
@@ -60,10 +62,23 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
     fontSize: 11,
     fontWeight: 700
+  },
+  appointmentFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1)
+  },
+  quarkButton: {
+    minWidth: 0,
+    padding: theme.spacing(0.25, 0.5),
+    fontSize: 11,
+    textTransform: "none"
   }
 }));
 export default function TicketContext({ ticket, context, onRefresh }) {
   const classes = useStyles();
+  const history = useHistory();
   const [open, setOpen] = useState(false);
   const [evidence, setEvidence] = useState("");
   const [relationship, setRelationship] = useState("Próprio paciente");
@@ -123,9 +138,22 @@ export default function TicketContext({ ticket, context, onRefresh }) {
           )}
         </span>
       </div>
-      <Typography variant="caption" color="textSecondary">
-        {appointmentStatusLabel(value.status)} · Referência {value.reference}
-      </Typography>
+      <div className={classes.appointmentFooter}>
+        <Typography variant="caption" color="textSecondary">
+          {appointmentStatusLabel(value.status)} · Referência {value.reference}
+        </Typography>
+        <Button
+          className={classes.quarkButton}
+          color="primary"
+          size="small"
+          onClick={() => {
+            setOpen(false);
+            history.push(buildQuarkAppointmentPath(value.appointmentId, ticket.id));
+          }}
+        >
+          Ver no Quark
+        </Button>
+      </div>
     </Box>
   );
   return (

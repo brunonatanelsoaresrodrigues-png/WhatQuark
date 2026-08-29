@@ -25,6 +25,11 @@ quarkDashboardRoutes.get(
   QuarkDashboardController.appointments
 );
 quarkDashboardRoutes.get(
+  "/quark/clinic/appointments/:appointmentId",
+  isAuth,
+  QuarkDashboardController.showClinicAppointment
+);
+quarkDashboardRoutes.get(
   "/quark/dashboard/calendar-days",
   isAuth,
   QuarkDashboardController.calendarDays

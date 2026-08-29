@@ -49,6 +49,10 @@ const ids = table => query(`SELECT id FROM ${table}`);
     const day = new Date().toISOString().slice(0, 10);
     for (const route of ["summary", "timeseries", "breakdown", "calendar-days", "appointments"])
       await read(`/quark/dashboard/${route}?from=${day}&to=${day}`);
+    const [appointment] = await query("SELECT appointmentId FROM QuarkAppointments WHERE scheduledAt >= NOW() AND status NOT IN ('CANCELADO', 'CANCELADO_VIA_SMS', 'EXCLUIDO') ORDER BY lastSeenAt DESC LIMIT 1");
+    assert(appointment, "Synced Quark appointment required");
+    const appointmentDetail = await read(`/quark/clinic/appointments/${encodeURIComponent(appointment.appointmentId)}`);
+    assert.strictEqual(String(appointmentDetail.appointmentId), String(appointment.appointmentId));
     const channels = await query("SELECT id, status, LENGTH(session) AS sessionLength, LENGTH(COALESCE(qrcode, '')) AS qrLength FROM Whatsapps");
     assert(channels.some(row => row.id === 1 && row.status === "CONNECTED" && row.sessionLength > 0 && row.qrLength === 0), "WhatsApp not reconnected");
     console.log(JSON.stringify({ result: "PASS", authenticatedAPI: true, preservedMessageContents: before.messages.length, currentMessages: current.messages.length, preservedTickets: before.tickets.length, currentTickets: current.tickets.length, preservedContacts: before.contacts.length, provider: mode.provider, mode: mode.mode, channels }));

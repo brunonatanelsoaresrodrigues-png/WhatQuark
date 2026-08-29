@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useHistory } from "react-router-dom";
 import { makeStyles, Typography, IconButton, Drawer, Link, Button, Paper } from "@material-ui/core";
 import { Close, EditOutlined, WhatsApp } from "@material-ui/icons";
 import Skeleton from "@material-ui/lab/Skeleton";
@@ -10,6 +11,7 @@ import {
   appointmentDayLabel,
   appointmentStatusLabel
 } from "../../services/appointmentDisplay";
+import { buildQuarkAppointmentPath } from "../../services/quarkClinicNavigation";
 const useStyles = makeStyles(theme => ({
   docked: {
     width: 272,
@@ -140,6 +142,19 @@ const useStyles = makeStyles(theme => ({
     display: "block",
     marginTop: 4
   },
+  appointmentFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  quarkButton: {
+    minWidth: 0,
+    padding: "2px 4px",
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "none"
+  },
   empty: {
     fontSize: 11,
     lineHeight: 1.7,
@@ -156,13 +171,24 @@ const ContactDrawer = ({
   context
 }) => {
   const classes = useStyles();
+  const history = useHistory();
   const [modalOpen, setModalOpen] = useState(false);
   const renderAppointment = appointment => <div key={appointment.appointmentId} className={classes.extraInfo}>
       <div className={classes.appointmentHeading}>
         <span>{appointmentDateTimeLabel(appointment.scheduledAt, context?.clinicTimezone)}</span>
         <span className={classes.appointmentDay}>{appointmentDayLabel(appointment.scheduledAt, context?.serverNow, context?.clinicTimezone)}</span>
       </div>
-      <Typography variant="caption" color="textSecondary" className={classes.appointmentMeta}>{appointmentStatusLabel(appointment.status)} · {appointment.reference}</Typography>
+      <div className={classes.appointmentFooter}>
+        <Typography variant="caption" color="textSecondary" className={classes.appointmentMeta}>{appointmentStatusLabel(appointment.status)} · {appointment.reference}</Typography>
+        <Button
+          className={classes.quarkButton}
+          color="primary"
+          size="small"
+          onClick={() => history.push(buildQuarkAppointmentPath(appointment.appointmentId, ticket?.id))}
+        >
+          Ver no Quark
+        </Button>
+      </div>
     </div>;
   return <Drawer className={docked && open ? classes.docked : undefined} variant={docked ? "persistent" : "temporary"} onClose={handleDrawerClose} anchor="right" open={open} classes={{
     paper: `${classes.drawerPaper} ${docked ? classes.dockedPaper : ""}`
