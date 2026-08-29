@@ -251,7 +251,7 @@ const useStyles = makeStyles(theme => ({
     }
   }
 }));
-const getRouteDetails = pathname => [["/tickets", "Atendimentos", "Conversas e histórico em tempo real"], ["/connections", "Canais", "Saúde das conexões do WhatsApp"], ["/contacts", "Contatos", "Base de pacientes e clientes"], ["/quickanswers", "Respostas rápidas", "Conteúdo padronizado para a equipe"], ["/quark-dashboard", "Automação Quark", "Agendamentos, avisos e operação"], ["/quark-clinic", "Quark Clinic", "Acesso integrado à agenda clínica"], ["/daily-reports", "Relatórios diários", "Acompanhamento e prestação de contas"], ["/users", "Equipe", "Usuários e permissões"], ["/queues", "Setores", "Organização das filas de atendimento"], ["/settings", "Configurações", "Preferências da operação"]].find(([path]) => pathname.toLowerCase().startsWith(path)) || ["/", "Visão geral", "Panorama da operação de atendimento"];
+const getRouteDetails = pathname => [["/tickets", "Atendimentos", "Conversas e histórico em tempo real"], ["/connections", "Canais", "Saúde das conexões do WhatsApp"], ["/contacts", "Contatos", "Base de pacientes e clientes"], ["/quickanswers", "Respostas rápidas", "Conteúdo padronizado para a equipe"], ["/quark-dashboard", "Agenda Quark", "Consultas, confirmações e avisos"], ["/quark-clinic", "Quark Clinic", "Acesso integrado à agenda clínica"], ["/daily-reports", "Relatórios diários", "Acompanhamento e prestação de contas"], ["/users", "Equipe", "Usuários e permissões"], ["/queues", "Setores", "Organização das filas de atendimento"], ["/settings", "Configurações", "Preferências da operação"]].find(([path]) => pathname.toLowerCase().startsWith(path)) || ["/", "Visão geral", "Panorama da operação de atendimento"];
 const LoggedInLayout = ({
   children
 }) => {

@@ -149,7 +149,7 @@ const MainListItems = props => {
             <ListSubheader className={classes.subheader} disableSticky>
               {i18n.t("mainDrawer.listItems.administration")}
             </ListSubheader>
-            <ListItemLink to="/quark-dashboard" primary="Automação Quark" icon={<EventAvailableOutlinedIcon />} className={classes.item} />
+            <ListItemLink to="/quark-dashboard" primary="Agenda Quark" icon={<EventAvailableOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/daily-reports" primary="Relatórios Diários" icon={<InsertChartOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/users" primary={i18n.t("mainDrawer.listItems.users")} icon={<PeopleAltOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/queues" primary={i18n.t("mainDrawer.listItems.queues")} icon={<AccountTreeOutlinedIcon />} className={classes.item} />

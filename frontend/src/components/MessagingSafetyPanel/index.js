@@ -9,7 +9,7 @@ import {
 } from "@material-ui/core";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
-export default function MessagingSafetyPanel() {
+export default function MessagingSafetyPanel({ compact = false }) {
   const [state, setState] = useState(null);
   const [rows, setRows] = useState([]);
   const [expanded, setExpanded] = useState(false);
@@ -49,7 +49,14 @@ export default function MessagingSafetyPanel() {
     production: "Produção"
   };
   return (
-    <Paper variant="outlined" style={{ padding: 16, marginBottom: 16 }}>
+    <Paper
+      variant="outlined"
+      style={{
+        padding: compact ? "10px 14px" : 16,
+        marginBottom: 16,
+        borderRadius: compact ? 12 : undefined
+      }}
+    >
       <Box
         display="flex"
         alignItems="center"
@@ -57,10 +64,10 @@ export default function MessagingSafetyPanel() {
         style={{ gap: 10 }}
       >
         <Typography
-          variant="subtitle1"
+          variant={compact ? "subtitle2" : "subtitle1"}
           style={{ fontWeight: 700, flex: "1 1 180px" }}
         >
-          Segurança dos envios
+          {compact ? "Envios protegidos" : "Segurança dos envios"}
         </Typography>
         <Chip
           size="small"
@@ -70,7 +77,12 @@ export default function MessagingSafetyPanel() {
               : "Verificando…"
           }
         />
-        <Button disabled={!state || busy} variant="outlined" onClick={pause}>
+        <Button
+          size={compact ? "small" : "medium"}
+          disabled={!state || busy}
+          variant="outlined"
+          onClick={pause}
+        >
           {state?.paused ? "Retomar fila" : "Pausar envios"}
         </Button>
         <Button
@@ -83,12 +95,14 @@ export default function MessagingSafetyPanel() {
             : `Ver pendências recentes (${rows.length})`}
         </Button>
       </Box>
-      <Typography variant="body2" color="textSecondary">
-        {state?.official
-          ? "API oficial selecionada."
-          : "Conexão não oficial mantida. As proteções reduzem envios indevidos, mas o transporte continua sujeito a restrições."}{" "}
-        Nenhuma configuração garante risco zero de bloqueio.
-      </Typography>
+      {!compact && (
+        <Typography variant="body2" color="textSecondary">
+          {state?.official
+            ? "API oficial selecionada."
+            : "Conexão não oficial mantida. As proteções reduzem envios indevidos, mas o transporte continua sujeito a restrições."}{" "}
+          Nenhuma configuração garante risco zero de bloqueio.
+        </Typography>
+      )}
       {state && ["simulation", "off"].includes(state.mode) && (
         <Typography variant="body2" style={{ marginTop: 8 }}>
           O ambiente está sem envios. Retomar a fila não altera o modo
@@ -96,6 +110,17 @@ export default function MessagingSafetyPanel() {
         </Typography>
       )}
       <Collapse in={expanded}>
+        {compact && (
+          <Typography
+            variant="body2"
+            color="textSecondary"
+            style={{ marginTop: 12 }}
+          >
+            {state?.official
+              ? "API oficial selecionada."
+              : "Conexão não oficial mantida. Limites, intervalos e bloqueios continuam ativos; nenhuma configuração garante risco zero de bloqueio."}
+          </Typography>
+        )}
         <Typography
           variant="body2"
           color="textSecondary"

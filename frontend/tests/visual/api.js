@@ -306,18 +306,134 @@ export default {
       mode: "production",
       paused: false,
       official: false
-    };else if (path === "/messaging/outbox" || path.endsWith("/calendar-days") || path.endsWith("/timeseries")) data = [];else if (path === "/quark/dashboard/summary") data = {
+    };else if (path === "/messaging/outbox" || path.endsWith("/timeseries")) data = [];else if (path.endsWith("/calendar-days")) data = [{
+      day: "2026-08-29",
+      total: 4,
+      scheduled: 1,
+      awaitingResponse: 1,
+      confirmed: 2,
+      cancelled: 0
+    }, {
+      day: "2026-08-30",
+      total: 2,
+      scheduled: 1,
+      awaitingResponse: 0,
+      confirmed: 1,
+      cancelled: 0
+    }, {
+      day: "2026-08-31",
+      total: 5,
+      scheduled: 1,
+      awaitingResponse: 2,
+      confirmed: 1,
+      cancelled: 1
+    }];else if (path === "/quark/dashboard/summary") data = {
       sync: {
         lastSuccessfulSyncAt: new Date().toISOString()
       },
       appointments: {
-        monitored: 12
+        monitored: 84,
+        awaitingResponse: 7
       },
-      notifications: {},
-      responses: {}
+      notifications: {
+        generated: 62,
+        sent: 58,
+        delivered: 55,
+        read: 43,
+        queued: 3,
+        failed: 1
+      },
+      responses: {
+        confirmed: 31,
+        cancelled: 4,
+        responseRate: 72.9,
+        averageResponseSeconds: 486
+      }
     };else if (path.endsWith("/appointments")) data = {
-      rows: [],
-      total: 0
+      rows: [{
+        id: 101,
+        appointmentId: "QK-101",
+        patient: "Ana Ribeiro",
+        phone: "5585998765432",
+        phones: ["5585998765432"],
+        scheduledAt: "2026-08-29T12:00:00.000Z",
+        status: "CONFIRMADO",
+        awaitingConfirmation: 0,
+        professional: "Dra. Mariana Silva",
+        lastEventType: "REMINDER",
+        lastNotificationStatus: "SENT",
+        lastSentAt: "2026-08-28T13:00:00.000Z",
+        lastDeliveredAt: "2026-08-28T13:01:00.000Z",
+        lastReadAt: "2026-08-28T13:04:00.000Z",
+        ticketId: 1,
+        manualReminderToday: 0,
+        lastDecision: "CONFIRMED",
+        lastDecisionStatus: "SUCCESS",
+        lastDecisionSource: "WHATSAPP"
+      }, {
+        id: 102,
+        appointmentId: "QK-102",
+        patient: "Carlos Lima",
+        phone: "5585998123456",
+        phones: ["5585998123456"],
+        scheduledAt: "2026-08-29T13:30:00.000Z",
+        status: "AGENDADO",
+        awaitingConfirmation: 1,
+        professional: "Dr. Paulo Mendes",
+        lastEventType: "REMINDER",
+        lastNotificationStatus: "SENT",
+        lastSentAt: "2026-08-28T14:00:00.000Z",
+        lastDeliveredAt: "2026-08-28T14:01:00.000Z",
+        lastReadAt: null,
+        ticketId: 2,
+        manualReminderToday: 0,
+        lastDecision: null,
+        lastDecisionStatus: null,
+        lastDecisionSource: null
+      }, {
+        id: 103,
+        appointmentId: "QK-103",
+        patient: "Beatriz Oliveira",
+        phone: "5585998234567",
+        phones: ["5585998234567"],
+        scheduledAt: "2026-08-29T15:00:00.000Z",
+        status: "CONFIRMADO",
+        awaitingConfirmation: 0,
+        professional: "Dra. Mariana Silva",
+        lastEventType: "UPDATED",
+        lastNotificationStatus: "READ",
+        lastSentAt: "2026-08-28T15:00:00.000Z",
+        lastDeliveredAt: "2026-08-28T15:01:00.000Z",
+        lastReadAt: "2026-08-28T15:05:00.000Z",
+        ticketId: 3,
+        manualReminderToday: 0,
+        lastDecision: "CONFIRMED",
+        lastDecisionStatus: "SUCCESS",
+        lastDecisionSource: "DASHBOARD"
+      }, {
+        id: 104,
+        appointmentId: "QK-104",
+        patient: "Lucas Ferreira",
+        phone: "5585998345678",
+        phones: ["5585998345678"],
+        scheduledAt: "2026-08-29T17:30:00.000Z",
+        status: "AGENDADO",
+        awaitingConfirmation: 0,
+        professional: "Dr. Paulo Mendes",
+        lastEventType: null,
+        lastNotificationStatus: null,
+        lastSentAt: null,
+        lastDeliveredAt: null,
+        lastReadAt: null,
+        ticketId: 4,
+        manualReminderToday: 0,
+        lastDecision: null,
+        lastDecisionStatus: null,
+        lastDecisionSource: null
+      }],
+      total: 4,
+      page: 1,
+      pageSize: 25
     };else if (path.endsWith("/breakdown")) data = {
       eventTypes: [],
       professionals: []

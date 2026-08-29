@@ -52,7 +52,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { addDays, format } from "date-fns";
+import { format } from "date-fns";
 import { useHistory } from "react-router-dom";
 import { toast } from "react-toastify";
 import MessagingSafetyPanel from "../../components/MessagingSafetyPanel";
@@ -61,10 +61,14 @@ import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
 import PageHeading from "../../components/PageHeading";
 import PageSkeleton from "../../components/PageSkeleton";
+import {
+  formatQuarkPhone,
+  quarkMonthRange
+} from "../../services/quarkAgendaDisplay";
 
 const useStyles = makeStyles(theme => ({
   container: {
-    padding: theme.spacing(3.5, 4, 4),
+    padding: theme.spacing(2.5, 3, 4),
     [theme.breakpoints.down("sm")]: { padding: theme.spacing(2) }
   },
   header: {
@@ -76,17 +80,31 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2)
   },
   filters: {
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5, 2),
     marginBottom: theme.spacing(2)
+  },
+  agendaFilters: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1.5),
+    flexWrap: "wrap"
+  },
+  filterChips: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    flexWrap: "wrap"
   },
   filterControl: {
     minWidth: 0
   },
   metric: {
-    minHeight: 118,
-    padding: theme.spacing(2.5),
+    minHeight: 96,
+    padding: theme.spacing(2),
     border: `1px solid ${theme.palette.divider}`,
-    borderTop: `2px solid ${theme.palette.primary.main}`
+    borderRadius: 12,
+    boxShadow: theme.productTokens.shadows.rest
   },
   metricValue: {
     marginTop: theme.spacing(1),
@@ -97,7 +115,7 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(2)
   },
   section: {
-    marginTop: theme.spacing(3)
+    marginTop: theme.spacing(2)
   },
   sectionTitle: {
     padding: theme.spacing(2),
@@ -120,6 +138,95 @@ const useStyles = makeStyles(theme => ({
     alignItems: "center",
     gap: theme.spacing(1),
     flexWrap: "wrap"
+  },
+  compactActions: {
+    marginTop: theme.spacing(1),
+    "& .MuiButton-root": {
+      minWidth: 0,
+      paddingLeft: theme.spacing(1),
+      paddingRight: theme.spacing(1)
+    }
+  },
+  calendarPaper: {
+    overflow: "hidden",
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 14,
+    boxShadow: theme.productTokens.shadows.rest
+  },
+  dayPaper: {
+    height: "100%",
+    minHeight: 520,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 14,
+    boxShadow: theme.productTokens.shadows.rest
+  },
+  dayHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+    padding: theme.spacing(2),
+    borderBottom: `1px solid ${theme.palette.divider}`
+  },
+  dayTitle: {
+    fontWeight: 700,
+    letterSpacing: "-.015em"
+  },
+  dayList: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 480,
+    overflowY: "auto",
+    padding: theme.spacing(1.5)
+  },
+  appointmentCard: {
+    display: "grid",
+    gridTemplateColumns: "54px minmax(0, 1fr)",
+    gap: theme.spacing(1.25),
+    padding: theme.spacing(1.5),
+    marginBottom: theme.spacing(1),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 12,
+    backgroundColor: theme.palette.background.paper,
+    "&:last-child": { marginBottom: 0 }
+  },
+  appointmentTime: {
+    fontSize: 16,
+    fontWeight: 750,
+    color: theme.palette.primary.main,
+    letterSpacing: "-.02em"
+  },
+  appointmentName: {
+    minWidth: 0,
+    fontWeight: 700,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap"
+  },
+  appointmentTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1)
+  },
+  appointmentMeta: {
+    marginTop: 3,
+    color: theme.palette.text.secondary,
+    fontSize: 11,
+    lineHeight: 1.45
+  },
+  emptyDay: {
+    minHeight: 260,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    padding: theme.spacing(3),
+    color: theme.palette.text.secondary
   }
 }));
 
@@ -132,11 +239,17 @@ const formatDateTime = value => {
   return format(parsed, "dd/MM/yyyy HH:mm");
 };
 
-const formatPhone = value => {
-  if (!value) return "Sem telefone";
-  const phone = String(value).trim();
-  return phone.startsWith("+") ? phone : `+${phone}`;
+const formatTime = value => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "—" : format(parsed, "HH:mm");
 };
+
+const formatSelectedDay = value =>
+  new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long"
+  });
 
 const formatDuration = seconds => {
   const value = Number(seconds || 0);
@@ -172,8 +285,11 @@ const statusLabels = {
 };
 
 const MetricCard = ({ label, value, color }) => (
-  <Paper style={{ borderTop: `3px solid ${color}` }}>
-    <Box p={1.5} minHeight={88}>
+  <Paper
+    variant="outlined"
+    style={{ borderTop: `3px solid ${color}`, borderRadius: 12 }}
+  >
+    <Box p={1.5} minHeight={82}>
       <Typography color="textSecondary" variant="body2">
         {label}
       </Typography>
@@ -192,8 +308,7 @@ const QuarkDashboard = () => {
   const [confirmation, setConfirmation] = useState(null);
   const history = useHistory();
   const [filters, setFilters] = useState({
-    from: isoDate(new Date()),
-    to: isoDate(addDays(new Date(), 30)),
+    ...quarkMonthRange(),
     status: "",
     messageStatus: "",
     responseStatus: ""
@@ -399,8 +514,12 @@ const QuarkDashboard = () => {
     }
   };
 
-  const renderActions = row => (
-    <div className={classes.actions}>
+  const renderActions = (row, compact = false) => (
+    <div
+      className={`${classes.actions} ${
+        compact ? classes.compactActions : ""
+      }`}
+    >
       {["UNKNOWN", "PROCESSING"].includes(row.lastDecisionStatus) && (
         <Button
           size="small"
@@ -447,6 +566,8 @@ const QuarkDashboard = () => {
           >
             {Number(row.manualReminderToday)
               ? "Solicitado hoje"
+              : compact
+              ? "Lembrete"
               : "Enviar lembrete"}
           </Button>
         </span>
@@ -476,7 +597,7 @@ const QuarkDashboard = () => {
             }
             onClick={() => setConfirmation(row)}
           >
-            Confirmar no Quark
+            {compact ? "Confirmar" : "Confirmar no Quark"}
           </Button>
         </span>
       </Tooltip>
@@ -502,6 +623,8 @@ const QuarkDashboard = () => {
   const notifications = summary?.notifications || {};
   const responses = summary?.responses || {};
   const appointmentMetrics = summary?.appointments || {};
+  const selectedDayMetrics =
+    calendarDays.find(item => item.day === selectedDay) || {};
 
   const metrics = [
     ["Agendas monitoradas", appointmentMetrics.monitored || 0, "#3f51b5"],
@@ -525,13 +648,23 @@ const QuarkDashboard = () => {
       "#5c6bc0"
     ]
   ];
+  const calendarMetrics = [
+    ["Consultas no dia", selectedDayMetrics.total || 0, "#087D83"],
+    ["Confirmadas", selectedDayMetrics.confirmed || 0, "#2D9D72"],
+    [
+      "Aguardando resposta",
+      selectedDayMetrics.awaitingResponse || 0,
+      "#E9A23B"
+    ],
+    ["Canceladas", selectedDayMetrics.cancelled || 0, "#C95762"]
+  ];
 
   return (
     <Container maxWidth="xl" className={classes.container}>
       <PageHeading
-        title="Automação Quark"
-        eyebrow="Integração clínica"
-        description={`Última sincronização: ${formatDateTime(
+        title="Agenda Quark"
+        eyebrow="Operação clínica"
+        description={`Consultas, confirmações e avisos · Sincronizado em ${formatDateTime(
           summary?.sync?.lastSuccessfulSyncAt
         )}`}
         actions={
@@ -553,95 +686,149 @@ const QuarkDashboard = () => {
         }
       />
 
-      <MessagingSafetyPanel />
+      <MessagingSafetyPanel compact />
       <Tabs
         value={section}
         variant="scrollable"
         scrollButtons="auto"
-        onChange={(_, value) => setSection(value)}
+        onChange={(_, value) => {
+          setSection(value);
+          setPage(0);
+        }}
         indicatorColor="primary"
         textColor="primary"
         aria-label="Áreas do painel Quark"
         style={{ marginBottom: 16 }}
       >
-        <Tab value="calendar" label="Agenda" />
-        <Tab value="operations" label="Consultas e pendências" />
-        <Tab value="analytics" label="Indicadores" />
+        <Tab disableRipple value="calendar" label="Agenda" />
+        <Tab
+          disableRipple
+          value="operations"
+          label="Consultas e pendências"
+        />
+        <Tab disableRipple value="analytics" label="Indicadores" />
       </Tabs>
       <Paper className={classes.filters}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={6} sm={4} md={3}>
-            <TextField
-              fullWidth
-              type="date"
-              label="Data inicial"
-              id="quark-date-from"
-              name="from"
-              value={filters.from}
-              onChange={changeFilter}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4} md={3}>
-            <TextField
-              fullWidth
-              type="date"
-              label="Data final"
-              id="quark-date-to"
-              name="to"
-              value={filters.to}
-              onChange={changeFilter}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          {(section === "operations" || section === "calendar") && (
-            <Grid item xs={12} sm={4} md={6}>
-              <Button
-                aria-expanded={advancedFilters}
-                onClick={() => setAdvancedFilters(v => !v)}
-              >
-                {advancedFilters ? "Menos filtros" : "Mais filtros"}
-                {[
-                  filters.status,
-                  filters.messageStatus,
-                  filters.responseStatus
-                ].filter(Boolean).length
-                  ? ` · ${
-                      [
-                        filters.status,
-                        filters.messageStatus,
-                        filters.responseStatus
-                      ].filter(Boolean).length
-                    } ativos`
-                  : ""}
-              </Button>
+        {section === "calendar" ? (
+          <div className={classes.agendaFilters}>
+            <div className={classes.filterChips}>
+              <Typography variant="body2" color="textSecondary">
+                Exibir
+              </Typography>
+              {[
+                ["", "Todas"],
+                ["SCHEDULED", "Agendadas"],
+                ["AWAITING_RESPONSE", "Aguardando"],
+                ["CONFIRMED", "Confirmadas"],
+                ["CANCELLED", "Canceladas"]
+              ].map(([value, label]) => (
+                <Chip
+                  key={label}
+                  size="small"
+                  clickable
+                  color={filters.status === value ? "primary" : "default"}
+                  variant={filters.status === value ? "default" : "outlined"}
+                  label={label}
+                  onClick={() => {
+                    setPage(0);
+                    setFilters(current => ({ ...current, status: value }));
+                  }}
+                />
+              ))}
+            </div>
+            <Button
+              size="small"
+              aria-expanded={advancedFilters}
+              onClick={() => setAdvancedFilters(value => !value)}
+            >
+              {advancedFilters ? "Ocultar filtros" : "Filtrar mensagens"}
+              {[filters.messageStatus, filters.responseStatus].filter(Boolean)
+                .length
+                ? ` · ${
+                    [filters.messageStatus, filters.responseStatus].filter(
+                      Boolean
+                    ).length
+                  } ativos`
+                : ""}
+            </Button>
+          </div>
+        ) : (
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={6} sm={4} md={3}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Data inicial"
+                id="quark-date-from"
+                name="from"
+                value={filters.from}
+                onChange={changeFilter}
+                InputLabelProps={{ shrink: true }}
+              />
             </Grid>
-          )}
-        </Grid>
+            <Grid item xs={6} sm={4} md={3}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Data final"
+                id="quark-date-to"
+                name="to"
+                value={filters.to}
+                onChange={changeFilter}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            {section === "operations" && (
+              <Grid item xs={12} sm={4} md={6}>
+                <Button
+                  aria-expanded={advancedFilters}
+                  onClick={() => setAdvancedFilters(v => !v)}
+                >
+                  {advancedFilters ? "Menos filtros" : "Mais filtros"}
+                  {[
+                    filters.status,
+                    filters.messageStatus,
+                    filters.responseStatus
+                  ].filter(Boolean).length
+                    ? ` · ${
+                        [
+                          filters.status,
+                          filters.messageStatus,
+                          filters.responseStatus
+                        ].filter(Boolean).length
+                      } ativos`
+                    : ""}
+                </Button>
+              </Grid>
+            )}
+          </Grid>
+        )}
         <Collapse in={section !== "analytics" && advancedFilters}>
           <Grid container spacing={2} style={{ paddingTop: 16 }}>
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth className={classes.filterControl}>
-                <InputLabel id="quark-status-label">
-                  Situação da consulta
-                </InputLabel>
-                <Select
-                  labelId="quark-status-label"
-                  name="status"
-                  value={filters.status}
-                  onChange={changeFilter}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  <MenuItem value="SCHEDULED">Agendadas</MenuItem>
-                  <MenuItem value="AWAITING_RESPONSE">
-                    Aguardando resposta
-                  </MenuItem>
-                  <MenuItem value="CONFIRMED">Confirmadas</MenuItem>
-                  <MenuItem value="CANCELLED">Canceladas</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={4}>
+            {section === "operations" && (
+              <Grid item xs={12} sm={4}>
+                <FormControl fullWidth className={classes.filterControl}>
+                  <InputLabel id="quark-status-label">
+                    Situação da consulta
+                  </InputLabel>
+                  <Select
+                    labelId="quark-status-label"
+                    name="status"
+                    value={filters.status}
+                    onChange={changeFilter}
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    <MenuItem value="SCHEDULED">Agendadas</MenuItem>
+                    <MenuItem value="AWAITING_RESPONSE">
+                      Aguardando resposta
+                    </MenuItem>
+                    <MenuItem value="CONFIRMED">Confirmadas</MenuItem>
+                    <MenuItem value="CANCELLED">Canceladas</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            <Grid item xs={12} sm={section === "calendar" ? 6 : 4}>
               <FormControl fullWidth className={classes.filterControl}>
                 <InputLabel id="quark-messageStatus-label">
                   Situação da mensagem
@@ -663,7 +850,7 @@ const QuarkDashboard = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={section === "calendar" ? 6 : 4}>
               <FormControl fullWidth className={classes.filterControl}>
                 <InputLabel id="quark-responseStatus-label">
                   Situação da resposta
@@ -687,7 +874,9 @@ const QuarkDashboard = () => {
       </Paper>
 
       <Grid container spacing={2}>
-        {(section === "analytics"
+        {(section === "calendar"
+          ? calendarMetrics
+          : section === "analytics"
           ? metrics
           : [metrics[0], metrics[6], metrics[5], metrics[9]]
         ).map(([label, value, color]) => (
@@ -774,52 +963,150 @@ const QuarkDashboard = () => {
       )}
 
       {section === "calendar" && (
-        <Paper className={classes.section}>
-          <AppointmentCalendar
-            days={calendarDays}
-            from={filters.from}
-            to={filters.to}
-            selected={selectedDay}
-            loading={loading}
-            onSelect={day => {
-              setSelectedDay(day);
-              setPage(0);
-            }}
-            onMonth={direction => {
-              const month = new Date(`${filters.from}T12:00:00`);
-              month.setMonth(month.getMonth() + direction, 1);
-              const from = isoDate(month),
-                to = isoDate(
-                  new Date(month.getFullYear(), month.getMonth() + 1, 0)
-                );
-              setFilters(current => ({ ...current, from, to }));
-              setSelectedDay(from);
-              setPage(0);
-            }}
-            onToday={() => {
-              const today = new Date(),
-                from = isoDate(
-                  new Date(today.getFullYear(), today.getMonth(), 1)
-                ),
-                to = isoDate(
-                  new Date(today.getFullYear(), today.getMonth() + 1, 0)
-                );
-              setFilters(current => ({ ...current, from, to }));
-              setSelectedDay(isoDate(today));
-              setPage(0);
-            }}
-          />
-        </Paper>
+        <Grid container spacing={2} className={classes.section} alignItems="stretch">
+          <Grid item xs={12} lg={7}>
+            <Paper className={classes.calendarPaper} variant="outlined">
+              <AppointmentCalendar
+                days={calendarDays}
+                from={filters.from}
+                to={filters.to}
+                selected={selectedDay}
+                loading={loading}
+                onSelect={day => {
+                  setSelectedDay(day);
+                  setPage(0);
+                }}
+                onMonth={direction => {
+                  const month = new Date(`${filters.from}T12:00:00`);
+                  month.setMonth(month.getMonth() + direction, 1);
+                  const from = isoDate(month),
+                    to = isoDate(
+                      new Date(month.getFullYear(), month.getMonth() + 1, 0)
+                    );
+                  setFilters(current => ({ ...current, from, to }));
+                  setSelectedDay(from);
+                  setPage(0);
+                }}
+                onToday={() => {
+                  const today = new Date(),
+                    from = isoDate(
+                      new Date(today.getFullYear(), today.getMonth(), 1)
+                    ),
+                    to = isoDate(
+                      new Date(today.getFullYear(), today.getMonth() + 1, 0)
+                    );
+                  setFilters(current => ({ ...current, from, to }));
+                  setSelectedDay(isoDate(today));
+                  setPage(0);
+                }}
+              />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} lg={5}>
+            <Paper className={classes.dayPaper} variant="outlined">
+              <div className={classes.dayHeader}>
+                <Box minWidth={0}>
+                  <Typography variant="h6" className={classes.dayTitle}>
+                    {formatSelectedDay(selectedDay)}
+                  </Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    Ordem cronológica · atualização automática
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  color="primary"
+                  label={`${appointments.total || 0} consulta${
+                    appointments.total === 1 ? "" : "s"
+                  }`}
+                />
+              </div>
+              <div className={classes.dayList} aria-busy={loading}>
+                {appointments.rows.map(row => (
+                  <div key={row.id} className={classes.appointmentCard}>
+                    <div className={classes.appointmentTime}>
+                      {formatTime(row.scheduledAt)}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className={classes.appointmentTop}>
+                        <Typography
+                          variant="body2"
+                          className={classes.appointmentName}
+                        >
+                          {row.patient}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          className={classes.statusChip}
+                          color={
+                            row.status === "CONFIRMADO" ? "primary" : "default"
+                          }
+                          label={
+                            row.awaitingConfirmation
+                              ? "Aguardando"
+                              : statusLabels[row.status] || row.status
+                          }
+                        />
+                      </div>
+                      <div className={classes.appointmentMeta}>
+                        {row.professional || "Equipe da clínica"} ·{" "}
+                        {formatQuarkPhone(row.phone)}
+                      </div>
+                      <div className={classes.appointmentMeta}>
+                        {row.lastReadAt
+                          ? "Mensagem lida"
+                          : row.lastDeliveredAt
+                          ? "Mensagem entregue"
+                          : row.lastSentAt
+                          ? "Mensagem enviada"
+                          : "Nenhuma mensagem enviada"}
+                        {row.lastDecision === "CONFIRMED"
+                          ? " · paciente confirmou"
+                          : row.lastDecision === "CANCELLED"
+                          ? " · paciente cancelou"
+                          : row.lastDecisionStatus === "UNKNOWN"
+                          ? " · conferir alteração"
+                          : ""}
+                      </div>
+                      {renderActions(row, true)}
+                    </div>
+                  </div>
+                ))}
+                {!appointments.rows.length && (
+                  <div className={classes.emptyDay}>
+                    <Typography variant="subtitle1" style={{ fontWeight: 700 }}>
+                      Nenhuma consulta neste dia
+                    </Typography>
+                    <Typography variant="body2">
+                      Selecione outra data no calendário ou ajuste os filtros.
+                    </Typography>
+                  </div>
+                )}
+              </div>
+              {appointments.total > pageSize && (
+                <TablePagination
+                  component="div"
+                  count={appointments.total || 0}
+                  page={page}
+                  onPageChange={(_, nextPage) => setPage(nextPage)}
+                  rowsPerPage={pageSize}
+                  onRowsPerPageChange={event => {
+                    setPageSize(Number(event.target.value));
+                    setPage(0);
+                  }}
+                  rowsPerPageOptions={[10, 25, 50]}
+                  labelRowsPerPage="Por página"
+                />
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
       )}
 
-      {(section === "operations" || section === "calendar") && (
+      {section === "operations" && (
         <Paper className={classes.section}>
           <Typography variant="h6" className={classes.sectionTitle}>
-            {section === "calendar"
-              ? `Consultas de ${new Date(
-                  `${selectedDay}T12:00:00`
-                ).toLocaleDateString("pt-BR")}`
-              : "Consultas e notificações"}
+            Consultas e notificações
           </Typography>
           {mobile ? (
             <Box p={2}>
@@ -842,7 +1129,7 @@ const QuarkDashboard = () => {
                     color="textSecondary"
                     display="block"
                   >
-                    {formatPhone(row.phone)}
+                    {formatQuarkPhone(row.phone)}
                   </Typography>
                   <Box my={1}>
                     <Chip
@@ -908,7 +1195,7 @@ const QuarkDashboard = () => {
                               {index === 0
                                 ? "Principal"
                                 : `Alternativo ${index}`}
-                              : {formatPhone(phone)}
+                              : {formatQuarkPhone(phone)}
                             </Typography>
                           ))}
                       </TableCell>
