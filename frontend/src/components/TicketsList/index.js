@@ -169,7 +169,6 @@ const TicketsList = props => {
     queueIds: JSON.stringify(selectedQueueIds)
   });
   useEffect(() => {
-    if (!status && !searchParam) return;
     dispatch({
       type: "LOAD_TICKETS",
       payload: tickets

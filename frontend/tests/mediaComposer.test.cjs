@@ -46,6 +46,21 @@ test("recognizes new and legacy webp stickers", () => {
   assert.equal(media.isStickerMessage({ mediaType: "image", mediaUrl: "/public/a.png" }), false);
 });
 
+test("hides generated image filenames but preserves real captions", () => {
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "image",
+    body: "f03e7889-c0df-43c0-916e-d2f607b7035b.jpeg"
+  }), false);
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "image",
+    body: "Receita atualizada do paciente"
+  }), true);
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "document",
+    body: "receita.pdf"
+  }), true);
+});
+
 const audioSource = buildSync({
   entryPoints: [path.join(__dirname, "../src/services/audioRecorder.js")],
   bundle: true, write: false, platform: "node", format: "cjs",

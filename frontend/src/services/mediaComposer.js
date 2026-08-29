@@ -34,3 +34,17 @@ export const selectMediaFiles = (current, incoming) => {
 
 export const isStickerMessage = message =>
   message?.mediaType === "sticker" || /\.webp(?:$|\?)/i.test(message?.mediaUrl || "");
+
+const generatedImageFilename = /^[^/\\\n]+\.(?:avif|bmp|gif|heic|heif|jpe?g|png|webp)$/i;
+
+export const shouldRenderMessageBody = message => {
+  const body = (message?.body || "").trim();
+  if (!body) return false;
+  if (isStickerMessage(message) && /^(?:Figurinha|[^/\\]+\.webp)$/i.test(body)) {
+    return false;
+  }
+  const isImage =
+    message?.mediaType === "image" ||
+    /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|webp)(?:$|\?)/i.test(message?.mediaUrl || "");
+  return !(isImage && generatedImageFilename.test(body));
+};

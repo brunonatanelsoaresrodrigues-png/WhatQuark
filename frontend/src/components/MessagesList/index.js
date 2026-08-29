@@ -9,7 +9,10 @@ import MarkdownWrapper from "../MarkdownWrapper";
 import VcardPreview from "../VcardPreview";
 import LocationPreview from "../LocationPreview";
 import ProtectedMedia from "../ProtectedMedia";
-import { isStickerMessage } from "../../services/mediaComposer";
+import {
+  isStickerMessage,
+  shouldRenderMessageBody
+} from "../../services/mediaComposer";
 import MessageOptionsMenu from "../MessageOptionsMenu";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -540,7 +543,7 @@ const MessagesList = ({
               checkMessageMedia(message)}
                 <div className={classes.textContentItem}>
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
+                  {shouldRenderMessageBody(message) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                   </span>
@@ -565,7 +568,7 @@ const MessagesList = ({
               })}>
                   {message.isDeleted && <Block color="disabled" fontSize="small" className={classes.deletedIcon} />}
                   {message.quotedMsg && renderQuotedMessage(message)}
-                  {!(isStickerMessage(message) && /^(Figurinha|[^/\\]+\.webp)$/i.test(message.body || "")) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
+                  {shouldRenderMessageBody(message) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
                   <span className={classes.timestamp}>
                     {format(parseISO(message.createdAt), "HH:mm")}
                     {renderMessageAck(message)}
