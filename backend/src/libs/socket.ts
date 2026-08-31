@@ -32,7 +32,7 @@ export const disconnectUserSockets = (userId: number | string): void => {
 // not an authorization grant after a transfer or permission change.
 export const emitTicketEvent = async (
   ticket: AccessibleTicket,
-  event: "ticket" | "appMessage",
+  event: "ticket" | "appMessage" | "contact",
   payload: unknown
 ): Promise<void> => {
   const viewers = new Map<string, Promise<TicketViewer>>();

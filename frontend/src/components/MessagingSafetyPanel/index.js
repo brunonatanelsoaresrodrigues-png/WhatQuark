@@ -5,11 +5,13 @@ import {
   Chip,
   Collapse,
   Paper,
-  Typography
+  Typography,
+  useTheme
 } from "@material-ui/core";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 export default function MessagingSafetyPanel({ compact = false }) {
+  const theme = useTheme();
   const [state, setState] = useState(null);
   const [rows, setRows] = useState([]);
   const [expanded, setExpanded] = useState(false);
@@ -137,7 +139,7 @@ export default function MessagingSafetyPanel({ compact = false }) {
           <Box
             key={row.id}
             py={1}
-            style={{ borderTop: "1px solid rgba(128,128,128,.15)" }}
+            style={{ borderTop: `1px solid ${theme.palette.divider}` }}
           >
             <Typography variant="body2">
               {row.recipient} ·{" "}

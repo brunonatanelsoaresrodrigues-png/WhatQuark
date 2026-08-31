@@ -15,10 +15,17 @@ import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
 import { logger } from "../utils/logger";
 import { validateMediaUpload } from "../helpers/ValidateMediaUpload";
+import SearchMessagesService from "../services/MessageServices/SearchMessagesService";
+import ShowMessageContextService from "../services/MessageServices/ShowMessageContextService";
 
 type IndexQuery = {
   pageNumber: string;
   beforeMessageId?: string;
+};
+
+type SearchQuery = {
+  q?: string;
+  pageNumber?: string;
 };
 
 type MessageData = {
@@ -43,6 +50,34 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
 
   return res.json({ count, messages, ticket, hasMore });
 };
+
+export const search = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const { ticketId } = req.params;
+  const { q = "", pageNumber = "1" } = req.query as SearchQuery;
+  return res.json(
+    await SearchMessagesService({
+      ticketId,
+      userId: req.user.id,
+      query: q,
+      pageNumber
+    })
+  );
+};
+
+export const context = async (
+  req: Request,
+  res: Response
+): Promise<Response> =>
+  res.json(
+    await ShowMessageContextService({
+      ticketId: req.params.ticketId,
+      messageId: req.params.messageId,
+      userId: req.user.id
+    })
+  );
 
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
@@ -101,14 +136,20 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
     if (results.some(result => result.error))
       return res.status(202).json({ queued: true, files: medias.length });
   } else {
-    await SendWhatsAppMessage({
-      body,
-      ticket,
-      quotedMsg,
-      sentByUserId: Number(req.user.id),
-      origin: "HUMAN",
-      policy: { idempotencyKey: `human:${req.user.id}:${requestKey}` }
-    });
+    try {
+      await SendWhatsAppMessage({
+        body,
+        ticket,
+        quotedMsg,
+        sentByUserId: Number(req.user.id),
+        origin: "HUMAN",
+        policy: { idempotencyKey: `human:${req.user.id}:${requestKey}` }
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "ERR_MESSAGE_QUEUED")
+        return res.status(202).json({ queued: true });
+      throw error;
+    }
   }
 
   return res.send();

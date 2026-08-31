@@ -3,6 +3,7 @@ import https from "https";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
   confirmQuarkAppointment,
+  getQuarkPatient,
   listQuarkAppointments
 } from "../../../services/QuarkClinicServices/QuarkClinicClient";
 
@@ -103,6 +104,29 @@ describe("QuarkClinicClient", () => {
     expect(result).toHaveLength(101);
     expect(calls).toHaveLength(2);
     expect(calls[1].url.searchParams.get("page")).toBe("1");
+  });
+
+  it("reads a patient registration by id", async () => {
+    const { calls } = mockHttps([
+      {
+        statusCode: 200,
+        body: {
+          status: "OK",
+          response: [
+            {
+              id: 7,
+              nome: "Maria da Silva",
+              cpf: "529.982.247-25"
+            }
+          ]
+        }
+      }
+    ]);
+
+    await expect(getQuarkPatient(config, "7")).resolves.toEqual(
+      expect.objectContaining({ id: 7, cpf: "529.982.247-25" })
+    );
+    expect(calls[0].url.pathname).toBe("/clinic/ext/v1/pacientes/7");
   });
 
   it("does not retry an authentication failure", async () => {

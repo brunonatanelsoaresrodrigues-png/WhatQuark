@@ -12,6 +12,7 @@ export interface SendPolicy {
   idempotencyKey?: string;
   cleanupMediaPath?: boolean;
   proactive?: boolean;
+  internalReport?: boolean;
   appointmentNotice?: boolean;
   bot?: boolean;
   botEventId?: string;
@@ -20,6 +21,8 @@ export interface SendPolicy {
   scheduleFingerprint?: string;
   allowCancelledAppointment?: boolean;
   allowConfirmedAppointment?: boolean;
+  allowSameDayRescheduledAppointment?: boolean;
+  allowAppointmentPhoneVariants?: boolean;
   sendOnlyOnWeekday?: number;
   template?: { name: string; language: string; parameters: string[] };
 }
@@ -29,14 +32,18 @@ export const modeFrom = (value = process.env.MESSAGING_MODE): MessagingMode => {
     throw new AppError("ERR_INVALID_MESSAGING_MODE", 503);
   return value as MessagingMode;
 };
-export const messagingStatus = async () => ({
-  mode: modeFrom(),
-  paused: await readState("messaging:paused", false),
-  provider: process.env.WHATSAPP_PROVIDER || "wwebjs",
-  official: process.env.WHATSAPP_PROVIDER === "cloud",
-  appointmentNoticesRequireOptIn:
-    process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN === "true"
-});
+export const messagingStatus = async () => {
+  const official = process.env.WHATSAPP_PROVIDER === "cloud";
+  return {
+    mode: modeFrom(),
+    paused: await readState("messaging:paused", false),
+    provider: process.env.WHATSAPP_PROVIDER || "wwebjs",
+    official,
+    appointmentNoticesRequireOptIn:
+      official &&
+      process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN === "true"
+  };
+};
 export const assertExecution = async (
   phone?: string,
   quark = false
@@ -66,6 +73,16 @@ export const assertExecution = async (
       throw new AppError("ERR_TEST_RECIPIENT_NOT_ALLOWED", 409);
   }
 };
+export const appointmentStatusesForPolicy = (
+  policy: SendPolicy
+): string[] =>
+  policy.allowCancelledAppointment
+    ? ["CANCELADO", "CANCELADO_VIA_SMS", "EXCLUIDO"]
+    : policy.allowSameDayRescheduledAppointment
+    ? ["AGENDADO", "CONFIRMADO", "AGUARDANDO_ATENDIMENTO"]
+    : policy.allowConfirmedAppointment
+    ? ["AGENDADO", "CONFIRMADO"]
+    : ["AGENDADO"];
 export const inServiceWindow = (
   lastInboundAt: string | null,
   now = Date.now()

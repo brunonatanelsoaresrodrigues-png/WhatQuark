@@ -25,6 +25,7 @@ export const getPreference = (phone: string) =>
   readState(`preference:${phone}`, empty);
 
 export const appointmentNoticesRequireOptIn = (): boolean =>
+  process.env.WHATSAPP_PROVIDER === "cloud" &&
   process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN === "true";
 
 export const canReceiveAppointmentNotices = (

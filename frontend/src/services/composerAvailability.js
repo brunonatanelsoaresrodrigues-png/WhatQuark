@@ -1,3 +1,13 @@
+export function isMessageSendBlocked(context) {
+  if (!context) return false;
+
+  return Boolean(
+    context.paused ||
+      ["off", "simulation"].includes(context.mode) ||
+      (context.official && !context.serviceWindowOpen)
+  );
+}
+
 export function getComposerAvailability({
   loading,
   recording,

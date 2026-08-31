@@ -13,7 +13,10 @@ import Whatsapp from "../../models/Whatsapp";
 import { getQuarkConfig } from "../QuarkClinicServices/config";
 import { getQuarkAppointment } from "../QuarkClinicServices/QuarkClinicClient";
 import { weekdayInTimezone } from "../QuarkClinicServices/reminderTiming";
-import { buildAppointmentSnapshot } from "../QuarkClinicServices/appointmentUtils";
+import {
+  buildAppointmentSnapshot,
+  quarkPhoneVariants
+} from "../QuarkClinicServices/appointmentUtils";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import AppError from "../../errors/AppError";
 import {
@@ -22,7 +25,12 @@ import {
   SendMediaOptions,
   SendMessageOptions
 } from "../../providers/WhatsApp/types";
-import { assertExecution, inServiceWindow, SendPolicy } from "./policy";
+import {
+  appointmentStatusesForPolicy,
+  assertExecution,
+  inServiceWindow,
+  SendPolicy
+} from "./policy";
 import {
   canReceiveAppointmentNotices,
   getPreference,
@@ -85,8 +93,15 @@ const cleanupMediaPath = async (payload: Payload): Promise<void> => {
 export const consentErrorForSend = (
   preference: MessagingPreference,
   policy: SendPolicy,
-  windowOpen: boolean
+  windowOpen: boolean,
+  internalReportAuthorized = false,
+  consentRequired = true
 ): string | null => {
+  if (policy.internalReport && internalReportAuthorized) return null;
+  // Non-official transports do not depend on Meta's 24-hour consent gate.
+  // A direct opt-out remains authoritative on every provider.
+  if (preference.consent === "REVOKED") return "ERR_RECIPIENT_OPTED_OUT";
+  if (!consentRequired) return null;
   if (!policy.proactive && windowOpen) return null;
   if (preference.consent === "GRANTED") return null;
   if (
@@ -95,9 +110,7 @@ export const consentErrorForSend = (
     canReceiveAppointmentNotices(preference)
   )
     return null;
-  return preference.consent === "REVOKED"
-    ? "ERR_RECIPIENT_OPTED_OUT"
-    : "ERR_CONSENT_REQUIRED";
+  return "ERR_CONSENT_REQUIRED";
 };
 
 let timer: NodeJS.Timeout | undefined;
@@ -128,7 +141,31 @@ export const validateSend = async (
   );
   const windowOpen = inServiceWindow(lastInbound);
   const preference = await getPreference(phone);
-  const consentError = consentErrorForSend(preference, policy, windowOpen);
+  let internalReportAuthorized = false;
+  if (policy.internalReport) {
+    const reportTicket = policy.ticketId
+      ? await Ticket.findByPk(policy.ticketId)
+      : null;
+    const reportContact = reportTicket
+      ? await Contact.findByPk(reportTicket.contactId)
+      : null;
+    internalReportAuthorized = Boolean(
+      reportTicket &&
+        reportTicket.whatsappId === whatsappId &&
+        reportTicket.ticketType === "INTERNAL_REPORT" &&
+        reportContact?.isInternal &&
+        reportContact.number === phone
+    );
+    if (!internalReportAuthorized)
+      throw new AppError("ERR_INVALID_INTERNAL_REPORT", 409);
+  }
+  const consentError = consentErrorForSend(
+    preference,
+    policy,
+    windowOpen,
+    internalReportAuthorized,
+    process.env.WHATSAPP_PROVIDER === "cloud"
+  );
   if (consentError) throw new AppError(consentError, 409);
   if (
     process.env.WHATSAPP_PROVIDER === "cloud" &&
@@ -205,14 +242,18 @@ export const validateSend = async (
   }
   if (policy.appointmentId) {
     await assertExecution(phone, true);
+    const config = getQuarkConfig();
+    const appointmentPhoneMatches = (storedPhone: string | null) =>
+      policy.allowAppointmentPhoneVariants
+        ? quarkPhoneVariants(
+            storedPhone || undefined,
+            config.defaultCountryCode
+          ).includes(phone)
+        : storedPhone === phone;
     const appointment = await QuarkAppointment.findOne({
       where: { appointmentId: policy.appointmentId }
     });
-    const statuses = policy.allowCancelledAppointment
-      ? ["CANCELADO", "CANCELADO_VIA_SMS", "EXCLUIDO"]
-      : policy.allowConfirmedAppointment
-      ? ["AGENDADO", "CONFIRMADO"]
-      : ["AGENDADO"];
+    const statuses = appointmentStatusesForPolicy(policy);
     const operation = await readState(
       `quark-operation:${policy.appointmentId}`,
       { status: "READY" }
@@ -221,19 +262,18 @@ export const validateSend = async (
       throw new AppError("ERR_QUARK_REVIEW_REQUIRED", 409);
     if (
       !appointment ||
-      appointment.phone !== phone ||
+      !appointmentPhoneMatches(appointment.phone) ||
       !statuses.includes(appointment.status) ||
       (policy.scheduleFingerprint &&
         appointment.scheduleFingerprint !== policy.scheduleFingerprint)
     )
       throw new AppError("ERR_APPOINTMENT_CHANGED", 409);
-    const config = getQuarkConfig();
     const current = buildAppointmentSnapshot(
       await getQuarkAppointment(config, policy.appointmentId),
       config
     );
     if (
-      current.phone !== phone ||
+      !appointmentPhoneMatches(current.phone) ||
       !statuses.includes(current.status) ||
       current.scheduleFingerprint !== policy.scheduleFingerprint
     )
@@ -416,13 +456,17 @@ const runOutbound = async (transport: Transport): Promise<void> => {
                 if (timeout) clearTimeout(timeout);
               });
               await row.update({
-                status: "SENT",
+                // Keep the row reconcilable until local history persistence
+                // succeeds. A process crash here must never strand it as SENT.
+                status: "UNKNOWN",
                 finishedAt: new Date(),
                 messageId: result.id,
-                result: JSON.stringify(result)
+                result: JSON.stringify(result),
+                errorCode: "ERR_LOCAL_PERSISTENCE_PENDING"
               });
               await persistAccepted(result, payload);
               await cleanupMediaPath(payload);
+              await row.update({ status: "SENT", errorCode: null });
             } catch (error) {
               // Do not retry exceptions from transport or post-send storage automatically.
               await row.update({

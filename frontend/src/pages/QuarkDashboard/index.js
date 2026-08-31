@@ -215,7 +215,7 @@ const useStyles = makeStyles(theme => ({
   appointmentMeta: {
     marginTop: 3,
     color: theme.palette.text.secondary,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 1.45
   },
   emptyDay: {
@@ -626,37 +626,41 @@ const QuarkDashboard = () => {
   const selectedDayMetrics =
     calendarDays.find(item => item.day === selectedDay) || {};
 
+  // Acentos vindos da paleta da marca; os estados com significado proprio
+  // (confirmado, cancelado, aguardando) usam os tokens de status.
+  const accent = index => theme.chartPalette[index % theme.chartPalette.length];
+  const status = theme.statusTokens;
   const metrics = [
-    ["Agendas monitoradas", appointmentMetrics.monitored || 0, "#3f51b5"],
-    ["Mensagens geradas", notifications.generated || 0, "#607d8b"],
-    ["Mensagens enviadas", notifications.sent || 0, "#2196f3"],
-    ["Entregues", notifications.delivered || 0, "#00acc1"],
-    ["Lidas", notifications.read || 0, "#00897b"],
-    ["Aguardando envio", notifications.queued || 0, "#ff9800"],
+    ["Agendas monitoradas", appointmentMetrics.monitored || 0, accent(1)],
+    ["Mensagens geradas", notifications.generated || 0, status.neutral.fg],
+    ["Mensagens enviadas", notifications.sent || 0, accent(6)],
+    ["Entregues", notifications.delivered || 0, accent(0)],
+    ["Lidas", notifications.read || 0, accent(7)],
+    ["Aguardando envio", notifications.queued || 0, status.warning.fg],
     [
       "Aguardando resposta",
       appointmentMetrics.awaitingResponse || 0,
-      "#f9a825"
+      accent(2)
     ],
-    ["Confirmadas pelo WhatsApp", responses.confirmed || 0, "#43a047"],
-    ["Canceladas pelo WhatsApp", responses.cancelled || 0, "#e53935"],
-    ["Falhas de envio", notifications.failed || 0, "#b71c1c"],
-    ["Taxa de resposta", `${responses.responseRate || 0}%`, "#7e57c2"],
+    ["Confirmadas pelo WhatsApp", responses.confirmed || 0, status.success.fg],
+    ["Canceladas pelo WhatsApp", responses.cancelled || 0, status.danger.fg],
+    ["Falhas de envio", notifications.failed || 0, status.danger.fg],
+    ["Taxa de resposta", `${responses.responseRate || 0}%`, accent(3)],
     [
       "Tempo médio de resposta",
       formatDuration(responses.averageResponseSeconds),
-      "#5c6bc0"
+      accent(5)
     ]
   ];
   const calendarMetrics = [
-    ["Consultas no dia", selectedDayMetrics.total || 0, "#087D83"],
-    ["Confirmadas", selectedDayMetrics.confirmed || 0, "#2D9D72"],
+    ["Consultas no dia", selectedDayMetrics.total || 0, accent(0)],
+    ["Confirmadas", selectedDayMetrics.confirmed || 0, status.success.fg],
     [
       "Aguardando resposta",
       selectedDayMetrics.awaitingResponse || 0,
-      "#E9A23B"
+      status.warning.fg
     ],
-    ["Canceladas", selectedDayMetrics.cancelled || 0, "#C95762"]
+    ["Canceladas", selectedDayMetrics.cancelled || 0, status.danger.fg]
   ];
 
   return (
@@ -914,10 +918,18 @@ const QuarkDashboard = () => {
                     name="Enviadas"
                     fill={theme.palette.primary.main}
                   />
-                  <Bar dataKey="delivered" name="Entregues" fill="#00acc1" />
-                  <Bar dataKey="read" name="Lidas" fill="#00897b" />
-                  <Bar dataKey="confirmed" name="Confirmadas" fill="#43a047" />
-                  <Bar dataKey="cancelled" name="Canceladas" fill="#e53935" />
+                  <Bar dataKey="delivered" name="Entregues" fill={accent(0)} />
+                  <Bar dataKey="read" name="Lidas" fill={accent(7)} />
+                  <Bar
+                    dataKey="confirmed"
+                    name="Confirmadas"
+                    fill={status.success.fg}
+                  />
+                  <Bar
+                    dataKey="cancelled"
+                    name="Canceladas"
+                    fill={status.danger.fg}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </Paper>

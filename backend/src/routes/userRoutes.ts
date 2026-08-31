@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import isAuth from "../middleware/isAuth";
+import isAdmin from "../middleware/isAdmin";
 import * as UserController from "../controllers/UserController";
 import multer from "multer";
 
@@ -10,7 +11,7 @@ const avatarUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 }
 });
 
-userRoutes.get("/users", isAuth, UserController.index);
+userRoutes.get("/users", isAuth, isAdmin, UserController.index);
 
 userRoutes.get("/users/assignees", isAuth, UserController.assignees);
 

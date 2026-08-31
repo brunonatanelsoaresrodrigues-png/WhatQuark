@@ -42,7 +42,7 @@ const useStyles = makeStyles(theme => ({
       background: theme.modeTokens.surfaceMuted
     },
     "& .MuiInputBase-input": {
-      fontSize: ".72rem",
+      fontSize: ".75rem",
       padding: "10px 0"
     }
   },
@@ -71,13 +71,13 @@ const useStyles = makeStyles(theme => ({
     padding: "7px 2px",
     margin: "0 2px",
     minHeight: 58,
-    fontSize: ".64rem",
+    fontSize: ".75rem",
     fontWeight: 500,
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 8,
+    borderRadius: theme.productTokens.radii.xs,
     flex: 1,
     "&.Mui-selected": {
-      borderColor: theme.palette.type === "dark" ? "#28617E" : "#87C6D7",
+      borderColor: theme.modeTokens.borderStrong,
       background: theme.modeTokens.surfaceRaised,
       color: theme.palette.text.primary
     }
@@ -86,7 +86,8 @@ const useStyles = makeStyles(theme => ({
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 5
+    gap: 5,
+    minWidth: 0
   },
   count: {
     fontSize: ".65rem",
@@ -217,7 +218,7 @@ export default function TicketsManager({
         </div>
       </Collapse>
       <div className={classes.list}>
-        {["open", "pending", "closed"].map(value => <TicketsList {...common} key={`${value}:${JSON.stringify(common)}`} status={value} showAll={value === "closed" ? true : showAll} style={status !== value || searchAcrossStatuses ? {
+        {["open", "pending", "closed"].map(value => <TicketsList {...common} key={`${value}:${JSON.stringify(common)}`} status={value} showAll={value === "closed" ? true : showAll} notifyOnError={status === value && !searchAcrossStatuses} style={status !== value || searchAcrossStatuses ? {
         display: "none"
       } : undefined} updateCount={count => setCounts(previous => previous[value] === count ? previous : {
         ...previous,

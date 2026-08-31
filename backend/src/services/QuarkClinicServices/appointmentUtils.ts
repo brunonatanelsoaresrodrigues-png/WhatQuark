@@ -34,6 +34,19 @@ const hash = (value: unknown): string =>
 export const quarkPhoneKey = (phone: string): string =>
   hash(phone).slice(0, 16);
 
+export const quarkPatientIdFrom = (value: unknown): string | null => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const normalized = String(value).trim();
+  if (
+    !normalized ||
+    /^(null|undefined)$/i.test(normalized) ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+};
+
 const digitsOnly = (value: string | undefined): string =>
   (value || "").replace(/\D/g, "");
 
@@ -82,6 +95,42 @@ export const normalizeQuarkPhone = (
   }
 
   return digits;
+};
+
+/**
+ * Brazilian mobile numbers may still exist in WhatsApp/contact databases in
+ * the legacy 8-digit form while Quark stores the current 9-digit form (or the
+ * reverse). Return only deterministic aliases for that specific case.
+ */
+export const quarkPhoneVariants = (
+  value: string | undefined,
+  defaultCountryCode = "55"
+): string[] => {
+  const raw = digitsOnly(value).replace(/^00/, "");
+  if (!raw) return [];
+
+  const normalized =
+    raw.startsWith(defaultCountryCode) &&
+    (raw.length === defaultCountryCode.length + 10 ||
+      raw.length === defaultCountryCode.length + 11)
+      ? raw
+      : normalizeQuarkPhone(raw, defaultCountryCode) || raw;
+  const variants = new Set([normalized]);
+  const national = normalized.startsWith(defaultCountryCode)
+    ? normalized.slice(defaultCountryCode.length)
+    : normalized;
+
+  // DDD (2) + celular antigo (8), começando em 6-9: adiciona o nono dígito.
+  if (/^[1-9]{2}[6-9]\d{7}$/.test(national)) {
+    variants.add(`${defaultCountryCode}${national.slice(0, 2)}9${national.slice(2)}`);
+  }
+
+  // DDD (2) + 9 + celular (8): também aceita o cadastro legado sem o 9.
+  if (/^[1-9]{2}9[6-9]\d{7}$/.test(national)) {
+    variants.add(`${defaultCountryCode}${national.slice(0, 2)}${national.slice(3)}`);
+  }
+
+  return Array.from(variants);
 };
 
 export const parseQuarkScheduledAt = (
@@ -191,10 +240,7 @@ export const buildAppointmentSnapshot = (
 
   return {
     appointmentId: String(appointment.id),
-    patientId:
-      appointment.pacienteId === undefined
-        ? null
-        : String(appointment.pacienteId),
+    patientId: quarkPatientIdFrom(appointment.pacienteId),
     phone: phones[0]?.phone || null,
     phones,
     patientName: appointment.nomePaciente || "Paciente",

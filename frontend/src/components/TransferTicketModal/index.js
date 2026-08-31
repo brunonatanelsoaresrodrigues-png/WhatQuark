@@ -27,7 +27,7 @@ import useWhatsApps from "../../hooks/useWhatsApps";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../Can";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles(() => ({
   maxWidth: {
     width: "100%"
   }
@@ -77,10 +77,13 @@ const TransferTicketModal = ({
     const delayDebounceFn = setTimeout(() => {
       const fetchUsers = async () => {
         try {
-          const { data } = await api.get("/users/", {
-            params: { searchParam }
-          });
-          setOptions(data.users);
+          const { data } = await api.get("/users/assignees");
+          const normalizedSearch = searchParam.toLowerCase();
+          setOptions(
+            data.filter(candidate =>
+              candidate.name.toLowerCase().includes(normalizedSearch)
+            )
+          );
           setLoading(false);
         } catch (err) {
           setLoading(false);

@@ -6,7 +6,7 @@ export default async function canAccessTicket(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  await AssertTicketAccess(
+  req.ticket = await AssertTicketAccess(
     req.params.ticketId,
     req.user.id,
     !["GET", "HEAD", "OPTIONS"].includes(req.method)

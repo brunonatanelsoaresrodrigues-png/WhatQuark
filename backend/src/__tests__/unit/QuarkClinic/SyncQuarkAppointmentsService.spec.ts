@@ -1,6 +1,7 @@
 import { readState } from "../../../services/MessagingServices/state";
 import { getPreference } from "../../../services/MessagingServices/preferences";
 import QuarkAppointment from "../../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../../models/QuarkSyncState";
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
@@ -17,6 +18,11 @@ jest.mock("../../../models/QuarkAppointment", () => ({
     create: jest.fn(),
     findOrCreate: jest.fn()
   }
+}));
+
+jest.mock("../../../models/QuarkAppointmentNotification", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn() }
 }));
 
 jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
@@ -50,7 +56,11 @@ jest.mock("../../../services/QuarkClinicServices/notificationLedger", () => ({
 
 jest.mock("../../../database", () => ({
   __esModule: true,
-  default: { transaction: jest.fn((fn: Function) => fn({})) }
+  default: {
+    transaction: jest.fn((fn: Function) =>
+      fn({ LOCK: { UPDATE: "UPDATE" } })
+    )
+  }
 }));
 jest.mock("../../../services/MessagingServices/state", () => ({
   withLease: (_: string, fn: Function) => fn(),
@@ -77,6 +87,7 @@ const config = {
   sendIntervalMinMs: 15000,
   sendIntervalMaxMs: 45000,
   syncHorizonDays: 30,
+  syncLookbackDays: 0,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
   quietHoursStart: "20:00",
@@ -113,7 +124,7 @@ const appointment = () => ({
 const mockSyncState = (status: "BASELINING" | "ACTIVE") => {
   const state = {
     status,
-    fingerprintVersion: 4,
+    fingerprintVersion: 5,
     baselineCompletedAt: status === "ACTIVE" ? new Date() : null,
     update: jest.fn().mockResolvedValue(undefined)
   };
@@ -154,6 +165,142 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
     expect(QuarkSyncState.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "ACTIVE" }),
+      expect.anything()
+    );
+  });
+
+  it("does not reserve a due reminder key while importing the baseline", async () => {
+    mockSyncState("BASELINING");
+    const target = new Date(Date.now() + 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: config.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(target);
+    const value = (type: string) =>
+      parts.find(part => part.type === type)?.value || "00";
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([
+      {
+        ...appointment(),
+        dataAgendamento: `${value("day")}-${value("month")}-${value("year")}`,
+        horaAgendamento: `${value("hour")}:${value("minute")}:00`
+      }
+    ]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
+
+    await SyncQuarkAppointmentsService({
+      ...config,
+      reminderHours: [2]
+    });
+
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+  });
+
+  it("queues a due reminder on an unchanged active appointment", async () => {
+    mockSyncState("ACTIVE");
+    const target = new Date(Date.now() + 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: config.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(target);
+    const value = (type: string) =>
+      parts.find(part => part.type === type)?.value || "00";
+    const dto = {
+      ...appointment(),
+      dataAgendamento: `${value("day")}-${value("month")}-${value("year")}`,
+      horaAgendamento: `${value("hour")}:${value("minute")}:00`
+    };
+    const snapshot = buildAppointmentSnapshot(dto, config);
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...snapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn()
+    });
+
+    await SyncQuarkAppointmentsService({
+      ...config,
+      reminderHours: [2]
+    });
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
+      "42",
+      expect.stringMatching(/^reminder:2:.*:to:[a-f0-9]{16}$/),
+      "REMINDER",
+      expect.objectContaining({
+        phone: "5511999990000",
+        body: expect.stringMatching(
+          /Lembrete de consulta[\s\S]*CONFIRMAR [A-F0-9]+[\s\S]*CANCELAR [A-F0-9]+[\s\S]*PARAR/
+        ),
+        requestsConfirmation: true,
+        scheduleFingerprint: snapshot.scheduleFingerprint
+      }),
+      "PENDING",
+      expect.anything()
+    );
+  });
+
+  it("revives a baseline-suppressed reminder when no current notice exists", async () => {
+    mockSyncState("ACTIVE");
+    const target = new Date(Date.now() + 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: config.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(target);
+    const value = (type: string) =>
+      parts.find(part => part.type === type)?.value || "00";
+    const dto = {
+      ...appointment(),
+      dataAgendamento: `${value("day")}-${value("month")}-${value("year")}`,
+      horaAgendamento: `${value("hour")}:${value("minute")}:00`
+    };
+    const snapshot = buildAppointmentSnapshot(dto, config);
+    const existingNotice = {
+      id: 7,
+      status: "SUPPRESSED",
+      lastError: null,
+      update: jest.fn()
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...snapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn()
+    });
+    (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(false);
+    (QuarkAppointmentNotification.findOne as jest.Mock)
+      .mockResolvedValueOnce(existingNotice)
+      .mockResolvedValueOnce(null);
+
+    await SyncQuarkAppointmentsService({
+      ...config,
+      reminderHours: [2]
+    });
+
+    expect(existingNotice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "PENDING",
+        attempts: 0,
+        lastError: null
+      }),
       expect.anything()
     );
   });
@@ -262,5 +409,35 @@ describe("SyncQuarkAppointmentsService", () => {
       "SUPPRESSED",
       expect.anything()
     );
+  });
+
+  it("imports historical appointments without creating retroactive notices", async () => {
+    mockSyncState("ACTIVE");
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const past = {
+      ...appointment(),
+      id: 84,
+      dataAgendamento: `${pad(yesterday.getDate())}-${pad(
+        yesterday.getMonth() + 1
+      )}-${yesterday.getFullYear()}`
+    };
+    (listQuarkAppointments as jest.Mock)
+      .mockResolvedValueOnce([past])
+      .mockResolvedValueOnce([]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
+
+    await SyncQuarkAppointmentsService({
+      ...config,
+      syncLookbackDays: 30
+    });
+
+    expect(listQuarkAppointments).toHaveBeenCalledTimes(2);
+    expect(QuarkAppointment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ appointmentId: "84", baselineImported: true }),
+      expect.anything()
+    );
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 });

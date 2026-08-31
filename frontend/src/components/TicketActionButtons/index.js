@@ -25,7 +25,7 @@ const useStyles = makeStyles(() => ({
     },
     "& .MuiButton-root": {
       minHeight: 32,
-      fontSize: 11,
+      fontSize: 12,
       padding: "5px 10px"
     },
     "& .MuiIconButton-root": {
@@ -33,7 +33,7 @@ const useStyles = makeStyles(() => ({
     }
   },
   countdown: {
-    fontSize: 10,
+    fontSize: 12,
     marginLeft: 4
   }
 }));

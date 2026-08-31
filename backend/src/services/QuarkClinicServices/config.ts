@@ -30,6 +30,7 @@ export interface QuarkConfig {
   workerPollIntervalMs: number;
   timezone: string;
   clinicAddress: string;
+  syncLookbackDays: number;
   dryRun: boolean;
   testAllowlist: string[];
 }
@@ -117,6 +118,9 @@ export const getQuarkConfig = (): QuarkConfig => {
     sendIntervalMaxMs: configuredMaxMs,
     syncHorizonDays: Math.floor(
       positiveNumber(process.env.QUARK_SYNC_HORIZON_DAYS, 365)
+    ),
+    syncLookbackDays: Math.floor(
+      positiveNumber(process.env.QUARK_SYNC_LOOKBACK_DAYS, 365)
     ),
     requestTimeoutMs: positiveNumber(
       process.env.QUARK_REQUEST_TIMEOUT_MS,

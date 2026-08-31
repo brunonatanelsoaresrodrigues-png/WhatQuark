@@ -1,6 +1,12 @@
 import Ticket from "../../../models/Ticket";
 import TicketInactivityEvent from "../../../models/TicketInactivityEvent";
 import FindOrCreateTicketService from "../../../services/TicketServices/FindOrCreateTicketService";
+import { writeState } from "../../../services/MessagingServices/state";
+
+jest.mock("../../../services/MessagingServices/state", () => ({
+  withLease: jest.fn((_id: string, action: () => Promise<any>) => action()),
+  writeState: jest.fn()
+}));
 import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
 import ShowTicketService from "../../../services/TicketServices/ShowTicketService";
 
@@ -71,6 +77,8 @@ describe("FindOrCreateTicketService intake lifecycle", () => {
         previousQueueId: 3
       })
     );
+    expect(writeState).toHaveBeenCalledWith("bot-pause:10", false);
+    expect(writeState).toHaveBeenCalledWith("bot-review:10", null);
   });
 
   it("does not restart a human-paused intake after automatic inactivity closure", async () => {
@@ -96,5 +104,21 @@ describe("FindOrCreateTicketService intake lifecycle", () => {
     expect(RecordTicketEventService).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "INTAKE_RESTARTED" })
     );
+  });
+
+  it("increments unread messages on an existing ticket for each live inbound", async () => {
+    const activeTicket: any = {
+      id: 12,
+      unreadMessages: 4,
+      update: jest.fn(async (fields: Record<string, unknown>) =>
+        Object.assign(activeTicket, fields)
+      )
+    };
+    (Ticket.findOne as jest.Mock).mockResolvedValueOnce(activeTicket);
+    (ShowTicketService as jest.Mock).mockResolvedValue(activeTicket);
+
+    await FindOrCreateTicketService(contact, 1, 0, undefined, undefined, true);
+
+    expect(activeTicket.update).toHaveBeenCalledWith({ unreadMessages: 5 });
   });
 });

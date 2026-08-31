@@ -153,6 +153,34 @@ it("never runs the appointment bot during assigned attendance", async () => {
   expect(Send).not.toHaveBeenCalled();
 });
 
+it("processes an explicit appointment command while the general bot is paused", async () => {
+  state.set("bot-pause:1", true);
+  (HandleQuark as jest.Mock).mockResolvedValue(true);
+
+  await HandleInboundAutomation({
+    ...input,
+    body: "CONFIRMAR 7A3FF1AC"
+  });
+
+  expect(HandleQuark).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: "CONFIRMAR 7A3FF1AC",
+      ticket: expect.objectContaining({ id: 1 })
+    })
+  );
+  expect(Intake).not.toHaveBeenCalled();
+});
+
+it("keeps ordinary messages silent while the general bot is paused", async () => {
+  state.set("bot-pause:1", true);
+
+  await HandleInboundAutomation(input);
+
+  expect(HandleQuark).not.toHaveBeenCalled();
+  expect(Intake).not.toHaveBeenCalled();
+  expect(Send).not.toHaveBeenCalled();
+});
+
 it("preserves intake and deduplicates it before processing menu choices", async () => {
   (Intake as jest.Mock).mockResolvedValue({
     handled: true,

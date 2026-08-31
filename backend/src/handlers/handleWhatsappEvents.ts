@@ -16,6 +16,7 @@ import Contact from "../models/Contact";
 import Ticket from "../models/Ticket";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import Message from "../models/Message";
+import ServiceRating from "../models/ServiceRating";
 
 import CreateMessageService from "../services/MessageServices/CreateMessageService";
 import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification";
@@ -30,6 +31,11 @@ import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/Handle
 import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import { registerMessageAttribution } from "../services/MessageServices/MessageAttributionService";
+import {
+  FindPendingServiceRating,
+  HandleServiceRatingResponse
+} from "../services/ServiceRatingServices/ServiceRatingResponseService";
+import CancelPendingServiceRatingsService from "../services/ServiceRatingServices/CancelPendingServiceRatingsService";
 
 import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
@@ -167,6 +173,11 @@ export const handleMessage = async (
       timestampMs >= Date.now() - 5 * 60000;
     const existing = await Message.findByPk(messagePayload.id);
     if (existing) {
+      const existingRating = await ServiceRating.findOne({
+        where: { responseMessageId: messagePayload.id },
+        attributes: ["id"]
+      });
+      if (existingRating) return "duplicate";
       if (eligibleForAutomation) {
         await recordInbound(
           contactPayload.number,
@@ -217,8 +228,24 @@ export const handleMessage = async (
       return "ignored";
     }
 
+    const pendingServiceRating =
+      !options.historySync &&
+      !processedMessage.fromMe &&
+      !groupContact &&
+      !contact.isInternal
+        ? await FindPendingServiceRating({
+            contactId: contact.id,
+            whatsappId: contextPayload.whatsappId,
+            body: processedMessage.body
+          })
+        : null;
+
     let ticket: Ticket;
-    if (options.historySync) {
+    if (pendingServiceRating) {
+      // A nota pertence ao atendimento que originou a pesquisa. Mantemos o
+      // ticket fechado e evitamos que uma resposta "0" a "5" abra o bot.
+      ticket = await ShowTicketService(pendingServiceRating.ticketId);
+    } else if (options.historySync) {
       ticket = (await Ticket.findOne({
         where: {
           contactId: groupContact ? groupContact.id : contact.id,
@@ -255,7 +282,7 @@ export const handleMessage = async (
       contactId: processedMessage.fromMe ? undefined : contact.id,
       body: processedMessage.body,
       fromMe: processedMessage.fromMe,
-      read: processedMessage.fromMe,
+      read: processedMessage.fromMe || Boolean(pendingServiceRating),
       mediaType: processedMessage.type,
       quotedMsgId: processedMessage.quotedMsgId,
       ack: processedMessage.ack !== undefined ? processedMessage.ack : 0,
@@ -310,6 +337,29 @@ export const handleMessage = async (
     // Respostas dos gestores aos fechamentos permanecem na conversa interna e
     // não entram no bot, no QuarkClinic nem na automação de inatividade.
     if (ticket.ticketType === "INTERNAL_REPORT") return "created";
+
+    if (pendingServiceRating) {
+      await HandleServiceRatingResponse({
+        ratingId: pendingServiceRating.id,
+        body: processedMessage.body,
+        messageId: createdMessage.id
+      });
+      return "created";
+    }
+
+    if (!processedMessage.fromMe && !groupContact) {
+      await CancelPendingServiceRatingsService(
+        contact.id,
+        contextPayload.whatsappId
+      ).catch(error =>
+        logger.warn({
+          info: "Could not cancel pending service rating",
+          contactId: contact.id,
+          whatsappId: contextPayload.whatsappId,
+          err: error
+        })
+      );
+    }
 
     await HandleTicketMessageForInactivity({
       ticket,

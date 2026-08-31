@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
+import { quarkPhoneVariants } from "../QuarkClinicServices/appointmentUtils";
 
 const normalizedIdentity = (value: string): string =>
   value
@@ -27,9 +28,10 @@ const FindRegisteredPatientNameService = async (
 ): Promise<string | undefined> => {
   const normalizedPhone = phone.replace(/\D/g, "");
   if (!normalizedPhone) return undefined;
+  const phoneVariants = quarkPhoneVariants(normalizedPhone);
 
   const recipients = await QuarkAppointmentRecipient.findAll({
-    where: { phone: normalizedPhone, active: true },
+    where: { phone: { [Op.in]: phoneVariants }, active: true },
     attributes: ["appointmentId"],
     order: [["updatedAt", "DESC"]],
     limit: 50

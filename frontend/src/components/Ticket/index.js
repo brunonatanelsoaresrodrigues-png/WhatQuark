@@ -3,7 +3,8 @@ import { useParams, useHistory } from "react-router-dom";
 import { toast } from "react-toastify";
 import openSocket from "../../services/socket-io";
 import clsx from "clsx";
-import { Paper, makeStyles, useMediaQuery } from "@material-ui/core";
+import { IconButton, Paper, Tooltip, makeStyles, useMediaQuery } from "@material-ui/core";
+import { Search } from "@material-ui/icons";
 import ContactDrawer from "../ContactDrawer";
 import MessageInput from "../MessageInput/";
 import TicketContext from "../TicketContext";
@@ -14,6 +15,8 @@ import MessagesList from "../MessagesList";
 import api from "../../services/api";
 import { ReplyMessageProvider } from "../../context/ReplyingMessage/ReplyingMessageContext";
 import toastError from "../../errors/toastError";
+import TicketAssistant from "../TicketAssistant";
+import { isMessageSendBlocked } from "../../services/composerAvailability";
 const useStyles = makeStyles(theme => ({
   root: {
     display: "flex",
@@ -64,7 +67,7 @@ const useStyles = makeStyles(theme => ({
     pointerEvents: "none",
     border: `3px dashed ${theme.palette.primary.main}`,
     borderRadius: 18,
-    background: theme.palette.type === "dark" ? "rgba(7,19,31,.94)" : "rgba(255,255,255,.94)",
+    background: theme.modeTokens.overlayVeil,
     color: theme.palette.primary.main,
     display: "flex",
     alignItems: "center",
@@ -91,6 +94,8 @@ const Ticket = () => {
   const [context, setContext] = useState(null);
   const [droppedFiles, setDroppedFiles] = useState([]);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [assistantDraft, setAssistantDraft] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const dragDepth = useRef(0);
   const contextGeneration = useRef(0);
   const loadContext = useCallback(async () => {
@@ -140,6 +145,21 @@ const Ticket = () => {
     };
   }, [ticketId, history]);
   useEffect(() => {
+    const handleFindShortcut = event => {
+      const target = event.target;
+      const isTyping =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && !isTyping) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleFindShortcut);
+    return () => window.removeEventListener("keydown", handleFindShortcut);
+  }, []);
+  useEffect(() => {
     const socket = openSocket();
     socket.on("connect", () => socket.emit("joinChatBox", ticketId));
     socket.on("ticket", data => {
@@ -176,7 +196,7 @@ const Ticket = () => {
   const handleDrawerClose = () => {
     setDrawerOpen(false);
   };
-  const sendBlocked = !context || context.paused || ["off", "simulation"].includes(context.mode) || context.official && !context.serviceWindowOpen;
+  const sendBlocked = isMessageSendBlocked(context);
   const canDropFiles = ticket.status === "open" && !sendBlocked;
   const hasDraggedFiles = event => Array.from(event.dataTransfer?.types || []).includes("Files");
   const handleDragEnter = event => {
@@ -219,13 +239,24 @@ const Ticket = () => {
             <TicketInfo contact={contact} ticket={ticket} onClick={handleDrawerOpen} />
           </div>
           <div className={classes.ticketActionButtons}>
+            <Tooltip title="Pesquisar nesta conversa (Ctrl + F)">
+              <IconButton
+                size="small"
+                aria-label="Pesquisar nesta conversa"
+                color={searchOpen ? "primary" : "default"}
+                onClick={() => setSearchOpen(value => !value)}
+              >
+                <Search />
+              </IconButton>
+            </Tooltip>
+            <TicketAssistant ticketId={ticketId} disabled={loading || ticket.status !== "open"} onUseDraft={text => setAssistantDraft({ id: Date.now(), text })} />
             <TicketActionButtons ticket={ticket} context={context} />
           </div>
         </TicketHeader>
         <TicketContext ticket={ticket} context={context} onRefresh={loadContext} />
         <ReplyMessageProvider>
-          <MessagesList key={`messages-${ticketId}`} ticketId={ticketId} isGroup={ticket.isGroup}></MessagesList>
-          <MessageInput key={ticketId} ticketStatus={ticket.status} sendBlocked={sendBlocked} droppedFiles={droppedFiles} onDroppedFilesHandled={() => setDroppedFiles([])} />
+          <MessagesList key={`messages-${ticketId}`} ticketId={ticketId} isGroup={ticket.isGroup} searchOpen={searchOpen} onCloseSearch={() => setSearchOpen(false)}></MessagesList>
+          <MessageInput key={ticketId} ticketStatus={ticket.status} sendBlocked={sendBlocked} droppedFiles={droppedFiles} onDroppedFilesHandled={() => setDroppedFiles([])} assistantDraft={assistantDraft} onAssistantDraftHandled={() => setAssistantDraft(null)} />
         </ReplyMessageProvider>
       </Paper>
       <ContactDrawer open={drawerOpen} docked={wideScreen} handleDrawerClose={handleDrawerClose} contact={contact} ticket={ticket} context={context} loading={loading} />

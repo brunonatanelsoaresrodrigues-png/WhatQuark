@@ -4,6 +4,7 @@ import canAccessTicket from "../middleware/canAccessTicket";
 import isAdmin from "../middleware/isAdmin";
 
 import * as TicketController from "../controllers/TicketController";
+import * as AiAssistantController from "../controllers/AiAssistantController";
 
 import * as TicketMetricsController from "../controllers/TicketMetricsController";
 const ticketRoutes = express.Router();
@@ -26,6 +27,10 @@ ticketRoutes.get(
   canAccessTicket,
   TicketController.show
 );
+
+ticketRoutes.get("/tickets/:ticketId/assistant/status", isAuth, canAccessTicket, AiAssistantController.status);
+ticketRoutes.post("/tickets/:ticketId/assistant/suggestions", isAuth, canAccessTicket, AiAssistantController.generate);
+ticketRoutes.patch("/tickets/:ticketId/assistant/suggestions/:suggestionId", isAuth, canAccessTicket, AiAssistantController.update);
 
 ticketRoutes.post("/tickets", isAuth, TicketController.store);
 

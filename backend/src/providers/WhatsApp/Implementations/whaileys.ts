@@ -56,6 +56,12 @@ import {
 import { WhatsappProvider } from "../whatsappProvider";
 import { sleep } from "../../../utils/sleep";
 import {
+  bestIncomingContactName,
+  lidUser
+} from "../../../helpers/ContactIdentity";
+import { resolveWhatsAppMessageIdentity } from "../../../helpers/WhatsAppMessageIdentity";
+import CreateOrUpdateContactService from "../../../services/ContactServices/CreateOrUpdateContactService";
+import {
   handleMessage,
   handleMessageAck,
   ContactPayload,
@@ -313,24 +319,21 @@ const useSessionAuthState = async (whatsapp: Whatsapp) => {
           const deviceId = jidDecode(creds?.me?.id)?.device || 1;
 
           try {
-            const promises: Promise<void>[] = [];
-
-            Object.entries(data).forEach(([category, categoryData]) => {
-              if (!categoryData) return;
-              Object.entries(categoryData).forEach(([id, value]) => {
-                promises.push(
-                  StoreWppSessionKeys({
-                    connectionId: sessionId,
-                    deviceId,
-                    type: category,
-                    id,
-                    value
-                  })
-                );
-              });
-            });
-
-            await Promise.all(promises);
+            for (const [category, categoryData] of Object.entries(data)) {
+              if (!categoryData) continue;
+              for (const [id, value] of Object.entries(categoryData)) {
+                // Sequencial por conexão para evitar deadlocks no índice único
+                // durante a rotação simultânea de pre-keys do Signal.
+                // eslint-disable-next-line no-await-in-loop
+                await StoreWppSessionKeys({
+                  connectionId: sessionId,
+                  deviceId,
+                  type: category,
+                  id,
+                  value
+                });
+              }
+            }
           } catch (err) {
             logger.error({
               info: "Error setting keys",
@@ -510,6 +513,8 @@ type ExtendedKey = WAMessageKey &
     participant_pn: string;
     peerRecipientPn: string;
     peer_recipient_pn: string;
+    recipientPn: string;
+    recipient_pn: string;
     senderLid: string;
     sender_lid: string;
     participantLid: string;
@@ -532,7 +537,20 @@ type ExtendedContext = proto.IContextInfo &
     participant_pn: string;
     peerRecipientPn: string;
     peer_recipient_pn: string;
+    recipientPn: string;
+    recipient_pn: string;
   }>;
+
+const getExtendedContext = (msg: WAMessage): ExtendedContext | undefined => {
+  const content = msg.message || {};
+  return (content?.extendedTextMessage?.contextInfo ||
+    content?.imageMessage?.contextInfo ||
+    content?.videoMessage?.contextInfo ||
+    content?.documentMessage?.contextInfo ||
+    content?.audioMessage?.contextInfo ||
+    content?.stickerMessage?.contextInfo ||
+    undefined) as ExtendedContext | undefined;
+};
 
 const convertToContactPayload = async (
   jid: string,
@@ -540,65 +558,15 @@ const convertToContactPayload = async (
   wbot: Session
 ): Promise<ContactPayload> => {
   const keyExt = (msg.key || {}) as ExtendedKey;
-  const content = msg.message || {};
-  const ctx = (content?.extendedTextMessage?.contextInfo ||
-    content?.imageMessage?.contextInfo ||
-    content?.videoMessage?.contextInfo ||
-    content?.documentMessage?.contextInfo ||
-    content?.audioMessage?.contextInfo ||
-    content?.stickerMessage?.contextInfo ||
-    undefined) as ExtendedContext | undefined;
+  const ctx = getExtendedContext(msg);
 
-  let resolvedJid = jid || "";
-
-  const lidCandidates: (string | undefined)[] = [
-    keyExt.senderLid,
-    keyExt.participantLid,
-    keyExt.recipientLid,
-    ctx?.senderLid,
-    ctx?.participantLid,
-    ctx?.recipientLid,
-    keyExt.sender_lid,
-    keyExt.participant_lid,
-    keyExt.recipient_lid,
-    ctx?.sender_lid,
-    ctx?.participant_lid,
-    ctx?.recipient_lid,
-    (keyExt.senderPn || keyExt.sender_pn)?.includes("@lid")
-      ? keyExt.senderPn || keyExt.sender_pn
-      : undefined,
-    (keyExt.participantPn || keyExt.participant_pn)?.includes("@lid")
-      ? keyExt.participantPn || keyExt.participant_pn
-      : undefined,
-    (keyExt.peerRecipientPn || keyExt.peer_recipient_pn)?.includes("@lid")
-      ? keyExt.peerRecipientPn || keyExt.peer_recipient_pn
-      : undefined
-  ];
-
-  const lid = lidCandidates.find(
-    cand => typeof cand === "string" && cand.includes("@lid")
+  const identity = resolveWhatsAppMessageIdentity(
+    jid || "",
+    keyExt as unknown as Record<string, unknown>,
+    ctx as unknown as Record<string, unknown> | undefined,
+    Boolean(msg.key.fromMe)
   );
-
-  const pnCandidates: (string | undefined)[] = [
-    keyExt.senderPn || keyExt.sender_pn,
-    keyExt.participantPn || keyExt.participant_pn,
-    keyExt.peerRecipientPn || keyExt.peer_recipient_pn
-  ];
-
-  const preferPn = pnCandidates.find(
-    v => typeof v === "string" && /@s\.whatsapp\.net$/i.test(v)
-  );
-
-  if (resolvedJid.endsWith("@lid") && preferPn) {
-    resolvedJid = preferPn;
-  } else if (
-    resolvedJid &&
-    !resolvedJid.endsWith("@s.whatsapp.net") &&
-    !resolvedJid.endsWith("@g.us") &&
-    preferPn
-  ) {
-    resolvedJid = preferPn;
-  }
+  const { resolvedJid, phoneJid: preferPn, lid } = identity;
 
   const safeNormalized = (value?: string) => {
     if (!value) return "";
@@ -687,16 +655,14 @@ const convertToContactPayload = async (
   const lidValue =
     isLidUser(resolvedJid) && decoded?.user ? `${decoded.user}@lid` : lid;
 
-  const name =
-    contactInfo?.name ||
-    contactInfo?.notify ||
-    pushName ||
-    number ||
-    lidValue ||
-    "";
+  const providerName = bestIncomingContactName(
+    [contactInfo?.name, contactInfo?.notify, pushName],
+    number,
+    lidValue
+  );
 
   return {
-    name,
+    name: providerName,
     number,
     lid: lidValue,
     isGroup: false,
@@ -845,10 +811,20 @@ const getHistoryMessageData = async (
       ? msg.key.participant
       : remoteJid;
 
-  let contactPayload = contactCache.get(contactJid);
+  const identity = resolveWhatsAppMessageIdentity(
+    contactJid,
+    msg.key as unknown as Record<string, unknown>,
+    getExtendedContext(msg) as unknown as Record<string, unknown> | undefined,
+    Boolean(msg.key.fromMe)
+  );
+  // A LID-only message and a later message carrying its PN must not share the
+  // same cache entry; the latter is what allows the old contact to be merged.
+  const contactCacheKey = `${contactJid}|${identity.phoneJid || ""}`;
+
+  let contactPayload = contactCache.get(contactCacheKey);
   if (!contactPayload) {
     contactPayload = await convertToContactPayload(contactJid, msg, wbot);
-    contactCache.set(contactJid, contactPayload);
+    contactCache.set(contactCacheKey, contactPayload);
   }
 
   let groupContact: ContactPayload | undefined;
@@ -898,6 +874,7 @@ const removeSession = async (whatsappId: number): Promise<void> => {
     wbot.ev.removeAllListeners("group-participants.update");
     wbot.ev.removeAllListeners("contacts.upsert");
     wbot.ev.removeAllListeners("contacts.update");
+    wbot.ev.removeAllListeners("contacts.phone-number-share");
     wbot.ev.removeAllListeners("chats.upsert");
     wbot.ev.removeAllListeners("chats.update");
     wbot.ev.removeAllListeners("chats.delete");
@@ -1035,6 +1012,26 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
 
   wbot.ev.on("creds.update", () => {
     debouncedSaveCreds(whatsapp, state.creds);
+  });
+
+  wbot.ev.on("contacts.phone-number-share", async ({ lid, jid }) => {
+    const number = jidDecode(jid || "")?.user || "";
+    const normalizedLid = lidUser(lid) ? `${lidUser(lid)}@lid` : "";
+    if (!number || !normalizedLid) return;
+
+    try {
+      await CreateOrUpdateContactService({
+        name: number,
+        number,
+        lid: normalizedLid,
+        isGroup: false
+      });
+    } catch (err) {
+      logger.warn({
+        info: "Could not consolidate shared WhatsApp phone identity",
+        err
+      });
+    }
   });
 
   wbot.ev.on("messages.upsert", async ({ messages, type }) => {
@@ -1668,6 +1665,42 @@ const syncHistory = async (
               attributes: ["id"]
             });
             if (existingMessage) {
+              const remoteJid = message.key.remoteJid || "";
+              const isGroup = isJidGroup(remoteJid);
+              const contactJid =
+                !message.key.fromMe && isGroup && message.key.participant
+                  ? message.key.participant
+                  : remoteJid;
+              // Even when the message body already exists, its current
+              // WhatsApp key can carry the missing LID <-> phone mapping.
+              // Reconcile only a confirmed pair; never infer or fabricate a
+              // phone number from the LID itself.
+              const identity = resolveWhatsAppMessageIdentity(
+                contactJid,
+                message.key as unknown as Record<string, unknown>,
+                getExtendedContext(message) as unknown as
+                  | Record<string, unknown>
+                  | undefined,
+                Boolean(message.key.fromMe)
+              );
+              if (identity.phoneJid && identity.lid && !isGroup) {
+                const cacheKey = `${contactJid}|${identity.phoneJid}`;
+                let reconciledPayload = contactCache.get(cacheKey);
+                if (!reconciledPayload) {
+                  // eslint-disable-next-line no-await-in-loop
+                  reconciledPayload = await convertToContactPayload(
+                    contactJid,
+                    message,
+                    wbot
+                  );
+                  contactCache.set(cacheKey, reconciledPayload);
+                }
+                // eslint-disable-next-line no-await-in-loop
+                await CreateOrUpdateContactService({
+                  ...reconciledPayload,
+                  emitEvent: true
+                });
+              }
               progress.duplicateMessages += 1;
               continue;
             }

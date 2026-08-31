@@ -21,7 +21,29 @@ const availabilitySource = buildSync({
 }).outputFiles[0].text;
 const availabilityModule = new Module(__filename, module);
 availabilityModule._compile(availabilitySource, __filename);
-const { getComposerAvailability } = availabilityModule.exports;
+const { getComposerAvailability, isMessageSendBlocked } = availabilityModule.exports;
+
+test("a delayed context panel does not silently block a human message", () => {
+  assert.equal(isMessageSendBlocked(null), false);
+  assert.equal(isMessageSendBlocked(undefined), false);
+});
+
+test("real messaging restrictions still block sending", () => {
+  assert.equal(isMessageSendBlocked({ paused: true, mode: "production" }), true);
+  assert.equal(isMessageSendBlocked({ paused: false, mode: "simulation" }), true);
+  assert.equal(isMessageSendBlocked({
+    paused: false,
+    mode: "production",
+    official: true,
+    serviceWindowOpen: false
+  }), true);
+  assert.equal(isMessageSendBlocked({
+    paused: false,
+    mode: "production",
+    official: false,
+    serviceWindowOpen: false
+  }), false);
+});
 
 test("context validation blocks sending without disabling emoji, typing or audio capture", () => {
   assert.deepEqual(getComposerAvailability({
@@ -99,6 +121,24 @@ test("hides generated image filenames but preserves real captions", () => {
   assert.equal(media.shouldRenderMessageBody({
     mediaType: "document",
     body: "receita.pdf"
+  }), true);
+});
+
+test("shows only the player for audio filenames but preserves real text", () => {
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "audio",
+    mediaUrl: "/public/a68536a3-df85-454a-883e-f0a16e7f8b5f.ogg",
+    body: "a68536a3-df85-454a-883e-f0a16e7f8b5f.ogg"
+  }), false);
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "ptt",
+    mediaUrl: "/public/audio.ogg",
+    body: "audio.ogg"
+  }), false);
+  assert.equal(media.shouldRenderMessageBody({
+    mediaType: "audio",
+    mediaUrl: "/public/audio.ogg",
+    body: "Orientação importante para o paciente"
   }), true);
 });
 

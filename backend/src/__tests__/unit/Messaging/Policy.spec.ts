@@ -1,5 +1,6 @@
 import { createHmac } from "crypto";
 import {
+  appointmentStatusesForPolicy,
   assertExecution,
   inServiceWindow,
   modeFrom
@@ -131,6 +132,31 @@ it("can restore the stricter opt-in policy through configuration", () => {
       version: "appointment-notices-v1"
     })
   ).toBe(false);
+});
+it("does not require opt-in on a non-official transport", () => {
+  process.env.WHATSAPP_PROVIDER = "whaileys";
+  process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "true";
+  expect(
+    canReceiveAppointmentNotices({
+      consent: "UNKNOWN",
+      changedAt: null,
+      source: null,
+      actorUserId: null,
+      relationship: null,
+      version: "appointment-notices-v1"
+    })
+  ).toBe(true);
+});
+it("allows the waiting status only for a same-day reschedule notice", () => {
+  expect(
+    appointmentStatusesForPolicy({
+      allowConfirmedAppointment: true,
+      allowSameDayRescheduledAppointment: true
+    })
+  ).toContain("AGUARDANDO_ATENDIMENTO");
+  expect(
+    appointmentStatusesForPolicy({ allowConfirmedAppointment: true })
+  ).not.toContain("AGUARDANDO_ATENDIMENTO");
 });
 it("verifies the exact raw webhook body and rejects tampering", () => {
   const body = Buffer.from('{"hello":"test"}');

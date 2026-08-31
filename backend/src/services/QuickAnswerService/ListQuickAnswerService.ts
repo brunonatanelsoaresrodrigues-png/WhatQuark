@@ -1,9 +1,11 @@
-import { Sequelize } from "sequelize";
+import { Sequelize, Op } from "sequelize";
 import QuickAnswer from "../../models/QuickAnswer";
 
 interface Request {
   searchParam?: string;
   pageNumber?: string;
+  userId: number;
+  isAdmin: boolean;
 }
 
 interface Response {
@@ -14,14 +16,19 @@ interface Response {
 
 const ListQuickAnswerService = async ({
   searchParam = "",
-  pageNumber = "1"
+  pageNumber = "1",
+  userId,
+  isAdmin
 }: Request): Promise<Response> => {
   const whereCondition = {
-    message: Sequelize.where(
-      Sequelize.fn("LOWER", Sequelize.col("message")),
-      "LIKE",
-      `%${searchParam.toLowerCase().trim()}%`
-    )
+    [Op.and]: [
+      Sequelize.where(
+        Sequelize.fn("LOWER", Sequelize.col("message")),
+        "LIKE",
+        `%${searchParam.toLowerCase().trim()}%`
+      ),
+      ...(isAdmin ? [] : [{ [Op.or]: [{ userId }, { userId: null }] }])
+    ]
   };
   const limit = 20;
   const offset = limit * (+pageNumber - 1);

@@ -45,7 +45,10 @@ const GenerateDailyReportService = async ({
       lastError: null
     }
   });
-  if (!created && ["GENERATED", "SENDING", "COMPLETED"].includes(run.status)) {
+  if (
+    !created &&
+    (run.completedAt || ["GENERATED", "SENDING", "COMPLETED"].includes(run.status))
+  ) {
     return run;
   }
 

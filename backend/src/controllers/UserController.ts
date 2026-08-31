@@ -79,6 +79,9 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
 
 export const show = async (req: Request, res: Response): Promise<Response> => {
   const { userId } = req.params;
+  if (req.user.profile !== "admin" && Number(userId) !== Number(req.user.id)) {
+    throw new AppError("ERR_NO_PERMISSION", 403);
+  }
 
   const user = await ShowUserService(userId);
 

@@ -2,9 +2,7 @@ import AppError from "../../errors/AppError";
 import { Op } from "sequelize";
 import Message from "../../models/Message";
 import Ticket from "../../models/Ticket";
-import ShowTicketService from "../TicketServices/ShowTicketService";
-import ShowUserService from "../UserServices/ShowUserService";
-import { ticketAccessWhere } from "../../helpers/TicketAccessPolicy";
+import ResolveMessageHistoryTicketIdsService from "./ResolveMessageHistoryTicketIdsService";
 
 interface Request {
   ticketId: string;
@@ -26,29 +24,13 @@ const ListMessagesService = async ({
   ticketId,
   userId
 }: Request): Promise<Response> => {
-  const ticket = await ShowTicketService(ticketId);
-
-  if (!ticket) {
-    throw new AppError("ERR_NO_TICKET_FOUND", 404);
-  }
+  const { ticket, ticketIds: relatedTicketIds } =
+    await ResolveMessageHistoryTicketIdsService(ticketId, userId);
 
   // await setMessagesAsRead(ticket);
   const limit = 20;
   const offset = limit * (+pageNumber - 1);
 
-  const viewer = userId ? await ShowUserService(userId) : null;
-  const relatedTickets = await Ticket.findAll({
-    attributes: ["id"],
-    where: {
-      contactId: ticket.contactId,
-      whatsappId: ticket.whatsappId,
-      ticketType: ticket.ticketType,
-      [Op.and]: [viewer ? ticketAccessWhere(viewer) : { id: ticket.id }]
-    }
-  });
-  const relatedTicketIds = relatedTickets.map(
-    relatedTicket => relatedTicket.id
-  );
   const historyWhere: any = {
     ticketId: { [Op.in]: relatedTicketIds }
   };
@@ -69,6 +51,8 @@ const ListMessagesService = async ({
           id: { [Op.lt]: cursorMessage.id }
         }
       ];
+    } else {
+      throw new AppError("ERR_MESSAGE_CURSOR_NOT_FOUND", 404);
     }
   }
 

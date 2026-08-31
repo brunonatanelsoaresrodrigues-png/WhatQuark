@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Avatar, makeStyles } from "@material-ui/core";
 import { queueContactProfilePictureRefresh } from "../../services/contactProfilePictures";
+import { contactDisplayName } from "../../services/contactIdentity";
 const useStyles = makeStyles(theme => ({
   root: {
     width: 38,
@@ -25,7 +26,7 @@ export default function ContactAvatar({
 }) {
   const classes = useStyles();
   const [imageUrl, setImageUrl] = useState(contact?.profilePicUrl || "");
-  const initials = (contact?.name || "?").trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toLocaleUpperCase();
+  const initials = contactDisplayName(contact, "?").trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toLocaleUpperCase();
   useEffect(() => {
     const current = contact?.profilePicUrl || "";
     setImageUrl(current);

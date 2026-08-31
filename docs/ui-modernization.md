@@ -28,15 +28,19 @@ componentes MUI, com foco visível e `prefers-reduced-motion`.
 
 | Elemento | Decisão |
 | --- | --- |
-| Cor principal | Teal `#0C7C72`; variação clara no modo escuro |
-| Fundo claro / escuro | `#F5F6F3` / `#0A171E` |
+| Cor principal | Teal `#0C7C72`; variação clara `#36BFAE` no modo escuro |
+| Fundo claro / escuro | `#F3F6F8` / `#07121F` |
 | Texto | Contraste mínimo de 4,5:1 nos pares de tokens testados |
-| Tipografia | Inter quando disponível; fallback para fontes do sistema, sem novo download |
+| Tipografia | Inter variável, servida do próprio domínio (ver "Refino premium") |
 | Raios | 6, 10, 14, 20 e pill |
 | Movimento | 160–280 ms; redução de movimento respeitada |
-| Navegação | 272 px expandida; 76 px compacta; gaveta em tablet/celular |
+| Navegação | 216 px expandida; 64 px compacta; gaveta em tablet/celular |
 | Notebook | Navegação inicialmente compacta até o breakpoint md, expansível pelo usuário |
 | Ações destrutivas | Semântica vermelha de `secondary` preservada |
+
+Os valores de fundo e as larguras de navegação acima foram corrigidos em 29/08/2026 para
+refletir o que o código realmente usa; a tabela anterior descrevia números que não existiam
+mais em `theme/tokens.js` nem em `layout/index.js`.
 
 Componentes criados:
 
@@ -82,7 +86,7 @@ A paginação Quark usa as propriedades suportadas pela versão MUI instalada.
 | --- | --- |
 | ESLint em todos os arquivos de código de interface modificados/criados | Sem erros ou avisos |
 | `git diff --check` | Sem problemas |
-| Testes frontend (`node --test tests/*.test.cjs`) | 18 aprovados |
+| Testes frontend (`node --test tests/*.test.cjs`) | 47 aprovados |
 | Build frontend (`vite build`) | Aprovado |
 | Compilação backend (`tsc`) | Aprovada, sem alterações no backend |
 | Testes unitários backend, comando equivalente a `test:unit` | 53 suítes / 257 testes aprovados |
@@ -117,6 +121,112 @@ npm run test:visual
 Somente localhost; dados fictícios, sem credenciais. O servidor está em `tests/visual/server.mjs`,
 com fixtures de API/socket e um arquivo de exemplo. Ele não faz parte do entrypoint de produção.
 Buscar `erro-demo` simula falha de listagem. Não usar esse servidor como deploy da aplicação.
+
+## Refino premium (29/08/2026)
+
+Segunda passada sobre a mesma base, sem redesenho: a estrutura, a marca e a composição
+foram mantidas. O objetivo era fechar a distância entre o que o design system definia e o
+que efetivamente chegava à tela.
+
+### Defeitos corrigidos
+
+| Problema | Efeito visível |
+| --- | --- |
+| `theme.productTokens.shadows.rest` não existia | 7 usos em Dashboard e Agenda Quark resolviam para `undefined`: cards sem sombra em repouso, com sombra apenas no hover |
+| Tema pedia `Inter`, `index.html` baixava `Roboto` | A Inter nunca carregava; a interface caía na fonte do sistema, onde os pesos 450/550/650/750 do código não existem |
+| `TicketListItem` usava a mesma cor no repouso e no `:hover` | O item mais clicado da operação não dava retorno de hover |
+| `CssBaseline` montado três vezes | Duas instâncias fora do `ThemeProvider`, aplicando a baseline padrão do Material UI |
+| `public/index.html` órfão do Create React App | Arquivo morto com HTML quebrado por aspas tipográficas; o Vite serve o da raiz |
+| `theme-color` preto no HTML e no manifest | Barra do navegador e PWA fora da paleta |
+
+### Tipografia
+
+A Inter variável passou a ser servida do próprio domínio. A versão usada em produção é o subconjunto
+latino `frontend/public/fonts/InterVariable-Latin.woff2` (150 kB), sob a licença SIL OFL
+(`LICENSE.txt` na mesma pasta), declarada em `theme/base.css` e pré-carregada no `index.html`.
+
+Isto substitui a decisão anterior ("sem novo download"). O motivo: já havia um download — o da
+Roboto, que nenhuma regra de `fontFamily` usava. A troca é neutra em rede, faz os pesos
+fracionários do código funcionarem de verdade e, por não passar pelo Google Fonts, não envia o
+IP de quem usa o sistema a terceiros, o que importa num sistema de saúde sob a LGPD.
+
+### Sistema de tokens ampliado
+
+`frontend/src/theme/tokens.js` passou a exportar:
+
+- **Rampa de elevação** `rest → soft → hover → raised → overlay`, mais `focus`. No modo escuro
+  cada nível carrega também um realce interno de 1px no topo — sombra sozinha não separa
+  camadas contra fundo escuro. As 25 elevações do Material UI foram substituídas por esta rampa,
+  de modo que qualquer `elevation={n}` fique coerente.
+- **Rampa de superfícies** com `surfaceOverlay` para menus, popovers e diálogos.
+- **Tokens de estado** (`hover`, `selected`, `pressed`, `scrim`) e de navegação (`navText`,
+  `navHover`, `navActiveHover`, `navBorder`, `navAccent`), no lugar dos `rgba()` escritos à mão.
+- **`getStatusTokens`** — pares `fg`/`bg`/`border` para sucesso, alerta, erro, informação e neutro.
+  Substituiu três tabelas de cor paralelas: a `good`/`warning`/`neutral` do Dashboard, os chips de
+  status do Dashboard e a paleta do calendário da Agenda Quark.
+- **`getChartPalette`** — paleta categórica derivada da marca, que substituiu a paleta Material
+  2014 (`#3f51b5`, `#e53935`, `#ff9800`…) usada nos cards e nas barras do Recharts.
+- **`getGradients`** e **`withAlpha`** — gradiente só na identidade e nas ações principais, como a
+  seção anterior já definia, agora via token em vez de literal.
+
+`frontend/tests/themeTokens.test.cjs` foi estendido para cobrir os novos pares, a ordenação da
+rampa de superfícies, a distinguibilidade da paleta de gráficos e a presença de todos os níveis
+de elevação.
+
+### Cobertura do tema
+
+`context/DarkMode/index.js` saiu de 18 para cerca de 40 componentes com override: navegação
+(`MuiDrawer`, `MuiListItem`, `MuiListItemIcon`, `MuiListSubheader`), sobreposições (`MuiDialogTitle`,
+`MuiDialogContent`, `MuiDialogActions`, `MuiPopover`, `MuiMenuItem`, `MuiBackdrop`), formulários
+(`MuiSelect`, `MuiInputLabel`, `MuiFormHelperText`, `MuiSwitch`, `MuiCheckbox`, `MuiRadio`),
+retorno (`MuiLinearProgress`, `MuiAvatar`, `MuiBadge`, `MuiDivider`) e, do `@material-ui/lab`,
+`MuiSkeleton` (com shimmer no lugar do pulse), `MuiAlert` e `MuiAutocomplete`.
+
+Também foi corrigido o `MuiButton.containedPrimary`, que fixava `#0C7C72` nos dois modos enquanto
+`palette.primary.main` no escuro é `#36BFAE` — era o único elemento que não respondia ao tema.
+
+A primeira visita passou a respeitar `prefers-color-scheme`. O escuro continua sendo o padrão
+quando o sistema não declara preferência, e quem já usou o alternador não é afetado.
+
+### Deriva eliminada
+
+Cerca de 90 cores literais em 19 arquivos foram trocadas por tokens, incluindo as cores herdadas
+do clone de WhatsApp em `MessagesList` e `MessageInput` (`#6bcbef`, `#35cd96`) e o `green[500]` do
+`@material-ui/core/colors`, que sobrevivia em nove arquivos. Os 51 valores de
+`components/ColorPicker` permanecem: são a paleta de escolha do usuário para cor de fila.
+
+### Componentes
+
+- **`AuthLayout`** (novo): moldura compartilhada por login e cadastro. As duas telas usavam o
+  template padrão do Material UI, com o cadeado `LockOutlined` e o mesmo bloco de estilo copiado
+  entre os dois arquivos. Agora usam o `BrandMark`, sobre um fundo com o brilho da marca.
+- **`PageHeading`** passou a ser o único cabeçalho de página. Contatos, Usuários, Setores,
+  Respostas rápidas e Canais migraram do par `MainHeader` + `Title`, que foi removido junto com
+  `MainHeaderButtonsWrapper` por ter ficado sem uso.
+- **`theme.panelStyles`**: o bloco do painel rolável das tabelas estava copiado, idêntico, nas
+  cinco páginas de listagem.
+
+### Verificação desta entrega
+
+Em 29/08/2026 a entrega foi validada com o runtime Node do workspace: ESLint sem erros,
+47 testes frontend aprovados, `vite build` aprovado e `git diff --check` limpo. O QA isolado
+confirmou desktop em 1440 px e as sete áreas tabulares em 390 px, sem overflow horizontal.
+Também foram exercitados a abertura sob demanda do seletor de emojis, o token oculto nas
+configurações e a troca do carregamento do Quark pelo estado de timeout após 12 segundos.
+
+### Robustez, privacidade e desempenho
+
+- `ResponsiveTable` transforma tabelas em cartões rotulados no celular em Contatos, Usuários,
+  Conexões, Filas, Respostas rápidas, Relatórios diários e Dashboard.
+- Textos funcionais pequenos foram elevados para um piso de 12 px; o único valor inferior visto
+  no QA pertence ao badge invisível do Material UI.
+- O CPF encontrado no Quark só recebe o estado “Sincronizado” após o `PUT` do contato concluir;
+  consulta e persistência têm erros distintos, nova tentativa e máscara por padrão.
+- CPF e token da API ficam ocultos por padrão. O iframe do Quark oferece erro recuperável após
+  timeout em vez de permanecer indefinidamente no spinner.
+- Emoji e gravador de áudio passaram a chunks sob demanda. O antigo bloco de conversa caiu de
+  aproximadamente 872 kB para 424 kB; emoji (571 kB) e áudio (170 kB) são baixados apenas quando
+  usados. A fonte efetivamente carregada caiu de 352 kB para 150 kB.
 
 ## Limites e próximos passos
 

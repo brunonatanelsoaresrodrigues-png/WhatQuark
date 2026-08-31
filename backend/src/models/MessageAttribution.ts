@@ -15,6 +15,7 @@ export type MessageOrigin =
   | "QUARK"
   | "INACTIVITY"
   | "DAILY_REPORT"
+  | "SURVEY"
   | "SYSTEM"
   | "PATIENT"
   | "UNKNOWN";

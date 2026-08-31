@@ -17,6 +17,10 @@ import {
   formatAppointmentDateTime
 } from "./appointmentUtils";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
+import {
+  isSameDayReschedule,
+  quarkNotificationExpiresAt
+} from "./notificationPolicy";
 
 const workerId = `${hostname()}-${process.pid}`.slice(0, 64);
 let workerTimer: NodeJS.Timeout | undefined;
@@ -191,9 +195,15 @@ export const processNotification = async (
     if (!payload.scheduleFingerprint)
       throw new Error("ERR_LEGACY_NOTICE_REVIEW_REQUIRED");
     await assertExecution(payload.phone, true);
+    const notificationExpiresAt = quarkNotificationExpiresAt(
+      notification.eventType,
+      payload.validUntil,
+      notification.createdAt,
+      config.timezone
+    );
     if (
-      payload.validUntil &&
-      new Date(payload.validUntil).getTime() <= Date.now()
+      notificationExpiresAt &&
+      new Date(notificationExpiresAt).getTime() <= Date.now()
     ) {
       await notification.update({
         status: "SUPPRESSED",
@@ -224,6 +234,12 @@ export const processNotification = async (
     if (!record || record.scheduleFingerprint !== payload.scheduleFingerprint)
       throw new Error("ERR_APPOINTMENT_CHANGED");
     const stored = JSON.parse(record.snapshot || "{}");
+    const sameDayReschedule = isSameDayReschedule(
+      notification.eventType,
+      record.scheduledAt,
+      notification.createdAt,
+      config.timezone
+    );
     const templateName =
       notification.eventType === "CANCELLED"
         ? process.env.CLOUD_QUARK_CANCELLED_TEMPLATE
@@ -253,9 +269,11 @@ export const processNotification = async (
         appointmentNotice: true,
         appointmentId: notification.appointmentId,
         scheduleFingerprint: payload.scheduleFingerprint,
-        expiresAt: payload.validUntil || undefined,
+        expiresAt: notificationExpiresAt || undefined,
         allowCancelledAppointment: notification.eventType === "CANCELLED",
         allowConfirmedAppointment: notification.eventType === "RESCHEDULED",
+        allowSameDayRescheduledAppointment: sameDayReschedule,
+        allowAppointmentPhoneVariants: true,
         sendOnlyOnWeekday: payload.sendOnlyOnWeekday,
         template: templateName
           ? {
@@ -309,9 +327,16 @@ export const processNotification = async (
       "QUARK_TEMPORARY_WHATSAPP_DISCONNECTED",
       "ERR_OPERATION_BUSY"
     ].includes(lastError);
+    const deadLetter = isPermanentError(lastError);
     // Only known, pre-send deferrals can be retried. The central ledger uses the same key.
     await notification.update({
-      status: unknown ? "UNKNOWN" : waiting ? "FAILED_RETRY" : "SUPPRESSED",
+      status: unknown
+        ? "UNKNOWN"
+        : waiting
+        ? "FAILED_RETRY"
+        : deadLetter
+        ? "DEAD_LETTER"
+        : "SUPPRESSED",
       attempts: notification.attempts + (waiting ? 0 : 1),
       nextAttemptAt: new Date(Date.now() + 60000),
       processingStartedAt: null,

@@ -16,9 +16,15 @@ import dailyReportRoutes from "./dailyReportRoutes";
 import stickerRoutes from "./stickerRoutes";
 
 import messagingRoutes from "./messagingRoutes";
+import identityRoutes from "./identityRoutes";
+import operationalHealthRoutes from "./operationalHealthRoutes";
+import serviceRatingRoutes from "./serviceRatingRoutes";
 
 const routes = Router();
 routes.use(messagingRoutes);
+routes.use(identityRoutes);
+routes.use(operationalHealthRoutes);
+routes.use(serviceRatingRoutes);
 
 routes.use(userRoutes);
 routes.use("/auth", authRoutes);

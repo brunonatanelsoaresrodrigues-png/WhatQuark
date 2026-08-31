@@ -8,6 +8,7 @@ import { MessageOrigin } from "../../models/MessageAttribution";
 import { registerMessageAttribution } from "../MessageServices/MessageAttributionService";
 import { logger } from "../../utils/logger";
 import { SendPolicy } from "../MessagingServices/policy";
+import contactJid from "../../helpers/ContactJid";
 
 interface Request {
   body: string;
@@ -30,7 +31,7 @@ const SendWhatsAppMessage = async ({
     throw new AppError("ERR_TICKET_NO_WHATSAPP");
   }
 
-  const chatId = `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`;
+  const chatId = contactJid(ticket.contact, ticket.isGroup);
 
   try {
     const sentMessage = await whatsappProvider.sendMessage(

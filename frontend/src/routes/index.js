@@ -17,6 +17,7 @@ const Queues = lazy(() => import("../pages/Queues/"));
 const QuarkDashboard = lazy(() => import("../pages/QuarkDashboard/"));
 const QuarkClinic = lazy(() => import("../pages/QuarkClinic/"));
 const DailyReports = lazy(() => import("../pages/DailyReports/"));
+const ServiceRatings = lazy(() => import("../pages/ServiceRatings/"));
 import { AuthProvider } from "../context/Auth/AuthContext";
 import { WhatsAppsProvider } from "../context/WhatsApp/WhatsAppsContext";
 import { ThemeProvider } from "../context/DarkMode";
@@ -88,6 +89,12 @@ const Routes = () => {
                     exact
                     path="/daily-reports"
                     component={DailyReports}
+                    isPrivate
+                  />
+                  <Route
+                    exact
+                    path="/service-ratings"
+                    component={ServiceRatings}
                     isPrivate
                   />
                 </LoggedInLayout>

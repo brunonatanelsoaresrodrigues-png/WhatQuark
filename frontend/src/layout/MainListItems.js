@@ -8,8 +8,8 @@ import ListSubheader from "@material-ui/core/ListSubheader";
 import Divider from "@material-ui/core/Divider";
 import { Badge, Tooltip } from "@material-ui/core";
 import DashboardOutlinedIcon from "@material-ui/icons/DashboardOutlined";
-import WhatsAppIcon from "@material-ui/icons/WhatsApp";
-import SyncAltIcon from "@material-ui/icons/SyncAlt";
+import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
+import SyncAltOutlinedIcon from "@material-ui/icons/SyncAltOutlined";
 import SettingsOutlinedIcon from "@material-ui/icons/SettingsOutlined";
 import PeopleAltOutlinedIcon from "@material-ui/icons/PeopleAltOutlined";
 import ContactPhoneOutlinedIcon from "@material-ui/icons/ContactPhoneOutlined";
@@ -18,6 +18,7 @@ import QuestionAnswerOutlinedIcon from "@material-ui/icons/QuestionAnswerOutline
 import EventAvailableOutlinedIcon from "@material-ui/icons/EventAvailableOutlined";
 import LocalHospitalOutlinedIcon from "@material-ui/icons/LocalHospitalOutlined";
 import InsertChartOutlinedIcon from "@material-ui/icons/InsertChartOutlined";
+import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
 import { i18n } from "../translate/i18n";
 import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
 import { AuthContext } from "../context/Auth/AuthContext";
@@ -59,28 +60,28 @@ const useStyles = makeStyles(theme => ({
       fontWeight: 450
     },
     "&:hover": {
-      color: "#fff",
-      backgroundColor: "rgba(255,255,255,.04)"
+      color: theme.modeTokens.navText,
+      backgroundColor: theme.modeTokens.navHover
     },
     "&.Mui-selected": {
-      color: "#fff",
+      color: theme.modeTokens.navText,
       background: theme.modeTokens.navActive,
-      boxShadow: "inset 2px 0 #36bfae",
+      boxShadow: `inset 2px 0 ${theme.modeTokens.navAccent}`,
       "& .MuiListItemText-primary": {
         fontWeight: 600
       }
     },
     "&.Mui-selected:hover": {
-      background: "#103744"
+      background: theme.modeTokens.navActiveHover
     }
   },
   divider: {
     margin: theme.spacing(1.25, 0),
-    backgroundColor: "rgba(255,255,255,.08)"
+    backgroundColor: theme.modeTokens.navBorder
   },
   subheader: {
     color: theme.modeTokens.navMuted,
-    fontSize: ".6rem",
+    fontSize: ".75rem",
     fontWeight: 500,
     lineHeight: "32px",
     letterSpacing: ".11em",
@@ -137,9 +138,9 @@ const MainListItems = props => {
   return <nav aria-label="Navegação principal" onClick={drawerClose} className={`${classes.navigation} ${collapsed ? classes.compact : ""}`}>
       <ListItemLink to="/" primary="Visão geral" icon={<DashboardOutlinedIcon />} className={classes.item} />
       <ListItemLink to="/connections" primary={i18n.t("mainDrawer.listItems.connections")} icon={<Badge badgeContent={connectionWarning ? "!" : 0} color="error">
-            <SyncAltIcon />
+            <SyncAltOutlinedIcon />
           </Badge>} className={classes.item} />
-      <ListItemLink to="/tickets" primary={i18n.t("mainDrawer.listItems.tickets")} icon={<WhatsAppIcon />} className={classes.item} />
+      <ListItemLink to="/tickets" primary={i18n.t("mainDrawer.listItems.tickets")} icon={<ForumOutlinedIcon />} className={classes.item} />
 
       <ListItemLink to="/contacts" primary={i18n.t("mainDrawer.listItems.contacts")} icon={<ContactPhoneOutlinedIcon />} className={classes.item} />
       <ListItemLink to="/quickAnswers" primary={i18n.t("mainDrawer.listItems.quickAnswers")} icon={<QuestionAnswerOutlinedIcon />} className={classes.item} />
@@ -151,6 +152,7 @@ const MainListItems = props => {
             </ListSubheader>
             <ListItemLink to="/quark-dashboard" primary="Agenda Quark" icon={<EventAvailableOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/daily-reports" primary="Relatórios Diários" icon={<InsertChartOutlinedIcon />} className={classes.item} />
+            <ListItemLink to="/service-ratings" primary="Avaliações" icon={<StarBorderOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/users" primary={i18n.t("mainDrawer.listItems.users")} icon={<PeopleAltOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/queues" primary={i18n.t("mainDrawer.listItems.queues")} icon={<AccountTreeOutlinedIcon />} className={classes.item} />
             <ListItemLink to="/settings" primary={i18n.t("mainDrawer.listItems.settings")} icon={<SettingsOutlinedIcon />} className={classes.item} />

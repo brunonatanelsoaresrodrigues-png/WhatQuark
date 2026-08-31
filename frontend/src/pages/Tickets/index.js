@@ -12,7 +12,7 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     minWidth: 0,
     overflow: "hidden",
-    gap: 8,
+    gap: theme.spacing(1),
     padding: "0 10px 10px",
     background: theme.palette.background.default,
     [theme.breakpoints.down("sm")]: { gap: 0, padding: 0 }
@@ -26,8 +26,8 @@ const useStyles = makeStyles(theme => ({
     minHeight: 0,
     overflow: "hidden",
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 10,
-    [theme.breakpoints.down("md")]: { width: 290 },
+    borderRadius: theme.productTokens.radii.sm,
+    [theme.breakpoints.down("md")]: { width: 328, minWidth: 316 },
     [theme.breakpoints.up("xl")]: { width: 340 },
     [theme.breakpoints.down("sm")]: {
       width: "100%",
@@ -44,7 +44,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: "column",
     overflow: "hidden",
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 10,
+    borderRadius: theme.productTokens.radii.sm,
     [theme.breakpoints.down("sm")]: { border: 0, borderRadius: 0 }
   },
   hiddenConversation: { [theme.breakpoints.down("sm")]: { display: "none" } }

@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
 import "emoji-mart/css/emoji-mart.css";
 import { useParams } from "react-router-dom";
-import { Picker } from "emoji-mart";
 import { toast } from "react-toastify";
-import { readDraft, writeDraft, messageAttempt, finishMessageAttempt } from "../../services/messageDrafts";
+import { clearDraft, readDraft, writeDraft, messageAttempt, finishMessageAttempt } from "../../services/messageDrafts";
 import clsx from "clsx";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
 import InputBase from "@material-ui/core/InputBase";
 import CircularProgress from "@material-ui/core/CircularProgress";
-import { green } from "@material-ui/core/colors";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
 import IconButton from "@material-ui/core/IconButton";
 import MoreHorizIcon from "@material-ui/icons/MoreHoriz";
@@ -22,7 +20,7 @@ import StopIcon from "@material-ui/icons/Stop";
 import CollectionsBookmarkIcon from "@material-ui/icons/CollectionsBookmark";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
-import { FormControlLabel, Menu, MenuItem, Popover, Switch, Tooltip } from "@material-ui/core";
+import { FormControlLabel, Menu, MenuItem, Popover, Switch, Tooltip, useMediaQuery } from "@material-ui/core";
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
 import RecordingTimer from "./RecordingTimer";
@@ -35,6 +33,11 @@ import StickerPicker from "../StickerPicker";
 import { selectMediaFiles } from "../../services/mediaComposer";
 import { createAudioRecorder, audioErrorMessage } from "../../services/audioRecorder";
 import { getComposerAvailability } from "../../services/composerAvailability";
+const EmojiPicker = React.lazy(() =>
+  import("emoji-mart").then(module => ({
+    default: module.Picker || module.default?.Picker
+  }))
+);
 const mediaSignature = files => JSON.stringify(files.map(file => [file.name, file.size, file.lastModified]));
 const useStyles = makeStyles(theme => ({
   mainWrapper: {
@@ -55,7 +58,7 @@ const useStyles = makeStyles(theme => ({
   composerLabel: {
     alignSelf: "flex-start",
     padding: "10px 2px 8px",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 550
   },
   newMessageBox: {
@@ -126,6 +129,9 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 12,
     border: `1px solid ${theme.palette.divider}`,
     background: theme.palette.background.paper,
+    maxWidth: "calc(100vw - 24px)",
+    maxHeight: "calc(100vh - 24px)",
+    overflow: "hidden",
     "& .emoji-mart": {
       border: 0,
       background: "transparent",
@@ -143,7 +149,7 @@ const useStyles = makeStyles(theme => ({
     }
   },
   circleLoading: {
-    color: green[500],
+    color: theme.palette.primary.main,
     opacity: "70%",
     position: "absolute",
     top: "20%",
@@ -151,7 +157,7 @@ const useStyles = makeStyles(theme => ({
     marginLeft: -12
   },
   audioLoading: {
-    color: green[500],
+    color: theme.palette.primary.main,
     opacity: "70%"
   },
   recorderWrapper: {
@@ -201,16 +207,16 @@ const useStyles = makeStyles(theme => ({
   replyginContactMsgSideColor: {
     flex: "none",
     width: "4px",
-    backgroundColor: "#35cd96"
+    backgroundColor: theme.palette.primary.main
   },
   replyginSelfMsgSideColor: {
     flex: "none",
     width: "4px",
-    backgroundColor: "#6bcbef"
+    backgroundColor: theme.statusTokens.info.fg
   },
   messageContactName: {
     display: "flex",
-    color: "#6bcbef",
+    color: theme.statusTokens.info.fg,
     fontWeight: 500
   },
   messageQuickAnswersWrapper: {
@@ -253,10 +259,13 @@ const MessageInput = ({
   ticketStatus,
   sendBlocked,
   droppedFiles = [],
-  onDroppedFilesHandled
+  onDroppedFilesHandled,
+  assistantDraft,
+  onAssistantDraftHandled
 }) => {
   const classes = useStyles();
   const theme = useTheme();
+  const shortEmojiViewport = useMediaQuery("(max-height:700px)");
   const emojiButtonRef = useRef(null);
   const fileInputRef = useRef(null);
   const recorderRef = useRef(null);
@@ -276,6 +285,12 @@ const MessageInput = ({
     writeDraft(draftKey, next);
     return next;
   });
+  const clearInputMessage = () => {
+    // Draft cleanup must not depend on React processing an update after this
+    // conversation has already been unmounted.
+    clearDraft(draftKey);
+    if (mounted.current) setInputRaw("");
+  };
   const submit = async (payload, signature, requestConfig = {}) => {
     const response = await api.post(`/messages/${ticketId}`, payload, {
       ...requestConfig,
@@ -306,6 +321,14 @@ const MessageInput = ({
   useEffect(() => {
     inputRef.current?.focus();
   }, [replyingMessage]);
+  useEffect(() => {
+    if (!assistantDraft?.text) return;
+    setInputMessage(previous => previous.trim() ? `${previous}\n${assistantDraft.text}` : assistantDraft.text);
+    inputRef.current?.focus();
+    if (onAssistantDraftHandled) onAssistantDraftHandled();
+    // This effect consumes each explicit assistant draft exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assistantDraft?.id]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -394,7 +417,13 @@ const MessageInput = ({
     setUploadProgress(0);
   };
   const handleSendMessage = async () => {
-    if (inputMessage.trim() === "" || loading || sendBlocked || ticketStatus !== "open") return;
+    if (inputMessage.trim() === "" || loading || ticketStatus !== "open") return;
+    if (sendBlocked) {
+      toast.warn("Envio indisponível. Consulte o painel Contexto antes de tentar novamente.", {
+        toastId: "MESSAGE_SEND_BLOCKED"
+      });
+      return;
+    }
     setLoading(true);
     const message = {
       read: 1,
@@ -410,7 +439,7 @@ const MessageInput = ({
       setLoading(false);
       return;
     }
-    setInputMessage("");
+    clearInputMessage();
     setShowEmoji(false);
     setLoading(false);
     setReplyingMessage(null);
@@ -536,7 +565,7 @@ const MessageInput = ({
   return <Paper square elevation={0} className={classes.mainWrapper}>
       {replyingMessage && renderReplyingMessage(replyingMessage)}
       <span className={classes.composerLabel}>{recording ? "Gravando áudio" : recordedAudio ? "Ouça antes de enviar" : "Responder"}</span>
-      <Popover id="composer-emojis" open={showEmoji} anchorEl={emojiButtonRef.current} onClose={() => {
+      <Popover id="composer-emojis" open={showEmoji} anchorEl={emojiButtonRef.current} marginThreshold={12} onClose={() => {
       setShowEmoji(false);
       emojiButtonRef.current?.focus();
     }} anchorOrigin={{
@@ -551,10 +580,11 @@ const MessageInput = ({
       role: "dialog",
       "aria-label": "Escolher emoji"
     }} disableRestoreFocus>
-        <Picker native autoFocus perLine={8} showPreview={false} showSkinTones={false} theme={theme.palette.type} onSelect={handleAddEmoji} style={{
+        {showEmoji && <React.Suspense fallback={<CircularProgress size={24} />}><EmojiPicker native autoFocus perLine={8} showPreview={false} showSkinTones={false} theme={theme.palette.type} onSelect={handleAddEmoji} style={{
           width: 340,
-          height: 320,
-          maxWidth: "calc(100vw - 24px)"
+          height: shortEmojiViewport ? 240 : 320,
+          maxWidth: "calc(100vw - 24px)",
+          maxHeight: "calc(100vh - 24px)"
         }} i18n={{
           search: "Pesquisar emojis",
           notfound: "Nenhum emoji encontrado",
@@ -571,7 +601,7 @@ const MessageInput = ({
             flags: "Bandeiras",
             custom: "Personalizados"
           }
-        }} />
+        }} /></React.Suspense>}
       </Popover>
       <StickerPicker open={showStickers} onClose={() => setShowStickers(false)} ticketId={ticketId} />
       <div className={classes.newMessageBox}>

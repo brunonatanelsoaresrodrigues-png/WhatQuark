@@ -27,7 +27,6 @@ import {
 import { PhotoCamera, Visibility, VisibilityOff } from "@material-ui/icons";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 
 import { i18n } from "../../translate/i18n";
 
@@ -56,7 +55,7 @@ const useStyles = makeStyles((theme) => ({
   },
 
   buttonProgress: {
-    color: green[500],
+    color: theme.palette.primary.main,
     position: "absolute",
     top: "50%",
     left: "50%",
@@ -98,10 +97,28 @@ const useStyles = makeStyles((theme) => ({
   },
   avatarHint: {
     color: theme.palette.text.secondary,
-    fontSize: ".73rem",
+    fontSize: ".75rem",
   },
   hiddenInput: {
     display: "none",
+  },
+  ratingSection: {
+    marginBottom: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 12,
+    background: theme.palette.background.default,
+  },
+  ratingMetrics: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: theme.spacing(1.5),
+    marginTop: theme.spacing(0.75),
+    color: theme.palette.text.secondary,
+  },
+  ratingScore: {
+    color: theme.palette.warning.dark,
+    fontWeight: 700,
   },
 }));
 
@@ -135,6 +152,7 @@ const UserModal = ({ open, onClose, userId }) => {
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
   const [avatarRemoved, setAvatarRemoved] = useState(false);
+  const [ratingSummary, setRatingSummary] = useState(null);
   const { loading, whatsApps } = useWhatsApps();
 
   useEffect(() => {
@@ -155,6 +173,17 @@ const UserModal = ({ open, onClose, userId }) => {
 
     fetchUser();
   }, [userId, open]);
+
+  useEffect(() => {
+    if (!open || !userId) {
+      setRatingSummary(null);
+      return;
+    }
+    api
+      .get(`/service-ratings/users/${userId}`, { params: { days: 30 } })
+      .then(({ data }) => setRatingSummary(data))
+      .catch(toastError);
+  }, [open, userId]);
 
   useEffect(
     () => () => {
@@ -321,6 +350,21 @@ const UserModal = ({ open, onClose, userId }) => {
                     </div>
                   </div>
                 </div>
+                {userId && ratingSummary && (
+                  <div className={classes.ratingSection}>
+                    <Typography variant="subtitle2">
+                      Avaliação dos últimos 30 dias
+                    </Typography>
+                    <div className={classes.ratingMetrics}>
+                      <span className={classes.ratingScore}>
+                        ★ {ratingSummary.average === null ? "Sem notas" : `${ratingSummary.average} / 5`}
+                      </span>
+                      <span>{ratingSummary.points ?? "—"} pontos</span>
+                      <span>{ratingSummary.answered} respostas</span>
+                      <span>{ratingSummary.responseRate}% de participação</span>
+                    </div>
+                  </div>
+                )}
                 <div className={classes.multFieldLine}>
                   <Field
                     as={TextField}

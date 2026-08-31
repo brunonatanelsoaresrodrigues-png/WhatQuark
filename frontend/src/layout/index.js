@@ -34,6 +34,12 @@ const useStyles = makeStyles(theme => ({
     background: theme.palette.background.default,
     borderBottom: `1px solid ${theme.palette.divider}`,
     boxShadow: "none",
+    // O conteudo rola por baixo do header: o desfoque so entra onde ha suporte,
+    // e a cor solida acima continua sendo o fundo em qualquer navegador.
+    "@supports (backdrop-filter: blur(12px))": {
+      background: theme.modeTokens.headerVeil,
+      backdropFilter: "blur(12px) saturate(140%)"
+    },
     transition: theme.transitions.create(["width", "margin"], {
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.leavingScreen
@@ -90,7 +96,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: 3,
     overflow: "hidden",
     color: theme.palette.text.secondary,
-    fontSize: ".7rem",
+    fontSize: ".75rem",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     [theme.breakpoints.down("xs")]: {
@@ -102,9 +108,10 @@ const useStyles = makeStyles(theme => ({
     width: drawerWidth,
     overflowX: "hidden",
     whiteSpace: "nowrap",
-    color: "#E8EEF5",
+    color: theme.modeTokens.navText,
     backgroundColor: theme.modeTokens.nav,
-    borderRight: "1px solid rgba(255,255,255,.07)",
+    backgroundImage: theme.gradients.nav,
+    borderRight: `1px solid ${theme.modeTokens.navBorder}`,
     boxShadow: "none",
     transition: theme.transitions.create("width", {
       easing: theme.transitions.easing.sharp,
@@ -125,7 +132,7 @@ const useStyles = makeStyles(theme => ({
     minHeight: 64,
     flexShrink: 0,
     padding: "0 8px 0 14px",
-    borderBottom: "1px solid rgba(255,255,255,.08)"
+    borderBottom: `1px solid ${theme.modeTokens.navBorder}`
   },
   brand: {
     display: "flex",
@@ -137,8 +144,8 @@ const useStyles = makeStyles(theme => ({
     width: 32,
     height: 32,
     flexShrink: 0,
-    color: "#fff",
-    background: "#087D9B",
+    color: theme.modeTokens.navText,
+    backgroundImage: theme.gradients.brand,
     "& svg": {
       width: 24,
       height: 24
@@ -149,7 +156,7 @@ const useStyles = makeStyles(theme => ({
     lineHeight: 1.05
   },
   brandName: {
-    color: "#fff",
+    color: theme.modeTokens.navText,
     fontSize: ".9rem",
     fontWeight: 650,
     letterSpacing: "-.025em"
@@ -158,11 +165,11 @@ const useStyles = makeStyles(theme => ({
     display: "block",
     marginTop: 3,
     color: theme.modeTokens.navMuted,
-    fontSize: ".64rem",
+    fontSize: ".75rem",
     fontWeight: 400
   },
   drawerToggle: {
-    color: "rgba(235,246,255,.74)"
+    color: theme.modeTokens.navMuted
   },
   profilePanel: {
     display: "flex",
@@ -171,8 +178,8 @@ const useStyles = makeStyles(theme => ({
     flexShrink: 0,
     margin: 0,
     padding: theme.spacing(1.5),
-    color: "#fff",
-    borderTop: "1px solid rgba(255,255,255,.07)"
+    color: theme.modeTokens.navText,
+    borderTop: `1px solid ${theme.modeTokens.navBorder}`
   },
   profilePanelCompact: {
     justifyContent: "center",
@@ -182,10 +189,10 @@ const useStyles = makeStyles(theme => ({
     width: 32,
     height: 32,
     flexShrink: 0,
-    color: "#fff",
+    color: theme.modeTokens.navText,
     fontSize: ".78rem",
     fontWeight: 600,
-    background: "#17445B"
+    background: theme.modeTokens.navActive
   },
   profileName: {
     maxWidth: 160,
@@ -197,7 +204,7 @@ const useStyles = makeStyles(theme => ({
   },
   profileCaption: {
     color: theme.modeTokens.navMuted,
-    fontSize: ".65rem"
+    fontSize: ".75rem"
   },
   navigation: {
     flex: 1,
@@ -206,7 +213,7 @@ const useStyles = makeStyles(theme => ({
     ...theme.scrollbarStyles
   },
   navDivider: {
-    backgroundColor: "rgba(255,255,255,.08)"
+    backgroundColor: theme.modeTokens.navBorder
   },
   content: {
     display: "flex",

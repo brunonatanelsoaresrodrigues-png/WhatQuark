@@ -2,6 +2,7 @@ import { hostname } from "os";
 import { Op, Transaction } from "sequelize";
 import sequelize from "../../database";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
 import QuarkSyncState from "../../models/QuarkSyncState";
 import { logger } from "../../utils/logger";
@@ -35,7 +36,10 @@ import {
   getPreference
 } from "../MessagingServices/preferences";
 import { dueReminder } from "./reminderTiming";
-const FINGERPRINT_VERSION = 4;
+// Version 5 adds the historical appointment baseline. Bumping the version
+// makes existing installations perform a safe, notification-free two-pass
+// import after deployment.
+const FINGERPRINT_VERSION = 5;
 const SYNC_STATE_KEY = "appointments";
 const syncWorkerId = `${hostname()}-${process.pid}`.slice(0, 64);
 const formatApiDate = (date: Date) => {
@@ -87,10 +91,10 @@ const queueNotice = async (
   transaction: Transaction,
   suppressed = false,
   sendOnlyOnWeekday?: number
-) => {
+): Promise<boolean> => {
   const recipient =
     snapshot.phones.find(item => item.isPrimary) || snapshot.phones[0];
-  if (!recipient) return;
+  if (!recipient) return false;
   const preference = await getPreference(recipient.phone);
   const ref = appointmentReference(
     snapshot.appointmentId,
@@ -103,9 +107,14 @@ const queueNotice = async (
       ? `\n\nPara confirmar: CONFIRMAR ${ref}\nPara solicitar cancelamento: CANCELAR ${ref}`
       : ""
   }\n\nPara deixar de receber avisos, responda PARAR.`;
-  await createQuarkNotificationOnce(
+  const notificationKey = `${key}:to:${quarkPhoneKey(recipient.phone)}`;
+  const notificationStatus =
+    suppressed || !canReceiveAppointmentNotices(preference)
+      ? "SUPPRESSED"
+      : "PENDING";
+  const created = await createQuarkNotificationOnce(
     snapshot.appointmentId,
-    `${key}:to:${quarkPhoneKey(recipient.phone)}`,
+    notificationKey,
     eventType,
     {
       phone: recipient.phone,
@@ -116,11 +125,53 @@ const queueNotice = async (
       scheduleFingerprint: snapshot.scheduleFingerprint,
       sendOnlyOnWeekday
     },
-    suppressed || !canReceiveAppointmentNotices(preference)
-      ? "SUPPRESSED"
-      : "PENDING",
+    notificationStatus,
     transaction
   );
+  if (
+    !created &&
+    notificationStatus === "PENDING" &&
+    eventType === "REMINDER"
+  ) {
+    const existing = await QuarkAppointmentNotification.findOne({
+      where: { appointmentId: snapshot.appointmentId, notificationKey },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    } as any);
+    if (existing?.status === "SUPPRESSED" && !existing.lastError) {
+      const competing = await QuarkAppointmentNotification.findOne({
+        where: {
+          appointmentId: snapshot.appointmentId,
+          recipientPhone: recipient.phone,
+          id: { [Op.ne]: existing.id },
+          eventType: { [Op.ne]: "CANCELLED" },
+          status: {
+            [Op.in]: [
+              "PENDING",
+              "PROCESSING",
+              "FAILED_RETRY",
+              "SENT",
+              "UNKNOWN"
+            ]
+          },
+          payload: { [Op.like]: `%${snapshot.scheduleFingerprint}%` }
+        },
+        transaction
+      });
+      if (!competing)
+        await existing.update(
+          {
+            status: "PENDING",
+            attempts: 0,
+            nextAttemptAt: new Date(),
+            priorityAt: snapshot.scheduledAt,
+            lastError: null
+          },
+          { transaction }
+        );
+    }
+  }
+  return created;
 };
 const processSnapshot = async (
   config: QuarkConfig,
@@ -234,7 +285,9 @@ const processSnapshot = async (
         );
         notified = true;
       }
-      if (reminder)
+      // A baseline must not reserve the deterministic reminder key. The next
+      // active sweep must still be able to create and send that reminder.
+      if (reminder && !baseline)
         await queueNotice(
           snapshot,
           `reminder:${reminder.hours}:${snapshot.scheduleFingerprint.slice(
@@ -249,7 +302,7 @@ const processSnapshot = async (
             reminder.mondayAdvance
           ),
           transaction,
-          baseline || notified,
+          notified,
           reminder.sendOnlyOnWeekday
         );
       await QuarkAppointmentRecipient.update(
@@ -280,20 +333,32 @@ const processSnapshot = async (
       }
     });
   });
-const fetchSnapshots = async (config: QuarkConfig, horizon: number) => {
+const fetchSnapshots = async (
+  config: QuarkConfig,
+  horizon: number,
+  lookback: number
+) => {
   const values = new Map<string, AppointmentSnapshot>();
   const today = clinicDay();
-  for (let offset = 0; offset < horizon; offset += 30) {
+  const firstOffset = -Math.max(0, lookback);
+  const firstDay = clinicDay(today, firstOffset);
+  const horizonDay = clinicDay(today, horizon);
+  for (let offset = firstOffset; offset < horizon; offset += 30) {
     assertNotShuttingDown();
+    const endOffset = Math.min(offset + 29, horizon - 1);
     const appointments = await listQuarkAppointments(
       config,
       formatApiDate(clinicDay(today, offset)),
-      formatApiDate(clinicDay(today, Math.min(offset + 29, horizon - 1)))
+      formatApiDate(clinicDay(today, endOffset))
     );
     for (const appointment of appointments) {
       if (appointment.id === undefined || appointment.id === null) continue;
       const snapshot = buildAppointmentSnapshot(appointment, config);
-      if (snapshot.scheduledAt && snapshot.scheduledAt >= today)
+      if (
+        snapshot.scheduledAt &&
+        snapshot.scheduledAt >= firstDay &&
+        snapshot.scheduledAt < horizonDay
+      )
         values.set(snapshot.appointmentId, snapshot);
     }
     await QuarkSyncState.update(
@@ -341,11 +406,19 @@ export const SyncQuarkAppointmentsService = async (
     const horizon = full
       ? config.syncHorizonDays
       : Math.min(30, config.syncHorizonDays);
-    let snapshots = await fetchSnapshots(config, horizon);
+    const lookback = full
+      ? config.syncLookbackDays
+      : Math.min(30, config.syncLookbackDays);
+    const today = clinicDay();
+    let snapshots = await fetchSnapshots(config, horizon, lookback);
     for (const snapshot of snapshots)
-      await processSnapshot(config, snapshot, baseline);
+      await processSnapshot(
+        config,
+        snapshot,
+        baseline || (!!snapshot.scheduledAt && snapshot.scheduledAt < today)
+      );
     if (baseline) {
-      snapshots = await fetchSnapshots(config, horizon);
+      snapshots = await fetchSnapshots(config, horizon, lookback);
       for (const snapshot of snapshots)
         await processSnapshot(config, snapshot, true);
     }
@@ -365,7 +438,8 @@ export const SyncQuarkAppointmentsService = async (
       info: "Quark synchronization completed",
       count: snapshots.length,
       baseline,
-      horizon
+      horizon,
+      lookback
     });
   } finally {
     await QuarkSyncState.update(

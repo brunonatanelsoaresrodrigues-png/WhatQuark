@@ -4,7 +4,7 @@ import { makeStyles } from "@material-ui/core/styles";
 import ModalImage from "react-modal-image";
 import useProtectedMedia from "../../hooks/useProtectedMedia";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles(() => ({
   messageMedia: {
     objectFit: "cover",
     width: 250,

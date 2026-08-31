@@ -1,7 +1,7 @@
 import { Op, WhereOptions } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
-import { appointmentReference } from "./appointmentUtils";
+import { appointmentReference, quarkPhoneVariants } from "./appointmentUtils";
 import { clinicTimezone } from "./clinicTime";
 
 const cancelledStatuses = ["CANCELADO", "CANCELADO_VIA_SMS", "EXCLUIDO"];
@@ -34,14 +34,18 @@ const ListContactAppointmentsService = async ({
   now = new Date(),
   limit = 5
 }: Request) => {
+  const phoneVariants = quarkPhoneVariants(phone);
   const recipients = await QuarkAppointmentRecipient.findAll({
-    where: { phone, active: true },
+    where: { phone: { [Op.in]: phoneVariants }, active: true },
     attributes: ["appointmentId"]
   });
   const appointmentIds = Array.from(
     new Set(recipients.map(recipient => recipient.appointmentId))
   );
-  const contact: WhereOptions[] = [{ phone }];
+  const contact: WhereOptions[] = [
+    { phone: { [Op.in]: phoneVariants } },
+    ...phoneVariants.map(value => ({ phones: { [Op.like]: `%${value}%` } }))
+  ];
   if (appointmentIds.length) {
     contact.push({ appointmentId: { [Op.in]: appointmentIds } });
   }

@@ -136,6 +136,14 @@ it("never bypasses an appointment notice opt-out", () => {
   ).toBe("ERR_RECIPIENT_OPTED_OUT");
 });
 
+it("bypasses patient consent only for an authorized internal report", () => {
+  const policy = { proactive: true, internalReport: true };
+  expect(consentErrorForSend(preference("UNKNOWN"), policy, false, true)).toBeNull();
+  expect(consentErrorForSend(preference("UNKNOWN"), policy, false, false)).toBe(
+    "ERR_CONSENT_REQUIRED"
+  );
+});
+
 it("stores PROCESSING before calling transport and then persists success", async () => {
   transport.sendMessage.mockImplementation(async () => {
     expect(row.status).toBe("PROCESSING");
@@ -204,6 +212,36 @@ it("rejects stale bot sends after human takeover", async () => {
     validateSend(1, row.recipient, { ticketId: 1, bot: true })
   ).rejects.toThrow("ERR_BOT_PAUSED");
 });
+it("allows an unassigned appointment reply while the general bot is paused", async () => {
+  (Ticket.findByPk as jest.Mock).mockResolvedValue({
+    id: 1,
+    whatsappId: 1,
+    contactId: 2,
+    userId: null,
+    status: "pending"
+  });
+  (Contact.findByPk as jest.Mock).mockResolvedValue({
+    id: 2,
+    number: row.recipient
+  });
+  (readState as jest.Mock).mockImplementation((key, fallback) =>
+    Promise.resolve(
+      key.startsWith("inbound-time")
+        ? new Date(Date.now() - 1000).toISOString()
+        : key === "bot-pause:1"
+        ? true
+        : fallback
+    )
+  );
+
+  await expect(
+    validateSend(1, row.recipient, {
+      ticketId: 1,
+      bot: true,
+      allowPausedBot: true
+    })
+  ).resolves.toBeUndefined();
+});
 it("returns the prior result for the same idempotency key", async () => {
   row.status = "SENT";
   row.result = JSON.stringify({ id: "original" });
@@ -221,9 +259,10 @@ it("never queues a group recipient", async () => {
 });
 
 it.each(["whaileys", "wwebjs"])(
-  "delivers through the existing %s transport without a Meta template",
+  "delivers through the existing %s transport without Meta consent",
   async provider => {
     process.env.WHATSAPP_PROVIDER = provider;
+    (getPreference as jest.Mock).mockResolvedValue({ consent: "UNKNOWN" });
     (readState as jest.Mock).mockImplementation((_: string, fallback: any) =>
       Promise.resolve(fallback)
     );

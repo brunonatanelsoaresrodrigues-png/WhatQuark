@@ -5,6 +5,7 @@ import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import UpdateTicketService from "../TicketServices/UpdateTicketService";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import HandleQuarkConfirmationReply from "../QuarkClinicServices/HandleQuarkConfirmationReply";
+import { parseConfirmationReply } from "../QuarkClinicServices/appointmentUtils";
 import PatientIntakeService from "../PatientIntakeServices/PatientIntakeService";
 import PausePatientIntakeService from "../PatientIntakeServices/PausePatientIntakeService";
 import { digest, readState, writeState, withLease } from "./state";
@@ -73,23 +74,27 @@ export const HandleInboundAutomation = async (input: Input): Promise<void> => {
               "preference",
               false
             ).catch(() => undefined);
-          } else if (
-            !ticket.userId &&
-            ticket.status !== "closed" &&
-            !(await readState(`bot-pause:${ticket.id}`, false))
-          ) {
-            await assertExecution(input.phone);
+          } else if (!ticket.userId && ticket.status !== "closed") {
+            const botPaused = await readState(
+              `bot-pause:${ticket.id}`,
+              false
+            );
             const human =
               /^(atendente|humano|ajuda|falar com atendente)$/i.test(
                 input.body.trim()
               );
+            const appointmentReply = parseConfirmationReply(input.body);
             const handled =
               !human &&
+              (!botPaused || !!appointmentReply) &&
               (await HandleQuarkConfirmationReply({
                 ...input,
                 ticket
               }));
-            if (!handled && !ticket.queueId) {
+            if (!handled && !botPaused) {
+              await assertExecution(input.phone);
+            }
+            if (!handled && !botPaused && !ticket.queueId) {
               const whatsapp = await ShowWhatsAppService(input.whatsappId);
               if (!human) {
                 const priorStatus = ticket.intakeStatus;

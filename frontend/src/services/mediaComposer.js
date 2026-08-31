@@ -36,11 +36,18 @@ export const isStickerMessage = message =>
   message?.mediaType === "sticker" || /\.webp(?:$|\?)/i.test(message?.mediaUrl || "");
 
 const generatedImageFilename = /^[^/\\\n]+\.(?:avif|bmp|gif|heic|heif|jpe?g|png|webp)$/i;
+const generatedAudioFilename = /^[^/\\\n]+\.(?:aac|amr|m4a|mp3|oga|ogg|opus|wav|weba|webm)$/i;
 
 export const shouldRenderMessageBody = message => {
   const body = (message?.body || "").trim();
   if (!body) return false;
   if (isStickerMessage(message) && /^(?:Figurinha|[^/\\]+\.webp)$/i.test(body)) {
+    return false;
+  }
+  if (
+    ["audio", "ptt"].includes(message?.mediaType) &&
+    generatedAudioFilename.test(body)
+  ) {
     return false;
   }
   const isImage =

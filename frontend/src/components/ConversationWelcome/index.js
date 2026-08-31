@@ -33,7 +33,7 @@ const useStyles = makeStyles(theme => ({
   },
   eyebrow: {
     display: "block",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 550,
     letterSpacing: ".08em",
     textTransform: "uppercase",

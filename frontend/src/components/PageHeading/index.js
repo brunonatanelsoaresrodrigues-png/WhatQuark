@@ -20,7 +20,7 @@ const useStyles = makeStyles(theme => ({
   eyebrow: {
     display: "block",
     color: theme.palette.primary.main,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 550,
     letterSpacing: ".08em",
     textTransform: "uppercase",

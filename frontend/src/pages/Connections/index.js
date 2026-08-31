@@ -5,14 +5,12 @@ import { toast } from "react-toastify";
 import { format, parseISO } from "date-fns";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 import {
   Button,
   TableBody,
   TableRow,
   TableCell,
   IconButton,
-  Table,
   TableHead,
   Paper,
   Tooltip,
@@ -30,9 +28,7 @@ import {
 } from "@material-ui/icons";
 
 import MainContainer from "../../components/MainContainer";
-import MainHeader from "../../components/MainHeader";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
-import Title from "../../components/Title";
+import PageHeading from "../../components/PageHeading";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
 
 import api from "../../services/api";
@@ -42,33 +38,36 @@ import QrcodeModal from "../../components/QrcodeModal";
 import { i18n } from "../../translate/i18n";
 import { WhatsAppsContext } from "../../context/WhatsApp/WhatsAppsContext";
 import toastError from "../../errors/toastError";
+import ResponsiveTable from "../../components/ResponsiveTable";
+import OperationalHealthPanel from "../../components/OperationalHealthPanel";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 const useStyles = makeStyles(theme => ({
-  mainPaper: {
-    flex: 1,
-    padding: 0,
-    overflow: "auto",
-    borderRadius: 14,
-    minHeight: 160,
-    ...theme.scrollbarStyles
-  },
+  mainPaper: theme.panelStyles,
   customTableCell: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center"
   },
   tooltip: {
-    backgroundColor: "#f5f5f9",
-    color: "rgba(0, 0, 0, 0.87)",
-    fontSize: theme.typography.pxToRem(14),
-    border: "1px solid #dadde9",
+    // Este tooltip e um cartao de ajuda com texto longo, nao o tooltip escuro
+    // padrao: segue a superficie de sobreposicao do tema, nos dois modos.
+    backgroundColor: theme.modeTokens.surfaceOverlay,
+    color: theme.palette.text.primary,
+    fontSize: theme.typography.pxToRem(13),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.productTokens.radii.sm,
+    boxShadow: theme.productTokens.shadows.raised,
     maxWidth: 450
   },
   tooltipPopper: {
     textAlign: "center"
   },
   buttonProgress: {
-    color: green[500]
+    color: theme.palette.primary.main
+  },
+  successIcon: {
+    color: theme.statusTokens.success.fg
   }
 }));
 
@@ -100,6 +99,7 @@ const Connections = () => {
   const classes = useStyles();
 
   const { whatsApps, loading } = useContext(WhatsAppsContext);
+  const { user } = useContext(AuthContext);
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [selectedWhatsApp, setSelectedWhatsApp] = useState(null);
@@ -278,7 +278,7 @@ const Connections = () => {
         )}
         {whatsApp.status === "CONNECTED" && (
           <CustomToolTip title={i18n.t("connections.toolTips.connected.title")}>
-            <SignalCellular4Bar style={{ color: green[500] }} />
+            <SignalCellular4Bar className={classes.successIcon} />
           </CustomToolTip>
         )}
         {(whatsApp.status === "TIMEOUT" || whatsApp.status === "PAIRING") && (
@@ -313,9 +313,10 @@ const Connections = () => {
         onClose={handleCloseWhatsAppModal}
         whatsAppId={!qrModalOpen && selectedWhatsApp?.id}
       />
-      <MainHeader>
-        <Title>{i18n.t("connections.title")}</Title>
-        <MainHeaderButtonsWrapper>
+      <PageHeading
+        title={i18n.t("connections.title")}
+        description="Gerencie os canais e acompanhe a disponibilidade das conexões."
+        actions={
           <Button
             variant="contained"
             color="primary"
@@ -323,10 +324,11 @@ const Connections = () => {
           >
             {i18n.t("connections.buttons.add")}
           </Button>
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
+        }
+      />
+      {user?.profile === "admin" && <OperationalHealthPanel />}
       <Paper className={classes.mainPaper} variant="outlined">
-        <Table size="medium" aria-label="Registros">
+        <ResponsiveTable size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -363,25 +365,25 @@ const Connections = () => {
                 {whatsApps?.length > 0 &&
                   whatsApps.map(whatsApp => (
                     <TableRow key={whatsApp.id}>
-                      <TableCell align="center">{whatsApp.name}</TableCell>
-                      <TableCell align="center">
+                      <TableCell data-mobile-primary align="center">{whatsApp.name}</TableCell>
+                      <TableCell data-label="Status" align="center">
                         {renderStatusToolTips(whatsApp)}
                       </TableCell>
-                      <TableCell align="center">
+                      <TableCell data-label="Sessão" align="center">
                         {renderActionButtons(whatsApp)}
                         <HistorySyncButton whatsapp={whatsApp} />
                       </TableCell>
-                      <TableCell align="center">
+                      <TableCell data-label="Última atualização" align="center">
                         {format(parseISO(whatsApp.updatedAt), "dd/MM/yy HH:mm")}
                       </TableCell>
-                      <TableCell align="center">
+                      <TableCell data-label="Padrão" align="center">
                         {whatsApp.isDefault && (
                           <div className={classes.customTableCell}>
-                            <CheckCircle style={{ color: green[500] }} />
+                            <CheckCircle className={classes.successIcon} />
                           </div>
                         )}
                       </TableCell>
-                      <TableCell align="center">
+                      <TableCell data-label="Ações" data-mobile-actions align="center">
                         <IconButton
                           size="small"
                           aria-label={`Editar ${whatsApp.name}`}
@@ -405,7 +407,7 @@ const Connections = () => {
               </>
             )}
           </TableBody>
-        </Table>
+        </ResponsiveTable>
       </Paper>
     </MainContainer>
   );

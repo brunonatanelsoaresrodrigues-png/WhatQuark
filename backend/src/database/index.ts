@@ -28,6 +28,12 @@ import DailyReportRecipientEvent from "../models/DailyReportRecipientEvent";
 import QuarkAppointmentRecipient from "../models/QuarkAppointmentRecipient";
 import PatientIntakeBooking from "../models/PatientIntakeBooking";
 import SavedSticker from "../models/SavedSticker";
+import ContactIdentityIssue from "../models/ContactIdentityIssue";
+import ContactQuarkLink from "../models/ContactQuarkLink";
+import ContactIdentityAudit from "../models/ContactIdentityAudit";
+import OperationalIncident from "../models/OperationalIncident";
+import AiSuggestion from "../models/AiSuggestion";
+import ServiceRating from "../models/ServiceRating";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -64,7 +70,13 @@ const models = [
   DailyReportRecipientEvent,
   QuarkAppointmentRecipient,
   PatientIntakeBooking,
-  SavedSticker
+  SavedSticker,
+  ContactIdentityIssue,
+  ContactQuarkLink,
+  ContactIdentityAudit,
+  OperationalIncident,
+  AiSuggestion,
+  ServiceRating
 ];
 
 sequelize.addModels(models);

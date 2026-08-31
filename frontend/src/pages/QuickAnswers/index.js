@@ -1,5 +1,5 @@
 import TableEmptyState from "../../components/TableEmptyState";
-import React, { useState, useEffect, useReducer } from "react";
+import React, { useState, useEffect, useReducer, useContext } from "react";
 import openSocket from "../../services/socket-io";
 
 import {
@@ -7,7 +7,6 @@ import {
   IconButton,
   makeStyles,
   Paper,
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -19,9 +18,7 @@ import { Edit, DeleteOutline } from "@material-ui/icons";
 import SearchIcon from "@material-ui/icons/Search";
 
 import MainContainer from "../../components/MainContainer";
-import MainHeader from "../../components/MainHeader";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
-import Title from "../../components/Title";
+import PageHeading from "../../components/PageHeading";
 
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n";
@@ -30,6 +27,8 @@ import QuickAnswersModal from "../../components/QuickAnswersModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import { toast } from "react-toastify";
 import toastError from "../../errors/toastError";
+import ResponsiveTable from "../../components/ResponsiveTable";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_QUICK_ANSWERS") {
@@ -76,18 +75,12 @@ const reducer = (state, action) => {
 };
 
 const useStyles = makeStyles(theme => ({
-  mainPaper: {
-    flex: 1,
-    padding: 0,
-    overflow: "auto",
-    borderRadius: 14,
-    minHeight: 160,
-    ...theme.scrollbarStyles
-  }
+  mainPaper: theme.panelStyles
 }));
 
 const QuickAnswers = () => {
   const classes = useStyles();
+  const { user } = useContext(AuthContext);
 
   const [loading, setLoading] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
@@ -216,39 +209,42 @@ const QuickAnswers = () => {
         aria-labelledby="form-dialog-title"
         quickAnswerId={selectedQuickAnswers && selectedQuickAnswers.id}
       ></QuickAnswersModal>
-      <MainHeader>
-        <Title>{i18n.t("quickAnswers.title")}</Title>
-        <MainHeaderButtonsWrapper>
-          <TextField
-            placeholder={i18n.t("quickAnswers.searchPlaceholder")}
-            type="search"
-            size="small"
-            inputProps={{ "aria-label": "Buscar registros" }}
-            value={searchParam}
-            onChange={handleSearch}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
-                </InputAdornment>
-              )
-            }}
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleOpenQuickAnswersModal}
-          >
-            {i18n.t("quickAnswers.buttons.add")}
-          </Button>
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
+      <PageHeading
+        title={i18n.t("quickAnswers.title")}
+        description="Organize respostas para tornar o atendimento mais consistente."
+        actions={
+          <>
+            <TextField
+              placeholder={i18n.t("quickAnswers.searchPlaceholder")}
+              type="search"
+              size="small"
+              inputProps={{ "aria-label": "Buscar registros" }}
+              value={searchParam}
+              onChange={handleSearch}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="disabled" />
+                  </InputAdornment>
+                )
+              }}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleOpenQuickAnswersModal}
+            >
+              {i18n.t("quickAnswers.buttons.add")}
+            </Button>
+          </>
+        }
+      />
       <Paper
         className={classes.mainPaper}
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="medium" aria-label="Registros">
+        <ResponsiveTable size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -266,18 +262,18 @@ const QuickAnswers = () => {
             <>
               {quickAnswers.map(quickAnswer => (
                 <TableRow key={quickAnswer.id}>
-                  <TableCell align="center">{quickAnswer.shortcut}</TableCell>
-                  <TableCell align="center">{quickAnswer.message}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
+                  <TableCell data-mobile-primary align="center">{quickAnswer.shortcut}</TableCell>
+                  <TableCell data-label="Mensagem" align="center">{quickAnswer.message}</TableCell>
+                  <TableCell data-label="Ações" data-mobile-actions align="center">
+                    {(user.profile === "admin" || quickAnswer.userId === user.id) && <IconButton
                       size="small"
                       aria-label={`Editar ${quickAnswer.shortcut}`}
                       onClick={() => handleEditQuickAnswers(quickAnswer)}
                     >
                       <Edit />
-                    </IconButton>
+                    </IconButton>}
 
-                    <IconButton
+                    {(user.profile === "admin" || quickAnswer.userId === user.id) && <IconButton
                       size="small"
                       aria-label="Excluir registro"
                       onClick={() => {
@@ -286,7 +282,7 @@ const QuickAnswers = () => {
                       }}
                     >
                       <DeleteOutline />
-                    </IconButton>
+                    </IconButton>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -296,7 +292,7 @@ const QuickAnswers = () => {
               {loading && <TableRowSkeleton columns={3} />}
             </>
           </TableBody>
-        </Table>
+        </ResponsiveTable>
       </Paper>
     </MainContainer>
   );

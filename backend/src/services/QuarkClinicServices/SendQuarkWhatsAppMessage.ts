@@ -6,6 +6,7 @@ import FindNotificationTicket from "../TicketServices/FindNotificationTicket";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import { whatsappProvider } from "../../providers/WhatsApp";
 import { QuarkConfig } from "./config";
+import { quarkPhoneVariants } from "./appointmentUtils";
 
 const getWhatsapp = async (config: QuarkConfig): Promise<Whatsapp> => {
   if (!config.whatsappId) throw new AppError("ERR_QUARK_CHANNEL_REQUIRED", 409);
@@ -34,10 +35,28 @@ const SendQuarkWhatsAppMessage = async (
     throw new Error("QUARK_TEMPORARY_WHATSAPP_DISCONNECTED");
   }
 
-  const validatedNumber = await whatsappProvider.checkNumber(
-    whatsapp.id,
-    phone
-  );
+  let validatedNumber = "";
+  let numberError: unknown;
+  for (const candidate of quarkPhoneVariants(
+    phone,
+    config.defaultCountryCode
+  )) {
+    try {
+      validatedNumber = await whatsappProvider.checkNumber(
+        whatsapp.id,
+        candidate
+      );
+      break;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("ERR_NUMBER_NOT_ON_WHATSAPP")
+      )
+        throw error;
+      numberError = error;
+    }
+  }
+  if (!validatedNumber) throw numberError || new Error("ERR_NUMBER_NOT_ON_WHATSAPP");
   const normalizedNumber = validatedNumber.replace(/\D/g, "");
   if (!normalizedNumber) {
     throw new Error("QUARK_PERMANENT_INVALID_PHONE");

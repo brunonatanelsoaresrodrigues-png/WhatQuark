@@ -1,7 +1,6 @@
 import React from "react";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
 import { CircularProgress, Button } from "@material-ui/core";
 
 const useStyles = makeStyles(theme => ({
@@ -10,7 +9,7 @@ const useStyles = makeStyles(theme => ({
   },
 
   buttonProgress: {
-    color: green[500],
+    color: theme.palette.primary.main,
     position: "absolute",
     top: "50%",
     left: "50%",

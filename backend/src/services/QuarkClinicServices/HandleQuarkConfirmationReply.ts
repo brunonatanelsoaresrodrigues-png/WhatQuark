@@ -6,7 +6,8 @@ import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import {
   appointmentReference,
   formatAppointmentDateTime,
-  parseConfirmationReply
+  parseConfirmationReply,
+  quarkPhoneVariants
 } from "./appointmentUtils";
 import { getQuarkConfig, isQuarkIntegrationEnabled } from "./config";
 import { assertExecution } from "../MessagingServices/policy";
@@ -49,14 +50,22 @@ const HandleQuarkConfirmationReply = async ({
   const config = getQuarkConfig();
   if (!config.whatsappId || config.whatsappId !== whatsappId) return false;
   await assertExecution(phone, true);
+  const phoneVariants = quarkPhoneVariants(phone);
   const recipients = await QuarkAppointmentRecipient.findAll({
-    where: { phone, active: true, isPrimary: true }
+    where: {
+      phone: { [Op.in]: phoneVariants },
+      active: true,
+      isPrimary: true
+    }
   });
   const ids = recipients.map(item => item.appointmentId);
   const appointments = await QuarkAppointment.findAll({
     where: {
       [Op.or]: [
-        { phone },
+        { phone: { [Op.in]: phoneVariants } },
+        ...phoneVariants.map(value => ({
+          phones: { [Op.like]: `%${value}%` }
+        })),
         ...(ids.length ? [{ appointmentId: { [Op.in]: ids } }] : [])
       ],
       awaitingConfirmation: true,
@@ -74,6 +83,7 @@ const HandleQuarkConfirmationReply = async ({
       origin: "QUARK",
       policy: {
         bot: true,
+        allowPausedBot: true,
         idempotencyKey: `quark-reply:${ticket.id}:${
           messageId || body
         }:${suffix}`,
@@ -82,9 +92,13 @@ const HandleQuarkConfirmationReply = async ({
     });
   const referenceOf = (item: QuarkAppointment) =>
     appointmentReference(item.appointmentId, item.scheduleFingerprint, phone);
+  const referencesOf = (item: QuarkAppointment) =>
+    phoneVariants.map(value =>
+      appointmentReference(item.appointmentId, item.scheduleFingerprint, value)
+    );
   const appointment = reply.appointmentReference
     ? appointments.find(
-        item => referenceOf(item) === reply.appointmentReference
+        item => referencesOf(item).includes(reply.appointmentReference as string)
       )
     : undefined;
   if (!appointment) {

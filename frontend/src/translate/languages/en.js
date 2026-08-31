@@ -262,8 +262,8 @@ const messages = {
         waitingPatient: "Waiting for patient",
         pendingHeader: "Queue",
         assignedHeader: "Working on",
-        noTicketsTitle: "Nothing here!",
-        noTicketsMessage: "No tickets found with this status or search term.",
+        noTicketsTitle: "No conversations here",
+        noTicketsMessage: "No conversations match this status or search term.",
         connectionTitle: "Connection that is currently being used.",
         buttons: {
           accept: "Accept"

@@ -4,6 +4,8 @@ import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
 import Paper from "@material-ui/core/Paper";
 import Button from "@material-ui/core/Button";
+import ErrorOutlineIcon from "@material-ui/icons/ErrorOutline";
+import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
 import TicketListItem from "../TicketListItem";
 import TicketsListSkeleton from "../TicketsListSkeleton";
 import useTickets from "../../hooks/useTickets";
@@ -25,40 +27,49 @@ const useStyles = makeStyles(theme => ({
     ...theme.scrollbarStyles,
     background: theme.palette.background.paper
   },
-  ticketsListHeader: {
-    color: "rgb(67, 83, 105)",
-    zIndex: 2,
-    backgroundColor: "white",
-    borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  ticketsCount: {
-    fontWeight: "normal",
-    color: theme.palette.text.secondary,
-    marginLeft: "8px",
-    fontSize: "14px"
-  },
   noTicketsText: {
     textAlign: "center",
     color: theme.palette.text.secondary,
-    fontSize: "14px",
-    lineHeight: "1.4"
+    maxWidth: 240,
+    margin: theme.spacing(0.5, 0, 0),
+    fontSize: theme.productTokens.typography.bodySM.fontSize,
+    lineHeight: theme.productTokens.typography.bodySM.lineHeight
   },
   noTicketsTitle: {
     textAlign: "center",
-    fontSize: "16px",
-    fontWeight: "600",
-    margin: "0px"
+    color: theme.palette.text.primary,
+    fontSize: theme.productTokens.typography.body.fontSize,
+    fontWeight: 650,
+    margin: 0
   },
   noTicketsDiv: {
     display: "flex",
-    height: "100px",
-    margin: 40,
+    minHeight: 220,
+    margin: theme.spacing(2),
+    padding: theme.spacing(3, 2),
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    textAlign: "center"
+  },
+  emptyIcon: {
+    display: "grid",
+    width: 44,
+    height: 44,
+    marginBottom: theme.spacing(1.25),
+    color: theme.statusTokens.info.fg,
+    background: theme.statusTokens.info.bg,
+    border: `1px solid ${theme.statusTokens.info.border}`,
+    borderRadius: theme.productTokens.radii.md,
+    placeItems: "center"
+  },
+  errorIcon: {
+    color: theme.statusTokens.danger.fg,
+    background: theme.statusTokens.danger.bg,
+    borderColor: theme.statusTokens.danger.border
+  },
+  retry: {
+    marginTop: theme.spacing(1.5)
   }
 }));
 const reducer = (state, action) => {
@@ -136,7 +147,8 @@ const TicketsList = props => {
     withUnreadMessages,
     selectedQueueIds,
     updateCount,
-    style
+    style,
+    notifyOnError = true
   } = props;
   const classes = useStyles();
   const [pageNumber, setPageNumber] = useState(1);
@@ -166,7 +178,8 @@ const TicketsList = props => {
     date,
     withUnreadMessages,
     refreshKey,
-    queueIds: JSON.stringify(selectedQueueIds)
+    queueIds: JSON.stringify(selectedQueueIds),
+    notifyOnError
   });
   useEffect(() => {
     dispatch({
@@ -267,14 +280,21 @@ const TicketsList = props => {
         padding: 6
       }}>
           {error && <div role="alert" className={classes.noTicketsDiv}>
+              <span className={`${classes.emptyIcon} ${classes.errorIcon}`} aria-hidden="true">
+                <ErrorOutlineIcon />
+              </span>
+              <span className={classes.noTicketsTitle}>A fila não pôde ser atualizada</span>
               <p className={classes.noTicketsText}>
-                Não foi possível atualizar os atendimentos.
+                Confira sua conexão e tente novamente para carregar as conversas.
               </p>
-              <Button color="primary" onClick={() => setRefreshKey(value => value + 1)}>
+              <Button className={classes.retry} color="primary" variant="outlined" onClick={() => setRefreshKey(value => value + 1)}>
                 Tentar novamente
               </Button>
             </div>}
-          {ticketsList.length === 0 && !loading && !error ? <div className={classes.noTicketsDiv}>
+          {ticketsList.length === 0 && !loading && !error ? <div role="status" className={classes.noTicketsDiv}>
+              <span className={classes.emptyIcon} aria-hidden="true">
+                <ForumOutlinedIcon />
+              </span>
               <span className={classes.noTicketsTitle}>
                 {i18n.t("ticketsList.noTicketsTitle")}
               </span>

@@ -82,6 +82,8 @@ export interface QuarkFreeSlotDayDto {
 export interface QuarkPatientDto {
   id: number | string;
   nome?: string;
+  cpf?: string;
+  dataNascimento?: string;
   [key: string]: unknown;
 }
 

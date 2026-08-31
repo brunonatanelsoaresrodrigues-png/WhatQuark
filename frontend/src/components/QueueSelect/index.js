@@ -9,7 +9,7 @@ import toastError from "../../errors/toastError";
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles(() => ({
   chips: {
     display: "flex",
     flexWrap: "wrap"

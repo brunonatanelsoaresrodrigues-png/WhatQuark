@@ -2,10 +2,14 @@ import { Op } from "sequelize";
 import AppError from "../../errors/AppError";
 import Contact from "../../models/Contact";
 import QuarkAppointment from "../../models/QuarkAppointment";
-import { quarkCpfFrom } from "./appointmentUtils";
+import {
+  quarkCpfFrom,
+  quarkPatientIdFrom,
+  quarkPhoneVariants
+} from "./appointmentUtils";
 import { QuarkAppointmentDto } from "./types";
 import { getQuarkConfig } from "./config";
-import { getQuarkAppointment } from "./QuarkClinicClient";
+import { getQuarkAppointment, getQuarkPatient } from "./QuarkClinicClient";
 import { logger } from "../../utils/logger";
 
 export interface QuarkClinicContactDetail {
@@ -37,13 +41,15 @@ const ShowQuarkClinicContactService = async (
 
   const number = String(contact.number || "").replace(/\D/g, "");
   if (!number) throw new AppError("ERR_QUARK_PATIENT_NOT_FOUND", 404);
+  const phoneVariants = quarkPhoneVariants(number);
 
   const records = await QuarkAppointment.findAll({
     where: {
       [Op.or]: [
-        { phone: contact.number },
-        { phone: number },
-        { phones: { [Op.like]: `%${number}%` } }
+        { phone: { [Op.in]: phoneVariants } },
+        ...phoneVariants.map(phone => ({
+          phones: { [Op.like]: `%${phone}%` }
+        }))
       ]
     },
     attributes: [
@@ -53,12 +59,24 @@ const ShowQuarkClinicContactService = async (
       "scheduledAt",
       "snapshot"
     ],
-    order: [["scheduledAt", "DESC"]],
-    limit: 20
+    order: [["scheduledAt", "DESC"]]
   });
 
-  const record = records.find(item => item.patientId) || records[0];
-  if (!record?.patientId || !record.appointmentId)
+  const patientIds = Array.from(
+    new Set(
+      records
+        .map(item => quarkPatientIdFrom(item.patientId))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (patientIds.length > 1)
+    throw new AppError("ERR_QUARK_PATIENT_AMBIGUOUS", 409);
+
+  const patientId = patientIds[0];
+  const record = records.find(
+    item => quarkPatientIdFrom(item.patientId) === patientId
+  );
+  if (!record?.appointmentId || !patientId)
     throw new AppError("ERR_QUARK_PATIENT_NOT_FOUND", 404);
 
   const stored = (() => {
@@ -68,11 +86,12 @@ const ShowQuarkClinicContactService = async (
       return {};
     }
   })();
+  const config = getQuarkConfig();
   let remote: Record<string, unknown> = {};
   if (!stored.cpf) {
     try {
       remote = (await getQuarkAppointment(
-        getQuarkConfig(),
+        config,
         String(record.appointmentId)
       )) as unknown as Record<string, unknown>;
     } catch {
@@ -83,11 +102,27 @@ const ShowQuarkClinicContactService = async (
   const remotePatient = [remote.paciente, remote.patient].find(
     value => value && typeof value === "object"
   ) as Record<string, unknown> | undefined;
-  const cpf =
+  let patient: Record<string, unknown> = remotePatient || {};
+  const appointmentCpf =
     quarkCpfFrom(remote as unknown as QuarkAppointmentDto) ||
     stringValue(stored.cpf) ||
     stringValue(contact.cpf);
+  if (!appointmentCpf) {
+    try {
+      patient =
+        ((await getQuarkPatient(
+          config,
+          patientId
+        )) as unknown as Record<string, unknown>) || patient;
+    } catch {
+      // The appointment remains available if the patient endpoint is unavailable.
+    }
+  }
+  const cpf =
+    appointmentCpf || quarkCpfFrom(patient as unknown as QuarkAppointmentDto);
   const birthDate =
+    stringValue(patient.dataNascimento) ||
+    stringValue(patient.dataNascimentoPaciente) ||
     stringValue(remote.dataNascimento) ||
     stringValue(remote.dataNascimentoPaciente) ||
     stringValue(remotePatient?.dataNascimento) ||
@@ -105,8 +140,10 @@ const ShowQuarkClinicContactService = async (
 
   return {
     contactId: Number(contact.id),
-    patientId: String(record.patientId),
+    patientId,
     patientName:
+      stringValue(patient.nome) ||
+      stringValue(patient.nomePaciente) ||
       stringValue(remote.nomePaciente) ||
       stringValue(remotePatient?.nome) ||
       record.patientName ||

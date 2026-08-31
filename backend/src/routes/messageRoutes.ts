@@ -11,6 +11,20 @@ const messageRoutes = Router();
 const upload = multer(uploadConfig);
 
 messageRoutes.get(
+  "/messages/:ticketId/search",
+  isAuth,
+  canAccessTicket,
+  MessageController.search
+);
+
+messageRoutes.get(
+  "/messages/:ticketId/context/:messageId",
+  isAuth,
+  canAccessTicket,
+  MessageController.context
+);
+
+messageRoutes.get(
   "/messages/:ticketId",
   isAuth,
   canAccessTicket,

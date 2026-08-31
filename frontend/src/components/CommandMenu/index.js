@@ -28,13 +28,13 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.down("sm")]: { display: "none" }
   },
   shortcut: {
-    fontSize: 11,
+    fontSize: 12,
     marginLeft: 8,
     whiteSpace: "nowrap",
     color: theme.palette.text.secondary
   },
   content: { padding: 16 },
-  row: { borderRadius: 10, marginTop: 4 },
+  row: { borderRadius: theme.productTokens.radii.sm, marginTop: 4 },
   footer: { padding: "0 24px 16px", color: theme.palette.text.secondary }
 }));
 

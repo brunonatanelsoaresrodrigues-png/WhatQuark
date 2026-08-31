@@ -26,6 +26,14 @@ import {
   StartCloudWebhookWorker,
   StopCloudWebhookWorker
 } from "./services/MessagingServices/cloudWebhook";
+import {
+  StartIdentityReconciliationWorker,
+  StopIdentityReconciliationWorker
+} from "./services/IdentityServices/IdentityReconciliationWorker";
+import {
+  startOperationalHealthWorker,
+  stopOperationalHealthWorker
+} from "./services/OperationalHealthServices/OperationalHealthWorker";
 
 const server = app.listen(process.env.PORT, () => {
   logger.info(`Server started on port: ${process.env.PORT}`);
@@ -39,6 +47,8 @@ StartAllWhatsAppsSessions();
 StartQuarkClinicIntegration();
 StartTicketInactivityWorker();
 StartDailyManagementReportWorker();
+StartIdentityReconciliationWorker();
+startOperationalHealthWorker();
 gracefulShutdown(server, {
   timeout: 180000,
   onShutdown: async signal => {
@@ -47,6 +57,8 @@ gracefulShutdown(server, {
     await Promise.all([
       StopTicketInactivityWorker(),
       StopDailyManagementReportWorker(),
+      StopIdentityReconciliationWorker(),
+      stopOperationalHealthWorker(),
       StopQuarkClinicIntegration(),
       StopCloudWebhookWorker(),
       StopOutboundDispatcher()

@@ -37,7 +37,7 @@ const useStyles = makeStyles(theme => ({
   },
   weekday: {
     paddingBottom: theme.spacing(0.5),
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 700,
     letterSpacing: ".07em",
     textTransform: "uppercase"
@@ -71,16 +71,10 @@ const useStyles = makeStyles(theme => ({
   },
   selected: {
     borderColor: theme.palette.primary.main,
-    backgroundColor:
-      theme.palette.type === "dark"
-        ? "rgba(54,191,174,.18)"
-        : "rgba(8,137,123,.09)",
+    backgroundColor: theme.modeTokens.selected,
     boxShadow: `inset 0 0 0 1px ${theme.palette.primary.main}`,
     "&:hover": {
-      backgroundColor:
-        theme.palette.type === "dark"
-          ? "rgba(54,191,174,.24)"
-          : "rgba(8,137,123,.13)"
+      backgroundColor: theme.modeTokens.surfaceTint
     }
   },
   today: {
@@ -106,7 +100,7 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 600
   },
   count: {
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 1.2,
     color: theme.palette.text.secondary,
     whiteSpace: "nowrap"
@@ -119,10 +113,10 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 4,
     backgroundColor: theme.palette.action.hover
   },
-  confirmed: { backgroundColor: "#2D9D72" },
-  awaiting: { backgroundColor: "#E9A23B" },
-  scheduled: { backgroundColor: "#4D83D8" },
-  cancelled: { backgroundColor: "#C95762" },
+  confirmed: { backgroundColor: theme.statusTokens.success.fg },
+  awaiting: { backgroundColor: theme.statusTokens.warning.fg },
+  scheduled: { backgroundColor: theme.statusTokens.info.fg },
+  cancelled: { backgroundColor: theme.statusTokens.danger.fg },
   legend: {
     display: "flex",
     alignItems: "center",
@@ -136,7 +130,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: "center",
     gap: 5,
     color: theme.palette.text.secondary,
-    fontSize: 10
+    fontSize: 12
   },
   legendDot: {
     width: 7,

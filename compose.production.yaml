@@ -144,16 +144,33 @@ services:
       DAILY_REPORT_SEND_INTERVAL_SECONDS: ${DAILY_REPORT_SEND_INTERVAL_SECONDS:-20}
       DAILY_REPORT_MAX_RETRY_ATTEMPTS: ${DAILY_REPORT_MAX_RETRY_ATTEMPTS:-5}
       DAILY_REPORT_ALLOW_WEEKENDS: ${DAILY_REPORT_ALLOW_WEEKENDS:-true}
+      IDENTITY_CENTER_ENABLED: ${IDENTITY_CENTER_ENABLED:-true}
+      IDENTITY_RECONCILIATION_ENABLED: ${IDENTITY_RECONCILIATION_ENABLED:-true}
+      IDENTITY_RECONCILIATION_HOUR: ${IDENTITY_RECONCILIATION_HOUR:-3}
+      IDENTITY_QUARK_ENRICHMENT_LIMIT: ${IDENTITY_QUARK_ENRICHMENT_LIMIT:-100}
+      OPERATIONAL_HEALTH_ENABLED: ${OPERATIONAL_HEALTH_ENABLED:-true}
+      HOST_HEALTH_FILE: /run/whaticket-backups/health.json
+      AI_ASSISTANT_ENABLED: ${AI_ASSISTANT_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-45000}
     ports:
       - "127.0.0.1:3101:3000"
     volumes:
       - backend_public:/usr/src/app/public
       - backend_auth:/usr/src/app/.wwebjs_auth
+      - /var/backups/whaticket:/run/whaticket-backups:ro
     depends_on:
       mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     stop_grace_period: 40s
     restart: unless-stopped
     mem_limit: 512m
@@ -170,7 +187,13 @@ services:
     ports:
       - "127.0.0.1:3100:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     mem_limit: 96m
     memswap_limit: 192m

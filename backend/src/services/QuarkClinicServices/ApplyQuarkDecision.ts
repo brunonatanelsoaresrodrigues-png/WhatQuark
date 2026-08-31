@@ -7,7 +7,10 @@ import OutboundMessage from "../../models/OutboundMessage";
 import { assertExecution } from "../MessagingServices/policy";
 import { withLease, readState, writeState } from "../MessagingServices/state";
 import { getQuarkConfig } from "./config";
-import { buildAppointmentSnapshot } from "./appointmentUtils";
+import {
+  buildAppointmentSnapshot,
+  quarkPhoneVariants
+} from "./appointmentUtils";
 import {
   getQuarkAppointment,
   confirmQuarkAppointment,
@@ -37,16 +40,22 @@ export const ApplyQuarkDecision = async ({
     if (["UNKNOWN", "PROCESSING"].includes(previous.status))
       throw new AppError("ERR_QUARK_REVIEW_REQUIRED", 409);
     const record = await QuarkAppointment.findOne({ where: { appointmentId } });
+    const config = getQuarkConfig();
+    const recipientMatches = Boolean(
+      record?.phone &&
+        quarkPhoneVariants(record.phone, config.defaultCountryCode).includes(
+          phone
+        )
+    );
     if (
       !record ||
-      record.phone !== phone ||
+      !recipientMatches ||
       record.status !== "AGENDADO" ||
       !record.scheduledAt ||
       record.scheduledAt.getTime() <= Date.now() ||
       (fingerprint && record.scheduleFingerprint !== fingerprint)
     )
       throw new AppError("ERR_APPOINTMENT_CHANGED", 409);
-    const config = getQuarkConfig();
     const remote = buildAppointmentSnapshot(
       await getQuarkAppointment(config, appointmentId),
       config

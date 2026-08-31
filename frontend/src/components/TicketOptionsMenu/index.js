@@ -37,12 +37,12 @@ const TicketOptionsMenu = ({
     }
   };
 
-  const handleOpenConfirmationModal = e => {
+  const handleOpenConfirmationModal = () => {
     setConfirmationOpen(true);
     handleClose();
   };
 
-  const handleOpenTransferModal = e => {
+  const handleOpenTransferModal = () => {
     setTransferTicketModalOpen(true);
     handleClose();
   };

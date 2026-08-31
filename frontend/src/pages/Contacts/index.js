@@ -5,7 +5,6 @@ import { toast } from "react-toastify";
 import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
-import Table from "@material-ui/core/Table";
 import TableBody from "@material-ui/core/TableBody";
 import TableCell from "@material-ui/core/TableCell";
 import TableHead from "@material-ui/core/TableHead";
@@ -16,6 +15,8 @@ import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
+import Tabs from "@material-ui/core/Tabs";
+import Tab from "@material-ui/core/Tab";
 
 import IconButton from "@material-ui/core/IconButton";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
@@ -28,13 +29,14 @@ import ConfirmationModal from "../../components/ConfirmationModal/";
 import ContactAvatar from "../../components/ContactAvatar";
 
 import { i18n } from "../../translate/i18n";
-import MainHeader from "../../components/MainHeader";
-import Title from "../../components/Title";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
+import PageHeading from "../../components/PageHeading";
 import MainContainer from "../../components/MainContainer";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../../components/Can";
+import ResponsiveTable from "../../components/ResponsiveTable";
+import { contactDisplayName, contactPhoneLabel } from "../../services/contactIdentity";
+import IdentityIssuesPanel from "../../components/IdentityIssuesPanel";
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_CONTACTS") {
@@ -81,14 +83,7 @@ const reducer = (state, action) => {
 };
 
 const useStyles = makeStyles(theme => ({
-  mainPaper: {
-    flex: 1,
-    padding: 0,
-    overflow: "auto",
-    borderRadius: 14,
-    minHeight: 160,
-    ...theme.scrollbarStyles
-  }
+  mainPaper: theme.panelStyles
 }));
 
 const Contacts = () => {
@@ -106,6 +101,7 @@ const Contacts = () => {
   const [deletingContact, setDeletingContact] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [activeTab, setActiveTab] = useState("contacts");
 
   useEffect(() => {
     dispatch({ type: "RESET" });
@@ -253,46 +249,58 @@ const Contacts = () => {
           ? `${i18n.t("contacts.confirmationModal.deleteMessage")}`
           : `${i18n.t("contacts.confirmationModal.importMessage")}`}
       </ConfirmationModal>
-      <MainHeader>
-        <Title>{i18n.t("contacts.title")}</Title>
-        <MainHeaderButtonsWrapper>
-          <TextField
-            placeholder={i18n.t("contacts.searchPlaceholder")}
-            type="search"
-            size="small"
-            inputProps={{ "aria-label": "Buscar registros" }}
-            value={searchParam}
-            onChange={handleSearch}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
-                </InputAdornment>
-              )
-            }}
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => setConfirmOpen(true)}
-          >
-            {i18n.t("contacts.buttons.import")}
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleOpenContactModal}
-          >
-            {i18n.t("contacts.buttons.add")}
-          </Button>
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
+      <PageHeading
+        title={i18n.t("contacts.title")}
+        description="Pacientes, clientes e informações de contato em um só lugar."
+        actions={
+          <>
+            <TextField
+              placeholder={i18n.t("contacts.searchPlaceholder")}
+              type="search"
+              size="small"
+              inputProps={{ "aria-label": "Buscar registros" }}
+              value={searchParam}
+              onChange={handleSearch}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="disabled" />
+                  </InputAdornment>
+                )
+              }}
+            />
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => setConfirmOpen(true)}
+            >
+              {i18n.t("contacts.buttons.import")}
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleOpenContactModal}
+            >
+              {i18n.t("contacts.buttons.add")}
+            </Button>
+          </>
+        }
+      />
+      {user.profile === "admin" && (
+        <Tabs value={activeTab} onChange={(_event, value) => setActiveTab(value)} indicatorColor="primary" textColor="primary" aria-label="Áreas de contatos">
+          <Tab value="contacts" label="Todos os contatos" />
+          <Tab value="identity" label="Identidade do paciente" />
+        </Tabs>
+      )}
+      {activeTab === "identity" && user.profile === "admin" ? (
+        <IdentityIssuesPanel />
+      ) : (
       <Paper
         className={classes.mainPaper}
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="medium" aria-label="Registros">
+        <ResponsiveTable size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox" />
@@ -312,23 +320,25 @@ const Contacts = () => {
             <>
               {contacts.map(contact => (
                 <TableRow key={contact.id}>
-                  <TableCell style={{ paddingRight: 0 }}>
+                  <TableCell data-mobile-hide style={{ paddingRight: 0 }}>
                     <ContactAvatar contact={contact} />
                   </TableCell>
-                  <TableCell>{contact.name}</TableCell>
-                  <TableCell align="center">{contact.number}</TableCell>
-                  <TableCell align="center">{contact.email}</TableCell>
-                  <TableCell align="center">
+                  <TableCell data-mobile-primary>{contactDisplayName(contact)}</TableCell>
+                  <TableCell data-label="WhatsApp" align="center">
+                    {contactPhoneLabel(contact)}
+                  </TableCell>
+                  <TableCell data-label="E-mail" align="center">{contact.email || "Não informado"}</TableCell>
+                  <TableCell data-label="Ações" data-mobile-actions align="center">
                     <IconButton
                       size="small"
-                      aria-label={`Abrir atendimento de ${contact.name}`}
+                      aria-label={`Abrir atendimento de ${contactDisplayName(contact)}`}
                       onClick={() => handleSaveTicket(contact.id)}
                     >
                       <WhatsAppIcon />
                     </IconButton>
                     <IconButton
                       size="small"
-                      aria-label={`Editar ${contact.name}`}
+                      aria-label={`Editar ${contactDisplayName(contact)}`}
                       onClick={() => hadleEditContact(contact.id)}
                     >
                       <EditIcon />
@@ -358,8 +368,9 @@ const Contacts = () => {
               {loading && <TableRowSkeleton avatar columns={3} />}
             </>
           </TableBody>
-        </Table>
+        </ResponsiveTable>
       </Paper>
+      )}
     </MainContainer>
   );
 };

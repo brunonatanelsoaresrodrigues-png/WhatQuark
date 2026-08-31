@@ -5,6 +5,7 @@ import Handle from "../../../services/QuarkClinicServices/HandleQuarkConfirmatio
 import Send from "../../../services/WbotServices/SendWhatsAppMessage";
 import { ApplyQuarkDecision } from "../../../services/QuarkClinicServices/ApplyQuarkDecision";
 import { appointmentReference } from "../../../services/QuarkClinicServices/appointmentUtils";
+import { Op } from "sequelize";
 import {
   readState,
   writeState
@@ -88,6 +89,34 @@ it("confirms only an explicit current reference", async () => {
     choice: 1,
     fingerprint: record.scheduleFingerprint
   });
+  expect(Send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.stringContaining("confirmada"),
+      policy: expect.objectContaining({ allowPausedBot: true })
+    })
+  );
+});
+it("accepts a reference generated for the Brazilian ninth-digit variant", async () => {
+  const legacyPhone = "558592413638";
+  const currentPhone = "5585992413638";
+  const currentReference = appointmentReference(
+    "42",
+    record.scheduleFingerprint,
+    currentPhone
+  );
+
+  await call(`CONFIRMAR ${currentReference}`, { phone: legacyPhone });
+
+  expect(QuarkAppointmentRecipient.findAll).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        phone: { [Op.in]: [legacyPhone, currentPhone] }
+      })
+    })
+  );
+  expect(ApplyQuarkDecision).toHaveBeenCalledWith(
+    expect.objectContaining({ appointmentId: "42", phone: legacyPhone })
+  );
 });
 it("requires two steps before cancelling", async () => {
   await call(`CANCELAR ${reference}`);

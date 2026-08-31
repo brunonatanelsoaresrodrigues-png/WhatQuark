@@ -14,7 +14,6 @@ import {
   Grid,
   MenuItem,
   Paper,
-  Table,
   TableBody,
   TableCell,
   TableContainer,
@@ -22,7 +21,8 @@ import {
   TableRow,
   TextField,
   Typography,
-  makeStyles
+  makeStyles,
+  useTheme
 } from "@material-ui/core";
 import Skeleton from "@material-ui/lab/Skeleton";
 import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
@@ -47,6 +47,7 @@ import toastError from "../../errors/toastError";
 import useWhatsApps from "../../hooks/useWhatsApps";
 import Chart from "./Chart";
 import UserAvatar from "../../components/UserAvatar";
+import ResponsiveTable from "../../components/ResponsiveTable";
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -67,11 +68,8 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     padding: theme.spacing(2.25, 2.5),
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 16,
-    background:
-      theme.palette.type === "dark"
-        ? "linear-gradient(110deg, rgba(11,39,66,.72), rgba(9,74,82,.28))"
-        : "linear-gradient(110deg, #FFFFFF, #F2FAFA)",
+    borderRadius: theme.productTokens.radii.md,
+    background: theme.gradients.header,
     boxShadow: theme.productTokens.shadows.rest,
     [theme.breakpoints.down("sm")]: {
       alignItems: "flex-start",
@@ -99,15 +97,15 @@ const useStyles = makeStyles(theme => ({
     }
   },
   onlineChip: {
-    color: theme.palette.type === "dark" ? "#8EE3D6" : "#08766C",
-    background: theme.palette.type === "dark" ? "#0C2D32" : "#E7F7F1",
-    borderColor: theme.palette.type === "dark" ? "#18545A" : "#BDE8D8",
+    color: theme.statusTokens.success.fg,
+    background: theme.statusTokens.success.bg,
+    borderColor: theme.statusTokens.success.border,
     "& .MuiChip-icon": { color: "inherit" }
   },
   offlineChip: {
-    color: theme.palette.error.main,
-    background: theme.palette.type === "dark" ? "#351D24" : "#FFF1F2",
-    borderColor: theme.palette.type === "dark" ? "#65303B" : "#F2C7CD",
+    color: theme.statusTokens.danger.fg,
+    background: theme.statusTokens.danger.bg,
+    borderColor: theme.statusTokens.danger.border,
     "& .MuiChip-icon": { color: "inherit" }
   },
   filters: {
@@ -139,7 +137,7 @@ const useStyles = makeStyles(theme => ({
     display: "block",
     margin: theme.spacing(0.5, 0, 1),
     color: theme.palette.text.secondary,
-    fontSize: ".67rem",
+    fontSize: ".75rem",
     fontWeight: 800,
     letterSpacing: ".1em",
     textTransform: "uppercase"
@@ -151,21 +149,17 @@ const useStyles = makeStyles(theme => ({
     overflow: "hidden",
     padding: theme.spacing(2),
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 14,
+    borderRadius: theme.productTokens.radii.md,
     boxShadow: theme.productTokens.shadows.rest,
-    transition: "transform 160ms ease, box-shadow 160ms ease",
+    transition: `transform ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}, box-shadow ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}`,
     "&:hover": {
-      transform: "translateY(-2px)",
-      boxShadow: theme.productTokens.shadows.raised
+      transform: "translateY(-1px)",
+      boxShadow: theme.productTokens.shadows.hover
     }
   },
   metricWarning: {
-    borderColor:
-      theme.palette.type === "dark" ? "rgba(238,171,72,.42)" : "#F0D6A9",
-    background:
-      theme.palette.type === "dark"
-        ? "linear-gradient(145deg, #171E27, #251F19)"
-        : "linear-gradient(145deg, #FFFFFF, #FFF9EF)"
+    borderColor: theme.statusTokens.warning.border,
+    background: theme.statusTokens.warning.bg
   },
   metricHeader: {
     display: "flex",
@@ -177,7 +171,7 @@ const useStyles = makeStyles(theme => ({
     height: 36,
     color: "var(--metric-color)",
     background: "var(--metric-bg)",
-    borderRadius: 10,
+    borderRadius: theme.productTokens.radii.sm,
     "& svg": { fontSize: 20 }
   },
   metricLabel: {
@@ -197,14 +191,14 @@ const useStyles = makeStyles(theme => ({
     display: "block",
     marginTop: theme.spacing(0.7),
     color: "var(--meta-color)",
-    fontSize: ".68rem",
+    fontSize: ".75rem",
     fontWeight: 650
   },
   panel: {
     height: 360,
     padding: theme.spacing(2.25),
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 14,
+    borderRadius: theme.productTokens.radii.md,
     boxShadow: theme.productTokens.shadows.rest,
     [theme.breakpoints.down("xs")]: {
       height: 330,
@@ -225,7 +219,7 @@ const useStyles = makeStyles(theme => ({
   },
   panelCaption: {
     color: theme.palette.text.secondary,
-    fontSize: ".7rem"
+    fontSize: ".75rem"
   },
   chart: {
     height: 285,
@@ -252,7 +246,7 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.primary,
     background: theme.modeTokens.surfaceMuted,
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 10
+    borderRadius: theme.productTokens.radii.sm
   },
   alertIcon: {
     display: "grid",
@@ -262,7 +256,7 @@ const useStyles = makeStyles(theme => ({
     placeItems: "center",
     color: "var(--alert-color)",
     background: "var(--alert-bg)",
-    borderRadius: 8,
+    borderRadius: theme.productTokens.radii.xs,
     "& svg": { fontSize: 18 }
   },
   alertText: {
@@ -281,7 +275,7 @@ const useStyles = makeStyles(theme => ({
   tablePaper: {
     overflow: "hidden",
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 14,
+    borderRadius: theme.productTokens.radii.md,
     boxShadow: theme.productTokens.shadows.rest
   },
   tableHeader: {
@@ -296,7 +290,7 @@ const useStyles = makeStyles(theme => ({
     "& .MuiTableCell-root": {
       padding: theme.spacing(1.15, 2),
       borderColor: theme.palette.divider,
-      fontSize: ".73rem"
+      fontSize: ".75rem"
     },
     "& .MuiTableCell-head": {
       color: theme.palette.text.secondary,
@@ -314,12 +308,12 @@ const useStyles = makeStyles(theme => ({
     height: 28,
     color: "#fff",
     background: theme.palette.primary.main,
-    fontSize: ".65rem",
+    fontSize: ".75rem",
     fontWeight: 750
   },
   statusChip: {
     height: 22,
-    fontSize: ".62rem",
+    fontSize: ".75rem",
     fontWeight: 700
   },
   empty: {
@@ -345,15 +339,6 @@ const formatDuration = value => {
     : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 };
 
-const initials = name =>
-  String(name || "A")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(part => part[0])
-    .join("")
-    .toUpperCase();
-
 const percentComparison = (value, positiveIsGood = true) => {
   if (value === null || value === undefined)
     return { text: "Sem base de comparação", tone: "neutral" };
@@ -374,6 +359,8 @@ const secondsComparison = value => {
   };
 };
 
+// `accent` indexa a paleta categorica da marca (theme.chartPalette), em vez de
+// cada chamada carregar um par de literais de cor.
 const MetricCard = ({
   icon,
   label,
@@ -382,14 +369,16 @@ const MetricCard = ({
   metaTone = "neutral",
   warning = false,
   loading = false,
-  color = "#087D9B",
-  background = "rgba(8,125,155,.1)"
+  accent = 0
 }) => {
   const classes = useStyles();
-  const metaColors = {
-    good: "#17865D",
-    warning: "#D16A19",
-    neutral: "#738296"
+  const theme = useTheme();
+  const palette = theme.chartPalette;
+  const color = palette[accent % palette.length];
+  const metaTones = {
+    good: theme.statusTokens.success.fg,
+    warning: theme.statusTokens.warning.fg,
+    neutral: theme.statusTokens.neutral.fg
   };
   return (
     <Paper
@@ -397,8 +386,8 @@ const MetricCard = ({
       className={`${classes.metric} ${warning ? classes.metricWarning : ""}`}
       style={{
         "--metric-color": color,
-        "--metric-bg": background,
-        "--meta-color": metaColors[metaTone] || metaColors.neutral
+        "--metric-bg": theme.productTokens.withAlpha(color, 0.12),
+        "--meta-color": metaTones[metaTone] || metaTones.neutral
       }}
     >
       <div className={classes.metricHeader}>
@@ -419,6 +408,7 @@ const MetricCard = ({
 
 const Dashboard = () => {
   const classes = useStyles();
+  const theme = useTheme();
   const history = useHistory();
   const { user } = useContext(AuthContext);
   const { whatsApps, loading: loadingWhatsApps } = useWhatsApps();
@@ -530,8 +520,7 @@ const Dashboard = () => {
   if (aboveSla > 0)
     alerts.push({
       key: "sla",
-      color: "#E27127",
-      background: "rgba(226,113,39,.12)",
+      tone: "warning",
       icon: <ErrorOutlineIcon />,
       text: `${aboveSla} conversa${aboveSla === 1 ? "" : "s"} acima do SLA de ${
         metrics?.slaMinutes || 5
@@ -540,16 +529,14 @@ const Dashboard = () => {
   if (unassigned > 0)
     alerts.push({
       key: "unassigned",
-      color: "#C88A12",
-      background: "rgba(200,138,18,.12)",
+      tone: "warning",
       icon: <PeopleOutlineIcon />,
       text: `${unassigned} conversa${unassigned === 1 ? "" : "s"} sem responsável`
     });
   if (highestQueue)
     alerts.push({
       key: "queue",
-      color: "#087D9B",
-      background: "rgba(8,125,155,.12)",
+      tone: "info",
       icon: <TrendingUpOutlinedIcon />,
       text: `Maior demanda: ${highestQueue.name} · ${highestQueue.total} ativa${
         highestQueue.total === 1 ? "" : "s"
@@ -558,16 +545,14 @@ const Dashboard = () => {
   if (!loadingWhatsApps && !allChannelsConnected)
     alerts.push({
       key: "channel",
-      color: "#C74755",
-      background: "rgba(199,71,85,.12)",
+      tone: "danger",
       icon: <WifiIcon />,
       text: `${connectedChannels}/${whatsApps.length} canais conectados`
     });
   if (!aboveSla && allChannelsConnected)
     alerts.push({
       key: "healthy",
-      color: "#27865C",
-      background: "rgba(39,134,92,.12)",
+      tone: "success",
       icon: <CheckCircleOutlineIcon />,
       text: "Operação dentro do SLA e WhatsApp conectado"
     });
@@ -660,8 +645,7 @@ const Dashboard = () => {
           <MetricCard
             loading={loading}
             warning={aboveSla > 0}
-            color="#E27127"
-            background="rgba(226,113,39,.12)"
+            accent={2}
             icon={<HourglassEmptyIcon />}
             label="Aguardando"
             value={now.waiting ?? 0}
@@ -676,8 +660,7 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} lg={3}>
           <MetricCard
             loading={loading}
-            color="#087D83"
-            background="rgba(8,125,131,.11)"
+            accent={0}
             icon={<HeadsetMicOutlinedIcon />}
             label="Em atendimento"
             value={now.active ?? 0}
@@ -691,8 +674,7 @@ const Dashboard = () => {
           <MetricCard
             loading={loading}
             warning={aboveSla > 0}
-            color="#3978E6"
-            background="rgba(57,120,230,.11)"
+            accent={1}
             icon={<AccessTimeOutlinedIcon />}
             label="Maior espera"
             value={formatDuration(now.maximumWaitSeconds || 0)}
@@ -703,8 +685,7 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} lg={3}>
           <MetricCard
             loading={loading}
-            color="#27865C"
-            background="rgba(39,134,92,.11)"
+            accent={4}
             icon={<MailOutlineIcon />}
             label="Não lidas"
             value={now.unread ?? 0}
@@ -731,8 +712,7 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} lg={3}>
           <MetricCard
             loading={loading}
-            color="#27865C"
-            background="rgba(39,134,92,.11)"
+            accent={4}
             icon={<AssignmentTurnedInOutlinedIcon />}
             label="Finalizados hoje"
             value={today.resolved ?? 0}
@@ -743,8 +723,7 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} lg={3}>
           <MetricCard
             loading={loading}
-            color="#0C8C92"
-            background="rgba(12,140,146,.11)"
+            accent={6}
             icon={<ScheduleOutlinedIcon />}
             label="Tempo médio de espera"
             value={formatDuration(today.averageWaitSeconds)}
@@ -755,8 +734,7 @@ const Dashboard = () => {
         <Grid item xs={12} sm={6} lg={3}>
           <MetricCard
             loading={loading}
-            color="#7957A5"
-            background="rgba(121,87,165,.11)"
+            accent={3}
             icon={<CheckCircleOutlineIcon />}
             label="Índice de resolução"
             value={`${Number(today.resolutionRate || 0).toFixed(1)}%`}
@@ -810,8 +788,8 @@ const Dashboard = () => {
                       <span
                         className={classes.alertIcon}
                         style={{
-                          "--alert-color": alert.color,
-                          "--alert-bg": alert.background
+                          "--alert-color": theme.statusTokens[alert.tone].fg,
+                          "--alert-bg": theme.statusTokens[alert.tone].bg
                         }}
                       >
                         {alert.icon}
@@ -862,7 +840,7 @@ const Dashboard = () => {
           </Button>
         </div>
         <TableContainer>
-          <Table size="small" className={classes.table}>
+          <ResponsiveTable size="small" className={classes.table} aria-label="Desempenho dos atendentes">
             <TableHead>
               <TableRow>
                 <TableCell>Atendente</TableCell>
@@ -885,7 +863,7 @@ const Dashboard = () => {
               ) : metrics?.agents?.length ? (
                 metrics.agents.slice(0, 8).map(agent => (
                   <TableRow key={agent.id} hover>
-                    <TableCell>
+                    <TableCell data-mobile-primary>
                       <div className={classes.agent}>
                         <UserAvatar
                           user={agent}
@@ -894,15 +872,15 @@ const Dashboard = () => {
                         <strong>{agent.name}</strong>
                       </div>
                     </TableCell>
-                    <TableCell align="center">{agent.active}</TableCell>
-                    <TableCell align="center">{agent.resolved}</TableCell>
-                    <TableCell align="center">
+                    <TableCell data-label="Em atendimento" align="center">{agent.active}</TableCell>
+                    <TableCell data-label="Finalizados" align="center">{agent.resolved}</TableCell>
+                    <TableCell data-label="TME" align="center">
                       {formatDuration(agent.averageWaitSeconds)}
                     </TableCell>
-                    <TableCell align="center">
+                    <TableCell data-label="Tempo médio" align="center">
                       {formatDuration(agent.averageServiceSeconds)}
                     </TableCell>
-                    <TableCell align="center">
+                    <TableCell data-label="Status" align="center">
                       <Chip
                         size="small"
                         className={classes.statusChip}
@@ -916,15 +894,15 @@ const Dashboard = () => {
                         style={{
                           color:
                             agent.status === "ATTENTION"
-                              ? "#B45A17"
+                              ? theme.statusTokens.warning.fg
                               : agent.status === "WITHIN_SLA"
-                              ? "#17714F"
+                              ? theme.statusTokens.success.fg
                               : undefined,
                           background:
                             agent.status === "ATTENTION"
-                              ? "rgba(226,113,39,.13)"
+                              ? theme.statusTokens.warning.bg
                               : agent.status === "WITHIN_SLA"
-                              ? "rgba(39,134,92,.13)"
+                              ? theme.statusTokens.success.bg
                               : undefined
                         }}
                       />
@@ -941,7 +919,7 @@ const Dashboard = () => {
                 </TableRow>
               )}
             </TableBody>
-          </Table>
+          </ResponsiveTable>
         </TableContainer>
       </Paper>
     </Container>

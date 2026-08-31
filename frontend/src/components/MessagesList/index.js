@@ -2,8 +2,7 @@ import React, { useState, useEffect, useReducer, useRef } from "react";
 import { isSameDay, parseISO, format } from "date-fns";
 import openSocket from "../../services/socket-io";
 import clsx from "clsx";
-import { green } from "@material-ui/core/colors";
-import { CircularProgress, IconButton, makeStyles } from "@material-ui/core";
+import { Button, CircularProgress, IconButton, makeStyles } from "@material-ui/core";
 import { AccessTime, Block, Done, DoneAll, ExpandMore } from "@material-ui/icons";
 import MarkdownWrapper from "../MarkdownWrapper";
 import VcardPreview from "../VcardPreview";
@@ -17,17 +16,8 @@ import MessageOptionsMenu from "../MessageOptionsMenu";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import PageSkeleton from "../PageSkeleton";
+import ConversationSearchPanel from "../ConversationSearchPanel";
 const useStyles = makeStyles(theme => ({
-  "@keyframes arrive": {
-    from: {
-      opacity: 0,
-      transform: "translateY(3px)"
-    },
-    to: {
-      opacity: 1,
-      transform: "translateY(0)"
-    }
-  },
   messagesListWrapper: {
     overflow: "hidden",
     position: "relative",
@@ -49,7 +39,7 @@ const useStyles = makeStyles(theme => ({
     ...theme.scrollbarStyles
   },
   circleLoading: {
-    color: green[500],
+    color: theme.palette.primary.main,
     position: "absolute",
     opacity: "70%",
     top: 0,
@@ -57,7 +47,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: 12
   },
   messageLeft: {
-    animation: "$arrive 160ms ease-out",
+    animation: theme.productTokens.animations.arrive,
     marginRight: 20,
     marginTop: 3,
     minWidth: 100,
@@ -86,7 +76,7 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 7,
     paddingBottom: 0,
     border: `1px solid ${theme.palette.divider}`,
-    boxShadow: "none",
+    boxShadow: theme.productTokens.shadows.rest,
     [theme.breakpoints.down("xs")]: {
       maxWidth: "88%"
     }
@@ -95,7 +85,7 @@ const useStyles = makeStyles(theme => ({
     margin: "0 0 6px",
     overflow: "hidden",
     backgroundColor: theme.palette.action.hover,
-    borderRadius: "7.5px",
+    borderRadius: theme.productTokens.radii.xs,
     display: "flex",
     position: "relative"
   },
@@ -110,10 +100,10 @@ const useStyles = makeStyles(theme => ({
   quotedSideColorLeft: {
     flex: "none",
     width: "4px",
-    backgroundColor: "#6bcbef"
+    backgroundColor: theme.statusTokens.info.fg
   },
   messageRight: {
-    animation: "$arrive 160ms ease-out",
+    animation: theme.productTokens.animations.arrive,
     marginLeft: 20,
     marginTop: 2,
     minWidth: 100,
@@ -141,8 +131,8 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 7,
     paddingTop: 7,
     paddingBottom: 0,
-    border: "1px solid rgba(12,124,114,.14)",
-    boxShadow: "none",
+    border: `1px solid ${theme.modeTokens.messageOutgoingBorder}`,
+    boxShadow: theme.productTokens.shadows.rest,
     [theme.breakpoints.down("xs")]: {
       maxWidth: "88%"
     }
@@ -151,7 +141,7 @@ const useStyles = makeStyles(theme => ({
     margin: "0 0 6px",
     overflowY: "hidden",
     backgroundColor: theme.palette.action.hover,
-    borderRadius: "7.5px",
+    borderRadius: theme.productTokens.radii.xs,
     display: "flex",
     position: "relative"
   },
@@ -164,7 +154,7 @@ const useStyles = makeStyles(theme => ({
   quotedSideColorRight: {
     flex: "none",
     width: "4px",
-    backgroundColor: "#35cd96"
+    backgroundColor: theme.palette.primary.main
   },
   messageActionsButton: {
     display: "flex",
@@ -227,7 +217,7 @@ const useStyles = makeStyles(theme => ({
     boxShadow: "none"
   },
   timestamp: {
-    fontSize: 10,
+    fontSize: 12,
     display: "flex",
     alignItems: "center",
     justifyContent: "flex-end",
@@ -244,7 +234,7 @@ const useStyles = makeStyles(theme => ({
     margin: "14px",
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
-    boxShadow: "none"
+    boxShadow: theme.productTokens.shadows.rest
   },
   dailyTimestampText: {
     color: theme.palette.text.secondary,
@@ -265,7 +255,7 @@ const useStyles = makeStyles(theme => ({
     marginRight: 4
   },
   ackDoneAllIcon: {
-    color: green[500],
+    color: theme.palette.success.main,
     fontSize: 16,
     verticalAlign: "middle",
     marginLeft: 4
@@ -276,6 +266,25 @@ const useStyles = makeStyles(theme => ({
     justifyContent: "center",
     backgroundColor: "inherit",
     padding: 10
+  },
+  highlightedMessage: {
+    outline: `3px solid ${theme.palette.warning.main}`,
+    outlineOffset: 2,
+    animation: "$searchPulse 1800ms ease-out"
+  },
+  searchContextBar: {
+    flex: "0 0 auto",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 1),
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper
+  },
+  "@keyframes searchPulse": {
+    "0%": { boxShadow: `0 0 0 8px ${theme.palette.warning.light}` },
+    "100%": { boxShadow: theme.productTokens.shadows.rest }
   }
 }));
 const reducer = (state, action) => {
@@ -313,10 +322,15 @@ const reducer = (state, action) => {
   if (action.type === "RESET") {
     return [];
   }
+  if (action.type === "SET_MESSAGES") {
+    return [...action.payload];
+  }
 };
 const MessagesList = ({
   ticketId,
-  isGroup
+  isGroup,
+  searchOpen,
+  onCloseSearch
 }) => {
   const classes = useStyles();
   const [messagesList, dispatch] = useReducer(reducer, []);
@@ -329,6 +343,12 @@ const MessagesList = ({
   const [anchorEl, setAnchorEl] = useState(null);
   const messageOptionsMenuOpen = Boolean(anchorEl);
   const currentTicketId = useRef(ticketId);
+  const messageRefs = useRef({});
+  const browsingContextRef = useRef(false);
+  const [browsingContext, setBrowsingContext] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [newMessagesAvailable, setNewMessagesAvailable] = useState(false);
+  const [reloadCounter, setReloadCounter] = useState(0);
   useEffect(() => {
     dispatch({
       type: "RESET"
@@ -336,6 +356,10 @@ const MessagesList = ({
     setPageNumber(1);
     historyCursor.current = undefined;
     currentTicketId.current = ticketId;
+    browsingContextRef.current = false;
+    setBrowsingContext(false);
+    setHighlightedMessageId(null);
+    setNewMessagesAvailable(false);
   }, [ticketId]);
   useEffect(() => {
     setLoading(true);
@@ -372,13 +396,17 @@ const MessagesList = ({
     return () => {
       clearTimeout(delayDebounceFn);
     };
-  }, [pageNumber, ticketId]);
+  }, [pageNumber, ticketId, reloadCounter]);
   useEffect(() => {
     const socket = openSocket();
     socket.on("connect", () => socket.emit("joinChatBox", ticketId));
     socket.on("appMessage", data => {
       if (Number(data.message?.ticketId) !== Number(ticketId)) return;
       if (data.action === "create") {
+        if (browsingContextRef.current) {
+          setNewMessagesAvailable(true);
+          return;
+        }
         dispatch({
           type: "ADD_MESSAGE",
           payload: data.message
@@ -425,6 +453,42 @@ const MessagesList = ({
   };
   const handleCloseMessageOptionsMenu = () => {
     setAnchorEl(null);
+  };
+  const handleSearchResult = async result => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(
+        `/messages/${ticketId}/context/${encodeURIComponent(result.id)}`
+      );
+      dispatch({ type: "SET_MESSAGES", payload: data.messages });
+      historyCursor.current = data.messages[0]?.id;
+      setHasMore(data.hasOlder);
+      setHighlightedMessageId(data.targetMessageId);
+      setBrowsingContext(true);
+      browsingContextRef.current = true;
+      setNewMessagesAvailable(data.hasNewer);
+      onCloseSearch();
+      setTimeout(() => {
+        messageRefs.current[data.targetMessageId]?.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+      }, 50);
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const returnToRecentMessages = () => {
+    browsingContextRef.current = false;
+    setBrowsingContext(false);
+    setHighlightedMessageId(null);
+    setNewMessagesAvailable(false);
+    historyCursor.current = undefined;
+    dispatch({ type: "RESET" });
+    setPageNumber(1);
+    setReloadCounter(value => value + 1);
   };
   const checkMessageMedia = message => {
     if (message.mediaType === "location" && message.body.split("|").length >= 2) {
@@ -529,8 +593,11 @@ const MessagesList = ({
           return <React.Fragment key={message.id}>
               {renderDailyTimestamps(message, index)}
               {renderMessageDivider(message, index)}
-              <div className={clsx(classes.messageLeft, {
-              [classes.stickerBubble]: isStickerMessage(message)
+              <div ref={element => {
+              if (element) messageRefs.current[message.id] = element;
+            }} data-message-id={message.id} className={clsx(classes.messageLeft, {
+              [classes.stickerBubble]: isStickerMessage(message),
+              [classes.highlightedMessage]: highlightedMessageId === message.id
             })}>
                 <IconButton variant="contained" size="small" aria-label="Opções da mensagem recebida" disabled={message.isDeleted} className={classes.messageActionsButton} onClick={e => handleOpenMessageOptionsMenu(e, message)}>
                   <ExpandMore />
@@ -554,8 +621,11 @@ const MessagesList = ({
           return <React.Fragment key={message.id}>
               {renderDailyTimestamps(message, index)}
               {renderMessageDivider(message, index)}
-              <div className={clsx(classes.messageRight, {
-              [classes.stickerBubble]: isStickerMessage(message)
+              <div ref={element => {
+              if (element) messageRefs.current[message.id] = element;
+            }} data-message-id={message.id} className={clsx(classes.messageRight, {
+              [classes.stickerBubble]: isStickerMessage(message),
+              [classes.highlightedMessage]: highlightedMessageId === message.id
             })}>
                 <IconButton variant="contained" size="small" aria-label="Opções da mensagem enviada" disabled={message.isDeleted} className={classes.messageActionsButton} onClick={e => handleOpenMessageOptionsMenu(e, message)}>
                   <ExpandMore />
@@ -585,6 +655,11 @@ const MessagesList = ({
   };
   return <div className={classes.messagesListWrapper}>
       <MessageOptionsMenu message={selectedMessage} anchorEl={anchorEl} menuOpen={messageOptionsMenuOpen} handleClose={handleCloseMessageOptionsMenu} />
+      <ConversationSearchPanel open={searchOpen} ticketId={ticketId} onClose={onCloseSearch} onSelect={handleSearchResult} />
+      {browsingContext && <div className={classes.searchContextBar}>
+          <span>{newMessagesAvailable ? "Você está vendo uma mensagem antiga · há mensagens mais recentes" : "Você está vendo uma mensagem encontrada"}</span>
+          <Button size="small" color="primary" onClick={returnToRecentMessages}>Voltar às mensagens recentes</Button>
+        </div>}
       <div id="messagesList" className={classes.messagesList} onScroll={handleScroll}>
         {messagesList.length > 0 ? renderMessages() : loading ? <PageSkeleton messages /> : <div style={{
         margin: "auto",

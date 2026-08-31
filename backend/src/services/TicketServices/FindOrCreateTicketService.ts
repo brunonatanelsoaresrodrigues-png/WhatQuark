@@ -8,6 +8,7 @@ import UserQueue from "../../models/UserQueue";
 import { emitTicketInactivityUpdate } from "../TicketInactivityServices/ticketEvents";
 import ShowTicketService from "./ShowTicketService";
 import RecordTicketEventService from "./RecordTicketEventService";
+import { withLease, writeState } from "../MessagingServices/state";
 
 const reusablePreviousUserId = async (
   ticket: Ticket
@@ -33,8 +34,16 @@ const FindOrCreateTicketService = async (
   requestedTicketType?: "PATIENT" | "INTERNAL_REPORT",
   reactivateIntake = false
 ): Promise<Ticket> => {
+  const incomingUnread = (current = 0): number =>
+    reactivateIntake
+      ? Math.max(Number(current || 0) + 1, Number(unreadMessages || 0), 1)
+      : Number(unreadMessages || 0);
   const ticketType =
     requestedTicketType || (contact.isInternal ? "INTERNAL_REPORT" : "PATIENT");
+  const ticketContactId = groupContact ? groupContact.id : contact.id;
+  return withLease(
+    `attendance-ticket:${whatsappId}:${ticketContactId}:${ticketType}`,
+    async () => {
   let ticket = await Ticket.findOne({
     where: {
       status: {
@@ -47,7 +56,7 @@ const FindOrCreateTicketService = async (
   });
 
   if (ticket) {
-    await ticket.update({ unreadMessages });
+    await ticket.update({ unreadMessages: incomingUnread(ticket.unreadMessages) });
   }
 
   let reopenedAfterInactivity = false;
@@ -64,11 +73,13 @@ const FindOrCreateTicketService = async (
     });
 
     if (ticket) {
+      const recordedPreviousUserId =
+        ticket.inactivityPreviousUserId || ticket.userId || null;
       const previousUserId = await reusablePreviousUserId(ticket);
       await ticket.update({
         status: previousUserId ? "open" : "pending",
         userId: previousUserId,
-        unreadMessages,
+        unreadMessages: incomingUnread(),
         awaitingPatientSince: null,
         inactivityClosingAt: null,
         inactivityNoticeSentAt: null,
@@ -90,7 +101,7 @@ const FindOrCreateTicketService = async (
         ticketId: ticket.id,
         eventType: "REOPENED",
         performedByUserId: null,
-        previousUserId: ticket.inactivityPreviousUserId || null,
+        previousUserId: recordedPreviousUserId,
         newUserId: previousUserId,
         newQueueId: ticket.queueId || null,
         metadata: { source: "PATIENT_MESSAGE", afterInactivity: true }
@@ -113,7 +124,7 @@ const FindOrCreateTicketService = async (
       await ticket.update({
         status: "pending",
         userId: null,
-        unreadMessages
+        unreadMessages: incomingUnread()
       });
     }
   }
@@ -137,7 +148,7 @@ const FindOrCreateTicketService = async (
         status: "pending",
         userId: null,
         queueId: reactivateIntake ? null : ticket.queueId,
-        unreadMessages,
+        unreadMessages: incomingUnread(),
         ...(reactivateIntake
           ? {
               intakeStatus: null,
@@ -151,6 +162,15 @@ const FindOrCreateTicketService = async (
           : {})
       });
       if (reactivateIntake) {
+        await Promise.all([
+          writeState(`bot-pause:${ticket.id}`, false),
+          writeState(`bot-review:${ticket.id}`, null),
+          writeState(`menu:${ticket.id}`, { shown: false, attempts: 0 }),
+          writeState(`intake-attempts:${ticket.id}`, {
+            status: null,
+            count: 0
+          })
+        ]);
         await RecordTicketEventService({
           ticketId: ticket.id,
           eventType: "INTAKE_RESTARTED",
@@ -167,7 +187,7 @@ const FindOrCreateTicketService = async (
       contactId: groupContact ? groupContact.id : contact.id,
       status: "pending",
       isGroup: !!groupContact,
-      unreadMessages,
+      unreadMessages: incomingUnread(),
       whatsappId,
       ticketType
     });
@@ -188,7 +208,9 @@ const FindOrCreateTicketService = async (
     await emitTicketInactivityUpdate(ticket.id, "closed");
   }
 
-  return ticket;
+      return ticket;
+    }
+  );
 };
 
 export default FindOrCreateTicketService;

@@ -15,7 +15,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          "material-ui": ["@material-ui/core", "@material-ui/icons", "@material-ui/lab"]
+          "material-ui-core": ["@material-ui/core"],
+          "emoji-picker": ["emoji-mart"],
+          "audio-recorder": ["mic-recorder-to-mp3"]
         }
       }
     }
@@ -36,7 +38,7 @@ export default defineConfig({
       },
       plugins: [mp3EncoderEsbuildPlugin()]
     },
-    include: ["mic-recorder-to-mp3", "howler", "@material-ui/core", "@material-ui/icons", "@material-ui/lab"],
+    include: ["howler", "@material-ui/core"],
     exclude: []
   },
   resolve: {

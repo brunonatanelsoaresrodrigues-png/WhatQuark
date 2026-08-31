@@ -6,6 +6,7 @@ export const writeDraft = (key, value) => {
   if (value) drafts.set(key, value);
   else drafts.delete(key);
 };
+export const clearDraft = key => drafts.delete(key);
 export const messageAttempt = (key, signature) => {
   const previous = attempts.get(key);
   if (previous?.signature === signature) return previous.id;

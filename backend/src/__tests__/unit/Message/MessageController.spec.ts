@@ -35,7 +35,12 @@ jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
 
 describe("MessageController.store", () => {
   const ticket = { id: 42 } as any;
-  const response = { send: jest.fn() } as any;
+  const response = {
+    send: jest.fn(),
+    json: jest.fn(),
+    status: jest.fn()
+  } as any;
+  response.status.mockReturnValue(response);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,6 +76,24 @@ describe("MessageController.store", () => {
     ).toBeLessThan(
       (SendWhatsAppMessage as jest.Mock).mock.invocationCallOrder[0]
     );
+  });
+
+  it("acknowledges a queued human text instead of treating it as a failed request", async () => {
+    (SendWhatsAppMessage as jest.Mock).mockRejectedValueOnce(
+      new Error("ERR_MESSAGE_QUEUED")
+    );
+    const request = {
+      header: () => "request-test-key-1234",
+      params: { ticketId: "42" },
+      body: { body: "Mensagem em fila" },
+      files: undefined,
+      user: { id: "7" }
+    } as any;
+
+    await store(request, response);
+
+    expect(response.status).toHaveBeenCalledWith(202);
+    expect(response.json).toHaveBeenCalledWith({ queued: true });
   });
 
   it("rejects a viewer before pausing the bot or sending", async () => {

@@ -325,15 +325,48 @@ export const listQuarkFreeSlots = async (
   return Array.isArray(result) ? result : [];
 };
 
-const extractPatient = (value: unknown): QuarkPatientDto | null => {
+const extractPatient = (
+  value: unknown,
+  expectedId?: string
+): QuarkPatientDto | null => {
   if (!value || typeof value !== "object") return null;
-  if (Array.isArray(value)) return extractPatient(value[0]);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const patient = extractPatient(item, expectedId);
+      if (patient) return patient;
+    }
+    return null;
+  }
   const object = value as Record<string, unknown>;
-  if (object.id !== undefined) {
+  if (
+    object.id !== undefined &&
+    (!expectedId || String(object.id) === expectedId)
+  ) {
     return object as unknown as QuarkPatientDto;
   }
-  if (object.response !== undefined) return extractPatient(object.response);
+  for (const nested of [object.response, object.paciente, object.patient]) {
+    const patient = extractPatient(nested, expectedId);
+    if (patient) return patient;
+  }
   return null;
+};
+
+export const getQuarkPatient = async (
+  config: QuarkConfig,
+  patientId: string
+): Promise<QuarkPatientDto | null> => {
+  try {
+    const result = await requestJson<unknown>(
+      config,
+      "GET",
+      `/v1/pacientes/${encodeURIComponent(patientId)}`
+    );
+    return extractPatient(result, patientId);
+  } catch (error) {
+    if (error instanceof QuarkHttpError && error.statusCode === 404)
+      return null;
+    throw error;
+  }
 };
 
 export const findQuarkPatientByCpf = async (

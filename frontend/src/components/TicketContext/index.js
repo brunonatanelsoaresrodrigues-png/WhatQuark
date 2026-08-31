@@ -21,6 +21,7 @@ import {
   appointmentStatusLabel
 } from "../../services/appointmentDisplay";
 import { buildQuarkAppointmentPath } from "../../services/quarkClinicNavigation";
+import { isMessageSendBlocked } from "../../services/composerAvailability";
 
 const useStyles = makeStyles(theme => ({
   contextBar: {
@@ -35,15 +36,15 @@ const useStyles = makeStyles(theme => ({
   },
   contextCopy: { flex: 1, minWidth: 160 },
   activeChip: {
-    color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
+    color: theme.modeTokens.brandText,
     background: theme.modeTokens.surfaceTint,
-    borderColor: "rgba(12,124,114,.24)"
+    borderColor: theme.modeTokens.messageOutgoingBorder
   },
   blockedChip: {
     color: theme.palette.error.main,
     background:
-      theme.palette.type === "dark" ? "rgba(198,75,85,.12)" : "#FFF0F1",
-    borderColor: "rgba(198,75,85,.24)"
+      theme.statusTokens.danger.bg,
+    borderColor: theme.statusTokens.danger.border
   },
   appointmentHeading: {
     display: "flex",
@@ -57,8 +58,8 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0.25, 0.8),
     borderRadius: 999,
     background: theme.modeTokens.surfaceTint,
-    color: theme.palette.type === "dark" ? "#8EE3D6" : "#075E57",
-    fontSize: 11,
+    color: theme.modeTokens.brandText,
+    fontSize: 12,
     fontWeight: 700
   },
   appointmentFooter: {
@@ -70,7 +71,7 @@ const useStyles = makeStyles(theme => ({
   quarkButton: {
     minWidth: 0,
     padding: theme.spacing(0.25, 0.5),
-    fontSize: 11,
+    fontSize: 12,
     textTransform: "none"
   }
 }));
@@ -103,8 +104,8 @@ export default function TicketContext({ ticket, context, onRefresh }) {
       context.preference?.consent !== "GRANTED"
     ? "Sem autorização para avisos"
     : "Avisos de consulta ativos";
-  const blocked =
-    !context || context.paused || ["off", "simulation"].includes(context.mode);
+  const checking = !context;
+  const blocked = isMessageSendBlocked(context);
   const appointment = value => (
     <Box key={value.appointmentId} py={1}>
       <div className={classes.appointmentHeading}>
@@ -145,8 +146,10 @@ export default function TicketContext({ ticket, context, onRefresh }) {
           variant="outlined"
           className={blocked ? classes.blockedChip : classes.activeChip}
           label={
-            blocked
-              ? "Envios pausados"
+            checking
+              ? "Verificando envio"
+              : blocked
+              ? "Envio indisponível"
               : context?.botPaused
               ? "Atendimento humano"
               : "Assistente ativo"
@@ -180,7 +183,8 @@ export default function TicketContext({ ticket, context, onRefresh }) {
         <DialogContent dividers>
           {!context ? (
             <Typography>
-              Não foi possível consultar o contexto. Atualize antes de enviar.
+              Não foi possível consultar o contexto visual. O servidor ainda
+              validará a segurança antes de enviar.
             </Typography>
           ) : (
             <>

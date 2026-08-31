@@ -4,6 +4,8 @@ import {
   parseConfirmationChoice,
   parseConfirmationReply,
   parseQuarkScheduledAt,
+  quarkPatientIdFrom,
+  quarkPhoneVariants,
   selectQuarkPhones,
   quarkCpfFrom
 } from "../../../services/QuarkClinicServices/appointmentUtils";
@@ -27,6 +29,7 @@ const config: QuarkConfig = {
   sendIntervalMinMs: 10000,
   sendIntervalMaxMs: 25000,
   syncHorizonDays: 365,
+  syncLookbackDays: 365,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
   quietHoursStart: "20:00",
@@ -41,6 +44,13 @@ const config: QuarkConfig = {
 };
 
 describe("QuarkClinic appointment helpers", () => {
+  it("keeps opaque patient ids and rejects legacy null-like values", () => {
+    expect(quarkPatientIdFrom("ABC_123-xyz")).toBe("ABC_123-xyz");
+    expect(quarkPatientIdFrom(" null ")).toBeNull();
+    expect(quarkPatientIdFrom("undefined")).toBeNull();
+    expect(quarkPatientIdFrom(null)).toBeNull();
+  });
+
   it("adds the configured DDI to a Brazilian local number", () => {
     expect(normalizeQuarkPhone("(11) 98765-4321", "55")).toBe("5511987654321");
   });
@@ -49,6 +59,23 @@ describe("QuarkClinic appointment helpers", () => {
     expect(normalizeQuarkPhone("+55 11 98765-4321", "55", true)).toBe(
       "5511987654321"
     );
+  });
+
+  it("matches Brazilian mobile phones with or without the ninth digit", () => {
+    expect(quarkPhoneVariants("+55 (85) 9241-3638")).toEqual([
+      "558592413638",
+      "5585992413638"
+    ]);
+    expect(quarkPhoneVariants("5585992413638")).toEqual([
+      "5585992413638",
+      "558592413638"
+    ]);
+  });
+
+  it("does not add a ninth digit to a Brazilian landline", () => {
+    expect(quarkPhoneVariants("+55 (85) 3241-3638")).toEqual([
+      "558532413638"
+    ]);
   });
 
   it("returns the main and alternate Quark phones without duplicates", () => {

@@ -7,5 +7,6 @@ const source = buildSync({ entryPoints: [path.join(__dirname, "../src/services/m
 let drafts;
 beforeEach(() => { global.window = new EventTarget(); const loaded = new Module(__filename, module); loaded._compile(source, __filename); drafts = loaded.exports; });
 test("isolates drafts by user and attendance", () => { drafts.writeDraft("1:42", "Draft A"); drafts.writeDraft("1:43", "Draft B"); assert.equal(drafts.readDraft("1:42"), "Draft A"); assert.equal(drafts.readDraft("2:42"), ""); });
+test("clears a confirmed draft even after its composer unmounts", () => { drafts.writeDraft("1:42", "Already sent"); drafts.clearDraft("1:42"); assert.equal(drafts.readDraft("1:42"), ""); });
 test("reuses the send key on retry but creates a new key for a new message", () => { const first = drafts.messageAttempt("1:42", "hello"); assert.equal(drafts.messageAttempt("1:42", "hello"), first); assert.notEqual(drafts.messageAttempt("1:42", "different"), first); drafts.finishMessageAttempt("1:42"); assert.notEqual(drafts.messageAttempt("1:42", "hello"), first); });
 test("clears patient drafts on logout without persistent browser storage", () => { drafts.writeDraft("1:42", "private text"); window.dispatchEvent(new CustomEvent("auth:session", { detail: null })); assert.equal(drafts.readDraft("1:42"), ""); });

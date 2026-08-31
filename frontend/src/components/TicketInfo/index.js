@@ -2,6 +2,7 @@ import React from "react";
 import { CardHeader, makeStyles } from "@material-ui/core";
 import ContactAvatar from "../ContactAvatar";
 import { i18n } from "../../translate/i18n";
+import { contactDisplayName } from "../../services/contactIdentity";
 const useStyles = makeStyles(theme => ({
   root: {
     minWidth: 0,
@@ -40,6 +41,6 @@ const TicketInfo = ({
   }} subheaderTypographyProps={{
     noWrap: true,
     className: classes.subheader
-  }} avatar={<ContactAvatar contact={contact} />} title={`${contact.name || "Contato"} · #${ticket.id || "—"}`} subheader={assignedLabel} />;
+  }} avatar={<ContactAvatar contact={contact} />} title={`${contactDisplayName(contact, "Contato")} · #${ticket.id || "—"}`} subheader={assignedLabel} />;
 };
 export default TicketInfo;

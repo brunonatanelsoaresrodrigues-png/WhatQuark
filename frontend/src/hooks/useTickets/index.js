@@ -12,7 +12,8 @@ const useTickets = ({
   assignee,
   queueIds,
   withUnreadMessages,
-  refreshKey
+  refreshKey,
+  notifyOnError = true
 }) => {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
@@ -49,7 +50,7 @@ const useTickets = ({
           if (!active) return;
           setError(err);
           setLoading(false);
-          toastError(err);
+          if (notifyOnError) toastError(err);
         }
       };
 
@@ -68,7 +69,8 @@ const useTickets = ({
     assignee,
     queueIds,
     withUnreadMessages,
-    refreshKey
+    refreshKey,
+    notifyOnError
   ]);
 
   return { tickets, loading, hasMore, count, error };

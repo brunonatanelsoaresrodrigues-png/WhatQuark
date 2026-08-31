@@ -8,6 +8,7 @@ import PatientIntakeService, {
 } from "../../../services/PatientIntakeServices/PatientIntakeService";
 import PausePatientIntakeService from "../../../services/PatientIntakeServices/PausePatientIntakeService";
 import { setPreference } from "../../../services/MessagingServices/preferences";
+import { emitTicketEvent } from "../../../libs/socket";
 
 jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
   jest.fn()
@@ -21,6 +22,9 @@ jest.mock(
 );
 jest.mock("../../../services/MessagingServices/preferences", () => ({
   setPreference: jest.fn()
+}));
+jest.mock("../../../libs/socket", () => ({
+  emitTicketEvent: jest.fn().mockResolvedValue(undefined)
 }));
 
 const ticket = (overrides: Record<string, unknown> = {}) => {
@@ -139,6 +143,10 @@ describe("PatientIntakeService", () => {
 
     expect(contact.update).toHaveBeenCalledWith({ cpf: "52998224725" });
     expect(contact.cpf).toBe("52998224725");
+    expect(emitTicketEvent).toHaveBeenCalledWith(current, "contact", {
+      action: "update",
+      contact
+    });
     expect(current.intakeStatus).toBe("AWAITING_NAME");
   });
 

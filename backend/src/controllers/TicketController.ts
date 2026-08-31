@@ -12,6 +12,8 @@ import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService
 import formatBody from "../helpers/Mustache";
 import SetTicketWaitingForPatientService from "../services/TicketInactivityServices/SetTicketWaitingForPatientService";
 import EnsureTicketDeletionPermissionService from "../services/TicketServices/EnsureTicketDeletionPermissionService";
+import RequestServiceRatingService from "../services/ServiceRatingServices/RequestServiceRatingService";
+import { logger } from "../utils/logger";
 
 type IndexQuery = {
   searchParam: string;
@@ -113,7 +115,7 @@ export const update = async (
     throw new AppError("ERR_NO_PERMISSION", 403);
   }
 
-  const { ticket, oldStatus } = await UpdateTicketService({
+  const { ticket, oldStatus, oldUserId } = await UpdateTicketService({
     ticketData,
     ticketId,
     actorUserId: Number(req.user.id)
@@ -137,6 +139,18 @@ export const update = async (
         }
       });
     }
+
+    await RequestServiceRatingService({
+      ticket,
+      ratedUserId: ticket.userId || oldUserId || Number(req.user.id),
+      trigger: "MANUAL_RESOLUTION"
+    }).catch(error =>
+      logger.warn({
+        info: "Could not request service rating after ticket resolution",
+        ticketId: ticket.id,
+        err: error
+      })
+    );
   }
 
   return res.status(200).json(ticket);

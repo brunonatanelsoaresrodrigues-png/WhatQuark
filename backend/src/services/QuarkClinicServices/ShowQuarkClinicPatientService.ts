@@ -1,8 +1,8 @@
 import AppError from "../../errors/AppError";
 import QuarkAppointment from "../../models/QuarkAppointment";
-import { quarkCpfFrom } from "./appointmentUtils";
+import { quarkCpfFrom, quarkPatientIdFrom } from "./appointmentUtils";
 import { getQuarkConfig } from "./config";
-import { getQuarkAppointment } from "./QuarkClinicClient";
+import { getQuarkAppointment, getQuarkPatient } from "./QuarkClinicClient";
 import { QuarkAppointmentDto } from "./types";
 
 export interface QuarkClinicPatientDetail {
@@ -23,10 +23,11 @@ const value = (item: unknown): string | null => {
 const ShowQuarkClinicPatientService = async (
   patientId: string
 ): Promise<QuarkClinicPatientDetail> => {
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(patientId || ""))
+  const normalizedPatientId = quarkPatientIdFrom(patientId);
+  if (!normalizedPatientId)
     throw new AppError("ERR_INVALID_PATIENT_ID", 400);
   const records = await QuarkAppointment.findAll({
-    where: { patientId: String(patientId) },
+    where: { patientId: normalizedPatientId },
     attributes: [
       "appointmentId",
       "patientId",
@@ -46,11 +47,12 @@ const ShowQuarkClinicPatientService = async (
   } catch {
     stored = {};
   }
+  const config = getQuarkConfig();
   let remote: Record<string, unknown> = {};
   if (!stored.cpf) {
     try {
       remote = (await getQuarkAppointment(
-        getQuarkConfig(),
+        config,
         String(record.appointmentId)
       )) as unknown as Record<string, unknown>;
     } catch {
@@ -60,14 +62,33 @@ const ShowQuarkClinicPatientService = async (
   const nested = [remote.paciente, remote.patient].find(
     item => item && typeof item === "object"
   ) as Record<string, unknown> | undefined;
+  let patient: Record<string, unknown> = nested || {};
+  const appointmentCpf =
+    quarkCpfFrom(remote as unknown as QuarkAppointmentDto) || value(stored.cpf);
+  if (!appointmentCpf) {
+    try {
+      patient =
+        ((await getQuarkPatient(
+          config,
+          normalizedPatientId
+        )) as unknown as Record<string, unknown>) || patient;
+    } catch {
+      // Keep the appointment detail available during a patient API outage.
+    }
+  }
   return {
-    patientId: String(patientId),
+    patientId: normalizedPatientId,
     patientName:
-      value(remote.nomePaciente) || value(nested?.nome) || record.patientName,
+      value(patient.nome) ||
+      value(patient.nomePaciente) ||
+      value(remote.nomePaciente) ||
+      value(nested?.nome) ||
+      record.patientName,
     cpf:
-      quarkCpfFrom(remote as unknown as QuarkAppointmentDto) ||
-      value(stored.cpf),
+      appointmentCpf || quarkCpfFrom(patient as unknown as QuarkAppointmentDto),
     birthDate:
+      value(patient.dataNascimento) ||
+      value(patient.dataNascimentoPaciente) ||
       value(remote.dataNascimento) ||
       value(remote.dataNascimentoPaciente) ||
       value(nested?.dataNascimento) ||

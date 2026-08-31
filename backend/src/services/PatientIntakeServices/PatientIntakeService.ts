@@ -1,5 +1,6 @@
 import Ticket from "../../models/Ticket";
 import { AsyncLocalStorage } from "async_hooks";
+import { emitTicketEvent } from "../../libs/socket";
 import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import RecordTicketEventService from "../TicketServices/RecordTicketEventService";
@@ -139,7 +140,19 @@ const persistContactCpf = async (
       contactId: ticket.contactId || ticket.contact.id,
       err: error
     });
+    return;
   }
+  await emitTicketEvent(ticket, "contact", {
+    action: "update",
+    contact: ticket.contact
+  }).catch(error =>
+    logger.error({
+      info: "Persisted intake CPF could not be sent to ticket viewers",
+      ticketId: ticket.id,
+      contactId: ticket.contactId || ticket.contact.id,
+      err: error
+    })
+  );
 };
 
 export const isValidBirthDate = (body: string, now = new Date()): boolean => {

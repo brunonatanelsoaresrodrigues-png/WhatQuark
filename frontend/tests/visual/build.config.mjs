@@ -13,6 +13,9 @@ export default defineConfig(mergeConfig(base, {
   },
   resolve: {
     alias: [{
+      find: /^use-sound$/,
+      replacement: resolve(root, "tests/visual/useSound.js")
+    }, {
       find: "./api",
       replacement: resolve(root, "tests/visual/api.js")
     }, {

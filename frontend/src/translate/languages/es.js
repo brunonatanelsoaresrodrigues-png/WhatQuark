@@ -265,10 +265,10 @@ const messages = {
         waitingPatient: "Esperando al paciente",
         pendingHeader: "Cola",
         assignedHeader: "Trabajando en",
-        noTicketsTitle: "¡Nada acá!",
+        noTicketsTitle: "No hay conversaciones aquí",
         connectionTitle: "Conexión que se está utilizando actualmente.",
         noTicketsMessage:
-          "No se encontraron tickets con este estado o término de búsqueda",
+          "Ninguna conversación coincide con este estado o término de búsqueda.",
         buttons: {
           accept: "Acceptar"
         }

@@ -1,6 +1,7 @@
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
+  changedAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
   reminderAppointmentMessage
@@ -42,5 +43,15 @@ describe("Privacy-aware appointment notices", () => {
   it("does not guess today or tomorrow for delayed reminders", () => {
     expect(reminderAppointmentMessage(snapshot, 2)).toContain("21/08/2026");
     expect(reminderAppointmentMessage(snapshot, 2)).not.toMatch(/hoje|amanhã/);
+  });
+  it("uses same-day wording when the changed appointment time already passed", () => {
+    const body = changedAppointmentMessage(
+      snapshot,
+      "",
+      new Date("2026-08-21T20:00:00.000Z"),
+      "America/Sao_Paulo"
+    );
+    expect(body).toContain("agendamento de hoje, às 16:00");
+    expect(body).not.toContain("está prevista");
   });
 });

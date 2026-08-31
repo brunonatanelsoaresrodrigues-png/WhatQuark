@@ -51,7 +51,11 @@ describe("ListContactAppointmentsService", () => {
     const futureWhere = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0]
       .where;
     expect(futureWhere[Op.or]).toEqual([
-      { phone },
+      {
+        phone: { [Op.in]: ["5585999990000", "558599990000"] }
+      },
+      { phones: { [Op.like]: "%5585999990000%" } },
+      { phones: { [Op.like]: "%558599990000%" } },
       { appointmentId: { [Op.in]: ["future", "past"] } }
     ]);
     expect(futureWhere.status[Op.notIn]).toEqual([

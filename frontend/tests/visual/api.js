@@ -167,7 +167,21 @@ export default {
         status: "AGENDADO",
         scheduledAt: new Date("2026-09-09T14:00:00.000Z").toISOString()
       }]
-    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (/^\/quark\/clinic\/contacts\/\d+$/.test(path)) data = {
+    };else if (/^\/tickets\/\d+$/.test(path)) data = tickets.find(t => t.id === Number(path.split("/")[2])) || tickets[0];else if (/^\/quark\/clinic\/contacts\/\d+$/.test(path)) {
+      const quarkMode = new URLSearchParams(window.location.search).get("quark");
+      if (quarkMode === "not-found" || quarkMode === "unavailable") {
+        const error = new Error(
+          quarkMode === "not-found"
+            ? "ERR_QUARK_PATIENT_NOT_FOUND"
+            : "ERR_QUARK_UNAVAILABLE"
+        );
+        error.response = {
+          status: quarkMode === "not-found" ? 404 : 503,
+          data: { error: error.message }
+        };
+        throw error;
+      }
+      data = {
       contactId: Number(path.split("/").pop()),
       patientId: "7001",
       patientName: "Ana Ribeiro",
@@ -175,7 +189,8 @@ export default {
       birthDate: "01/01/1990",
       appointmentId: "1",
       refreshedAt: new Date().toISOString()
-    };else if (/^\/quark\/clinic\/patients\/[^/]+$/.test(path)) data = {
+      };
+    }else if (/^\/quark\/clinic\/patients\/[^/]+$/.test(path)) data = {
       patientId: decodeURIComponent(path.split("/").pop()),
       patientName: "Ana Ribeiro",
       cpf: "52998224725",

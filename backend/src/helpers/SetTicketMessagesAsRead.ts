@@ -3,6 +3,7 @@ import Message from "../models/Message";
 import Ticket from "../models/Ticket";
 import { logger } from "../utils/logger";
 import { whatsappProvider } from "../providers/WhatsApp";
+import contactJid from "./ContactJid";
 
 const SetTicketMessagesAsRead = async (ticket: Ticket): Promise<void> => {
   await Message.update(
@@ -21,7 +22,7 @@ const SetTicketMessagesAsRead = async (ticket: Ticket): Promise<void> => {
     if (ticket.whatsappId) {
       await whatsappProvider.sendSeen(
         ticket.whatsappId,
-        `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`
+        contactJid(ticket.contact, ticket.isGroup)
       );
     }
   } catch (err) {

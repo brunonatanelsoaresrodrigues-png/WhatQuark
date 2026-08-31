@@ -7,6 +7,9 @@ import CloseIcon from "@material-ui/icons/Close";
 import OpenInNewIcon from "@material-ui/icons/OpenInNew";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import FullscreenIcon from "@material-ui/icons/Fullscreen";
+import ErrorOutlineIcon from "@material-ui/icons/ErrorOutline";
+import VisibilityIcon from "@material-ui/icons/Visibility";
+import VisibilityOffIcon from "@material-ui/icons/VisibilityOff";
 
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { getQuarkClinicUrl } from "../../config";
@@ -103,7 +106,7 @@ const useStyles = makeStyles((theme) => ({
   detailLabel: {
     display: "block",
     color: theme.palette.text.secondary,
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 1.4,
   },
   detailValue: {
@@ -140,8 +143,13 @@ const useStyles = makeStyles((theme) => ({
     inset: 0,
     zIndex: 1,
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(3),
+    color: theme.palette.text.secondary,
+    textAlign: "center",
     backgroundColor: theme.palette.background.default,
   },
   notice: {
@@ -170,6 +178,8 @@ const QuarkClinic = () => {
   const frameContainerRef = useRef(null);
   const [frameKey, setFrameKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [frameError, setFrameError] = useState(false);
+  const [cpfVisible, setCpfVisible] = useState(false);
   const [appointment, setAppointment] = useState(null);
   const [patient, setPatient] = useState(null);
   const [patientLoading, setPatientLoading] = useState(false);
@@ -182,6 +192,17 @@ const QuarkClinic = () => {
   const appointmentId = search.get("appointmentId") || "";
   const patientId = search.get("patientId") || "";
   const returnTo = safeQuarkReturnPath(search.get("returnTo"));
+
+  useEffect(() => {
+    if (!loading) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setFrameError(true);
+    }, 12000);
+
+    return () => window.clearTimeout(timeout);
+  }, [frameKey, loading]);
 
   useEffect(() => {
     let active = true;
@@ -252,6 +273,7 @@ const QuarkClinic = () => {
   }
 
   const reloadFrame = () => {
+    setFrameError(false);
     setLoading(true);
     setFrameKey((previousKey) => previousKey + 1);
   };
@@ -405,6 +427,15 @@ const QuarkClinic = () => {
               <Button size="small" startIcon={<RefreshIcon />} disabled={patientLoading} onClick={() => setAppointmentReload(value => value + 1)}>
                 Atualizar
               </Button>
+              {patient?.cpf && (
+                <Button
+                  size="small"
+                  startIcon={cpfVisible ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  onClick={() => setCpfVisible(value => !value)}
+                >
+                  {cpfVisible ? "Ocultar CPF" : "Exibir CPF"}
+                </Button>
+              )}
               <Button size="small" startIcon={<CloseIcon />} onClick={closeAppointment}>
                 Fechar
               </Button>
@@ -417,7 +448,7 @@ const QuarkClinic = () => {
           ) : patient ? (
             <div className={classes.detailGrid}>
               {detail("Paciente", patient.patientName)}
-              {detail("CPF", formatCpf(patient.cpf))}
+              {detail("CPF", patient.cpf && cpfVisible ? formatCpf(patient.cpf) : "•••.•••.•••-••")}
               {detail("Nascimento", patient.birthDate)}
               {detail("Paciente no Quark", patient.patientId)}
               {detail("Consulta vinculada", patient.appointmentId)}
@@ -427,9 +458,27 @@ const QuarkClinic = () => {
       )}
 
       <div className={classes.frameContainer} ref={frameContainerRef}>
-        {loading && (
+        {(loading || frameError) && (
           <div className={classes.loading}>
-            <CircularProgress />
+            {loading ? (
+              <>
+                <CircularProgress />
+                <Typography variant="body2">Carregando o Quark Clinic…</Typography>
+              </>
+            ) : (
+              <>
+                <ErrorOutlineIcon color="error" fontSize="large" />
+                <Typography variant="subtitle1" color="textPrimary">
+                  O Quark Clinic demorou mais que o esperado.
+                </Typography>
+                <Typography variant="body2">
+                  Verifique a conexão, tente recarregar ou abra a aplicação separadamente.
+                </Typography>
+                <Button variant="contained" color="primary" startIcon={<RefreshIcon />} onClick={reloadFrame}>
+                  Tentar novamente
+                </Button>
+              </>
+            )}
           </div>
         )}
         <iframe
@@ -437,7 +486,10 @@ const QuarkClinic = () => {
           className={classes.frame}
           src={quarkClinicUrl}
           title="Quark Clinic"
-          onLoad={() => setLoading(false)}
+          onLoad={() => {
+            setLoading(false);
+            setFrameError(false);
+          }}
           allow="clipboard-read; clipboard-write; fullscreen"
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"

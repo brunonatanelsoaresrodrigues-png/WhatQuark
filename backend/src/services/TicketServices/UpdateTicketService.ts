@@ -10,6 +10,7 @@ import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import ShowTicketService from "./ShowTicketService";
 import RecordTicketEventService from "./RecordTicketEventService";
 import { withLease } from "../MessagingServices/state";
+import CancelPendingServiceRatingsService from "../ServiceRatingServices/CancelPendingServiceRatingsService";
 
 interface TicketData {
   status?: string;
@@ -135,6 +136,13 @@ const updateTicket = async ({
       newQueueId,
       metadata: { previousStatus: oldStatus, newStatus: ticket.status }
     });
+  }
+
+  if (oldStatus === "closed" && ticket.status !== "closed") {
+    await CancelPendingServiceRatingsService(
+      ticket.contactId,
+      ticket.whatsappId
+    );
   }
 
   const io = getIO();

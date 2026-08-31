@@ -35,6 +35,10 @@ test("counts calendar days from today in the clinic timezone", () => {
     "Há 1 dia"
   );
   assert.equal(
+    display.appointmentDayLabel("2026-08-18T12:30:00.000Z", now, timezone),
+    "Há 10 dias"
+  );
+  assert.equal(
     display.appointmentDayLabel("2026-08-28T23:30:00.000Z", now, timezone),
     "Hoje"
   );

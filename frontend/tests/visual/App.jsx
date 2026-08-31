@@ -21,6 +21,9 @@ import Login from "../../src/pages/Login";
 import Signup from "../../src/pages/Signup";
 import { user, channels } from "./api";
 import { installSyntheticAudio } from "./audio";
+// Mesmo CSS global do entrypoint de producao (fonte Inter e keyframes). Sem ele
+// o QA visual rodaria com a fonte do sistema e sem as animacoes de entrada.
+import "../../src/theme/base.css";
 import "react-toastify/dist/ReactToastify.css";
 window.ENV = {
   VITE_QUARK_CLINIC_URL: "about:blank"

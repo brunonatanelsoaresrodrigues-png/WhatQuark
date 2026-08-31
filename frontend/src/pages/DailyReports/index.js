@@ -9,7 +9,6 @@ import {
   Grid,
   Paper,
   Switch,
-  Table,
   TableBody,
   TableCell,
   TableContainer,
@@ -31,6 +30,7 @@ import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import PageHeading from "../../components/PageHeading";
 import PageSkeleton from "../../components/PageSkeleton";
+import ResponsiveTable from "../../components/ResponsiveTable";
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -65,7 +65,7 @@ const dateTime = value =>
 const deliveryColor = status => {
   if (["READ", "DELIVERED", "SENT", "COMPLETED"].includes(status))
     return "primary";
-  if (["DEAD_LETTER", "FAILED_RETRY", "FAILED"].includes(status))
+  if (["DEAD_LETTER", "FAILED_RETRY", "FAILED", "PARTIAL"].includes(status))
     return "secondary";
   return "default";
 };
@@ -272,7 +272,7 @@ const DailyReports = () => {
           </Button>
         </form>
         <TableContainer>
-          <Table size="small">
+          <ResponsiveTable size="small" aria-label="Destinatários dos relatórios">
             <TableHead>
               <TableRow>
                 <TableCell>Gestor</TableCell>
@@ -285,14 +285,14 @@ const DailyReports = () => {
             <TableBody>
               {recipients.map(recipient => (
                 <TableRow key={recipient.id}>
-                  <TableCell>{recipient.name}</TableCell>
-                  <TableCell>{recipient.phone}</TableCell>
-                  <TableCell>
+                  <TableCell data-mobile-primary>{recipient.name}</TableCell>
+                  <TableCell data-label="Telefone">{recipient.phone}</TableCell>
+                  <TableCell data-label="Validação">
                     {recipient.verifiedAt
                       ? `Validado em ${dateTime(recipient.verifiedAt)}`
                       : "Pendente"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Ativo">
                     <Switch
                       checked={recipient.active}
                       disabled={!recipient.verifiedAt || Boolean(busy)}
@@ -311,7 +311,7 @@ const DailyReports = () => {
                       }
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Ações" data-mobile-actions>
                     <div className={classes.actions}>
                       <Button
                         size="small"
@@ -365,7 +365,7 @@ const DailyReports = () => {
                 </TableRow>
               )}
             </TableBody>
-          </Table>
+          </ResponsiveTable>
         </TableContainer>
       </Paper>
 
@@ -403,7 +403,7 @@ const DailyReports = () => {
           Histórico e entregas
         </Typography>
         <TableContainer>
-          <Table size="small">
+          <ResponsiveTable size="small" aria-label="Histórico de relatórios">
             <TableHead>
               <TableRow>
                 <TableCell>Data</TableCell>
@@ -424,11 +424,11 @@ const DailyReports = () => {
                 )
                 .map(({ run, delivery }, index) => (
                   <TableRow key={`${run.id}-${delivery?.id || index}`}>
-                    <TableCell>{run.reportDate}</TableCell>
-                    <TableCell>
+                    <TableCell data-mobile-primary>{run.reportDate}</TableCell>
+                    <TableCell data-label="Período">
                       {dateTime(run.periodStart)} → {dateTime(run.periodEnd)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Relatório">
                       <Chip
                         size="small"
                         label={`${run.runType === "TEST" ? "TESTE · " : ""}${
@@ -437,12 +437,12 @@ const DailyReports = () => {
                         color={deliveryColor(run.status)}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Destinatário">
                       {delivery
                         ? `${delivery.recipientName} · ${delivery.recipientPhone}`
                         : "Sem entrega"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Entrega">
                       {delivery ? (
                         <>
                           <Chip
@@ -464,8 +464,8 @@ const DailyReports = () => {
                         "—"
                       )}
                     </TableCell>
-                    <TableCell>{delivery?.attempts || 0}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Tentativas">{delivery?.attempts || 0}</TableCell>
+                    <TableCell data-label="Ação" data-mobile-actions>
                       <div className={classes.actions}>
                         <Button
                           size="small"
@@ -509,7 +509,7 @@ const DailyReports = () => {
                 </TableRow>
               )}
             </TableBody>
-          </Table>
+          </ResponsiveTable>
         </TableContainer>
       </Paper>
     </Container>

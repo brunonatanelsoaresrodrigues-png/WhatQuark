@@ -2,6 +2,7 @@ import {
   AppointmentSnapshot,
   formatAppointmentDateTime
 } from "./appointmentUtils";
+import { clinicTimezone, dateParts } from "./clinicTime";
 const clean = (value: string) => value.replace(/[\r\n*_~`]+/g, " ").trim();
 const details = (appointment: AppointmentSnapshot) => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
@@ -16,8 +17,30 @@ export const newAppointmentMessage = (
 ) => details(appointment);
 export const changedAppointmentMessage = (
   appointment: AppointmentSnapshot,
-  _address = ""
-) => `Houve uma alteração no seu agendamento.\n${details(appointment)}`;
+  _address = "",
+  now = new Date(),
+  timezone = clinicTimezone()
+) => {
+  if (
+    appointment.scheduledAt &&
+    appointment.scheduledAt.getTime() <= now.getTime()
+  ) {
+    const scheduled = dateParts(appointment.scheduledAt, timezone);
+    const current = dateParts(now, timezone);
+    if (
+      scheduled.year === current.year &&
+      scheduled.month === current.month &&
+      scheduled.day === current.day
+    ) {
+      const { time } = formatAppointmentDateTime(appointment.scheduledAt);
+      const clinic = clean(appointment.raw.clinicaNome || "nossa unidade");
+      return `Houve uma alteração no seu agendamento de hoje${
+        time ? `, às ${time}` : ""
+      }, em ${clinic}. Em caso de dúvida, fale com nossa equipe.`;
+    }
+  }
+  return `Houve uma alteração no seu agendamento.\n${details(appointment)}`;
+};
 export const cancelledAppointmentMessage = (
   appointment: AppointmentSnapshot
 ) => {
