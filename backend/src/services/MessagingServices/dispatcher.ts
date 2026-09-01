@@ -355,7 +355,14 @@ const runOutbound = async (transport: Transport): Promise<void> => {
             attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) }
           };
           const limit = positive(process.env.MESSAGING_MAX_PER_HOUR, 100);
-          if ((await OutboundMessage.count({ where: recent })) >= limit) {
+          // The hourly ceiling protects the channel from automated traffic.
+          // A message typed by an attendant must never be held behind that
+          // automation quota; channel/recipient leases and the minimum gap
+          // still serialize human sends safely.
+          if (
+            policy.origin !== "HUMAN" &&
+            (await OutboundMessage.count({ where: recent })) >= limit
+          ) {
             await row.update({ dueAt: new Date(Date.now() + 60000) });
             return;
           }

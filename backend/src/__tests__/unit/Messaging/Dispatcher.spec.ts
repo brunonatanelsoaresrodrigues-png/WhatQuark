@@ -198,11 +198,23 @@ it("does not resend after a post-send storage failure", async () => {
   await processOutbound(transport);
   expect(transport.sendMessage).toHaveBeenCalledTimes(1);
 });
-it("shares the channel hourly cap across message origins", async () => {
+it("applies the channel hourly cap to automated messages", async () => {
   (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
   await processOutbound(transport);
   expect(transport.sendMessage).not.toHaveBeenCalled();
   expect(row.status).toBe("PENDING");
+});
+it("never applies the automated hourly cap to attendant messages", async () => {
+  row.payload = JSON.stringify({
+    to: "5511999990000@c.us",
+    body: "human reply",
+    options: { policy: { origin: "HUMAN", sentByUserId: 7 } }
+  });
+  (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
+  await processOutbound(transport);
+  expect(OutboundMessage.count).not.toHaveBeenCalled();
+  expect(transport.sendMessage).toHaveBeenCalledTimes(1);
+  expect(row.status).toBe("SENT");
 });
 it("expires delayed notices before considering quota", async () => {
   row.payload = JSON.stringify({
