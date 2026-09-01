@@ -1,0 +1,196 @@
+name: whaticket
+
+services:
+  mariadb:
+    image: mariadb:10.6
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_bin
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --key-buffer-size=8M
+      - --max-connections=30
+      - --performance-schema=OFF
+      - --skip-name-resolve
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: America/Sao_Paulo
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 768m
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 32mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 128m
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.lowmem
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-whaileys}
+      MESSAGING_MODE: ${MESSAGING_MODE:-simulation}
+      MESSAGING_TEST_ALLOWLIST: ${MESSAGING_TEST_ALLOWLIST:-}
+      MESSAGING_MAX_PER_HOUR: ${MESSAGING_MAX_PER_HOUR:-100}
+      MESSAGING_MIN_INTERVAL_SECONDS: ${MESSAGING_MIN_INTERVAL_SECONDS:-2}
+      MESSAGING_MAX_NOTICES_PER_DAY: ${MESSAGING_MAX_NOTICES_PER_DAY:-3}
+      BOT_FALLBACK_QUEUE_ID: ${BOT_FALLBACK_QUEUE_ID:-}
+      DASHBOARD_SLA_MINUTES: ${DASHBOARD_SLA_MINUTES:-5}
+      CLOUD_WHATSAPP_ID: ${CLOUD_WHATSAPP_ID:-}
+      CLOUD_PHONE_NUMBER_ID: ${CLOUD_PHONE_NUMBER_ID:-}
+      CLOUD_API_VERSION: ${CLOUD_API_VERSION:-}
+      CLOUD_ACCESS_TOKEN: ${CLOUD_ACCESS_TOKEN:-}
+      CLOUD_APP_SECRET: ${CLOUD_APP_SECRET:-}
+      CLOUD_VERIFY_TOKEN: ${CLOUD_VERIFY_TOKEN:-}
+      CLOUD_QUARK_APPOINTMENT_TEMPLATE: ${CLOUD_QUARK_APPOINTMENT_TEMPLATE:-}
+      CLOUD_QUARK_CANCELLED_TEMPLATE: ${CLOUD_QUARK_CANCELLED_TEMPLATE:-}
+      CLOUD_TEMPLATE_LANGUAGE: ${CLOUD_TEMPLATE_LANGUAGE:-pt_BR}
+      LOG_LEVEL: info
+      WHAILEYS_LOG_LEVEL: error
+      DB_DIALECT: mysql
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASS: ${MYSQL_ROOT_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      BACKEND_URL: https://api.bfontes.online
+      FRONTEND_URL: https://atendimento.bfontes.online
+      PROXY_PORT: "443"
+      REDIS_URL: redis://redis:6379
+      REDIS_DB: "0"
+      TZ: America/Sao_Paulo
+      QUARK_INTEGRATION_ENABLED: ${QUARK_INTEGRATION_ENABLED:-false}
+      PATIENT_INTAKE_QUARK_BOOKING_ENABLED: ${PATIENT_INTAKE_QUARK_BOOKING_ENABLED:-true}
+      QUARK_API_BASE_URL: ${QUARK_API_BASE_URL:-https://api.quark.tec.br/clinic/ext}
+      QUARK_AUTH_TOKEN: ${QUARK_AUTH_TOKEN:-}
+      QUARK_X_CHAVE_KEY: ${QUARK_X_CHAVE_KEY:-}
+      QUARK_X_SECRET_KEY: ${QUARK_X_SECRET_KEY:-}
+      QUARK_WHATSAPP_ID: ${QUARK_WHATSAPP_ID:-}
+      QUARK_POLL_INTERVAL_SECONDS: ${QUARK_POLL_INTERVAL_SECONDS:-300}
+      QUARK_STARTUP_DELAY_SECONDS: ${QUARK_STARTUP_DELAY_SECONDS:-20}
+      QUARK_REQUEST_TIMEOUT_MS: ${QUARK_REQUEST_TIMEOUT_MS:-15000}
+      QUARK_SYNC_HORIZON_DAYS: ${QUARK_SYNC_HORIZON_DAYS:-365}
+      QUARK_TIMEZONE: ${QUARK_TIMEZONE:-America/Sao_Paulo}
+      QUARK_DEFAULT_COUNTRY_CODE: ${QUARK_DEFAULT_COUNTRY_CODE:-55}
+      QUARK_CLINIC_ADDRESS: ${QUARK_CLINIC_ADDRESS:-}
+      QUARK_REMINDER_HOURS: ${QUARK_REMINDER_HOURS:-24}
+      QUARK_SEND_INTERVAL_MIN_SECONDS: ${QUARK_SEND_INTERVAL_MIN_SECONDS:-15}
+      QUARK_SEND_INTERVAL_MAX_SECONDS: ${QUARK_SEND_INTERVAL_MAX_SECONDS:-45}
+      QUARK_MAX_MESSAGES_PER_HOUR: ${QUARK_MAX_MESSAGES_PER_HOUR:-100}
+      QUARK_QUIET_HOURS_START: ${QUARK_QUIET_HOURS_START:-20:00}
+      QUARK_QUIET_HOURS_END: ${QUARK_QUIET_HOURS_END:-08:00}
+      QUARK_MAX_RETRY_ATTEMPTS: ${QUARK_MAX_RETRY_ATTEMPTS:-5}
+      QUARK_PROCESSING_TIMEOUT_MINUTES: ${QUARK_PROCESSING_TIMEOUT_MINUTES:-10}
+      QUARK_WORKER_POLL_INTERVAL_SECONDS: ${QUARK_WORKER_POLL_INTERVAL_SECONDS:-5}
+      QUARK_DRY_RUN: ${QUARK_DRY_RUN:-true}
+      QUARK_TEST_ALLOWLIST: ${QUARK_TEST_ALLOWLIST:-}
+      QUARK_CANCEL_REASON: ${QUARK_CANCEL_REASON:-Cancelado pelo paciente atraves da confirmacao no WhatsApp}
+      QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN: ${QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN:-false}
+      TICKET_INACTIVITY_ENABLED: ${TICKET_INACTIVITY_ENABLED:-false}
+      TICKET_INACTIVITY_TIMEOUT_MINUTES: ${TICKET_INACTIVITY_TIMEOUT_MINUTES:-15}
+      TICKET_INACTIVITY_POLL_INTERVAL_SECONDS: ${TICKET_INACTIVITY_POLL_INTERVAL_SECONDS:-30}
+      TICKET_INACTIVITY_CLAIM_TIMEOUT_MINUTES: ${TICKET_INACTIVITY_CLAIM_TIMEOUT_MINUTES:-5}
+      TICKET_INACTIVITY_SEND_INTERVAL_MIN_SECONDS: ${TICKET_INACTIVITY_SEND_INTERVAL_MIN_SECONDS:-15}
+      TICKET_INACTIVITY_SEND_INTERVAL_MAX_SECONDS: ${TICKET_INACTIVITY_SEND_INTERVAL_MAX_SECONDS:-45}
+      DAILY_REPORT_ENABLED: ${DAILY_REPORT_ENABLED:-false}
+      DAILY_REPORT_TEST_MODE: ${DAILY_REPORT_TEST_MODE:-true}
+      DAILY_REPORT_TIME: ${DAILY_REPORT_TIME:-17:00}
+      DAILY_REPORT_TIMEZONE: ${DAILY_REPORT_TIMEZONE:-America/Sao_Paulo}
+      DAILY_REPORT_WHATSAPP_ID: ${DAILY_REPORT_WHATSAPP_ID:-}
+      DAILY_REPORT_POLL_INTERVAL_SECONDS: ${DAILY_REPORT_POLL_INTERVAL_SECONDS:-30}
+      DAILY_REPORT_SEND_INTERVAL_SECONDS: ${DAILY_REPORT_SEND_INTERVAL_SECONDS:-20}
+      DAILY_REPORT_MAX_RETRY_ATTEMPTS: ${DAILY_REPORT_MAX_RETRY_ATTEMPTS:-5}
+      DAILY_REPORT_ALLOW_WEEKENDS: ${DAILY_REPORT_ALLOW_WEEKENDS:-true}
+    volumes:
+      - backend_public:/usr/src/app/public
+      - backend_auth:/usr/src/app/.wwebjs_auth
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 40s
+    restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 1024m
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.lowmem
+    environment:
+      VITE_BACKEND_URL: https://api.bfontes.online
+      VITE_QUARK_CLINIC_URL: ${VITE_QUARK_CLINIC_URL:-https://ng.quarkclinic.com.br/}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 128m
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.lowmem:/etc/caddy/Caddyfile:ro,Z
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 128m
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+  backend_public:
+  backend_auth:
+  caddy_data:
+  caddy_config:

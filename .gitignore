@@ -1,0 +1,34 @@
+.docker/data/
+ssl/
+.env
+.wwebjs_auth
+.wwebjs_cache
+.idea
+# Local configuration, credentials and runtime data
+**/node_modules/
+**/dist/
+**/build/
+**/build-visual/
+**/.env
+**/.env.*
+!**/.env.example
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+**/coverage/
+*.pem
+*.key
+*.pfx
+*.sql
+*.sql.gz
+*.rdb
+*.log
+backend/public/*
+!backend/public/.gitkeep
+
+# Generated local reports and release packages
+outputs/
+report_work/
+squadchat-code-*.bundle
+*.tar
+*.tar.gz
+*.tgz

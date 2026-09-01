@@ -1,0 +1,1 @@
+Arquivo fictício para validar a prévia local. Não contém dados de paciente.

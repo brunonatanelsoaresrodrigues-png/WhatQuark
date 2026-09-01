@@ -1,0 +1,16 @@
+{
+    email admin@bfontes.online
+}
+
+atendimento.bfontes.online {
+    encode zstd gzip
+    reverse_proxy frontend:80
+}
+
+api.bfontes.online {
+    encode zstd gzip
+    request_body {
+        max_size 20MB
+    }
+    reverse_proxy backend:3000
+}
