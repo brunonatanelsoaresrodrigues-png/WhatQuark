@@ -4,9 +4,9 @@ set -Eeuo pipefail
 stack_dir=/opt/whaticket
 production_compose="$stack_dir/compose.yaml"
 env_file="$stack_dir/.env"
-base_image=whaticket-backend:outbound-priority-20260901-1505
-backend_image=whaticket-backend:attendant-quota-bypass-20260901-1555
-revision=attendant-quota-bypass-20260901-1555
+base_image=whaticket-backend:attendant-quota-bypass-20260901-1555
+backend_image=whaticket-backend:attendant-quota-bypass-20260901-1600
+revision=attendant-quota-bypass-20260901-1600
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 compose_backup="$stack_dir/compose.before-attendant-quota-bypass-$stamp.yaml"
 

@@ -350,9 +350,12 @@ const runOutbound = async (transport: Transport): Promise<void> => {
             });
             return;
           }
-          const recent = {
+          const recentAutomated = {
             whatsappId: row.whatsappId,
-            attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) }
+            attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) },
+            // Human messages have priority 10. They neither consume nor are
+            // constrained by the hourly automation quota.
+            priority: { [Op.lt]: 10 }
           };
           const limit = positive(process.env.MESSAGING_MAX_PER_HOUR, 100);
           // The hourly ceiling protects the channel from automated traffic.
@@ -361,7 +364,7 @@ const runOutbound = async (transport: Transport): Promise<void> => {
           // still serialize human sends safely.
           if (
             policy.origin !== "HUMAN" &&
-            (await OutboundMessage.count({ where: recent })) >= limit
+            (await OutboundMessage.count({ where: recentAutomated })) >= limit
           ) {
             await row.update({ dueAt: new Date(Date.now() + 60000) });
             return;

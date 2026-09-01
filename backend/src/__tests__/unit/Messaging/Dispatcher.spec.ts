@@ -201,6 +201,9 @@ it("does not resend after a post-send storage failure", async () => {
 it("applies the channel hourly cap to automated messages", async () => {
   (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
   await processOutbound(transport);
+  const quotaWhere = (OutboundMessage.count as jest.Mock).mock.calls[0][0]
+    .where;
+  expect(quotaWhere.priority).toBeDefined();
   expect(transport.sendMessage).not.toHaveBeenCalled();
   expect(row.status).toBe("PENDING");
 });
