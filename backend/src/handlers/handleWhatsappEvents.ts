@@ -1,21 +1,28 @@
 import { join } from "path";
+import { safeMediaFilename } from "../helpers/SafeMediaFilename";
 import { promisify } from "util";
 import { writeFile } from "fs";
 import * as Sentry from "@sentry/node";
 
-import { getIO } from "../libs/socket";
+import { emitTicketEvent } from "../libs/socket";
 import { logger } from "../utils/logger";
-import { debounce } from "../helpers/Debounce";
+import { storedMediaType } from "../helpers/StoredMediaType";
+import { HandleInboundAutomation } from "../services/MessagingServices/HandleInboundAutomation";
+import { recordInbound } from "../services/MessagingServices/preferences";
+import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
 import formatBody from "../helpers/Mustache";
 
 import Contact from "../models/Contact";
 import Ticket from "../models/Ticket";
+import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import Message from "../models/Message";
+import ServiceRating from "../models/ServiceRating";
 
 import CreateMessageService from "../services/MessageServices/CreateMessageService";
 import QuarkAppointmentNotification from "../models/QuarkAppointmentNotification";
 import { emitQuarkDashboardUpdate } from "../services/QuarkClinicServices/dashboardEvents";
 import CreateOrUpdateContactService from "../services/ContactServices/CreateOrUpdateContactService";
+import FindNotificationTicket from "../services/TicketServices/FindNotificationTicket";
 import FindOrCreateTicketService from "../services/TicketServices/FindOrCreateTicketService";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import UpdateTicketService from "../services/TicketServices/UpdateTicketService";
@@ -24,6 +31,11 @@ import HandleQuarkConfirmationReply from "../services/QuarkClinicServices/Handle
 import HandleTicketMessageForInactivity from "../services/TicketInactivityServices/HandleTicketMessageForInactivity";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import { registerMessageAttribution } from "../services/MessageServices/MessageAttributionService";
+import {
+  FindPendingServiceRating,
+  HandleServiceRatingResponse
+} from "../services/ServiceRatingServices/ServiceRatingResponseService";
+import CancelPendingServiceRatingsService from "../services/ServiceRatingServices/CancelPendingServiceRatingsService";
 
 import { whatsappProvider } from "../providers/WhatsApp/whatsappProvider";
 import { MessageType, MessageAck } from "../providers/WhatsApp/types";
@@ -66,18 +78,11 @@ export interface WhatsappContextPayload {
   groupContact?: ContactPayload;
 }
 
-const makeRandomId = (length: number): string => {
-  let result = "";
-  const characters =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const charactersLength = characters.length;
-  let counter = 0;
-  while (counter < length) {
-    result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    counter += 1;
-  }
-  return result;
-};
+export interface HandleMessageOptions {
+  historySync?: boolean;
+  throwOnFailure?: boolean;
+}
+export type HandleMessageResult = "created" | "duplicate" | "ignored";
 
 const processLocationMessage = (
   messagePayload: MessagePayload
@@ -88,18 +93,10 @@ const processLocationMessage = (
 };
 
 const saveMediaFile = async (mediaPayload: MediaPayload): Promise<string> => {
-  const randomId = makeRandomId(5);
-  const { filename: originalFilename } = mediaPayload;
-
-  let filename: string;
-  if (!originalFilename) {
-    const [extension] = mediaPayload.mimetype.split("/")[1].split(";");
-    filename = `${randomId}-${new Date().getTime()}.${extension}`;
-  } else {
-    const baseName = originalFilename.split(".").slice(0, -1).join(".");
-    const extension = originalFilename.split(".").slice(-1)[0];
-    filename = `${baseName}.${randomId}.${extension}`;
-  }
+  const originalName =
+    mediaPayload.filename ||
+    `media.${mediaPayload.mimetype.split("/")[1]?.split(";")[0] || "bin"}`;
+  const filename = safeMediaFilename(originalName);
 
   try {
     await writeFileAsync(
@@ -110,6 +107,7 @@ const saveMediaFile = async (mediaPayload: MediaPayload): Promise<string> => {
   } catch (err) {
     Sentry.captureException(err);
     logger.error(err);
+    throw new Error("ERR_INCOMING_MEDIA_STORAGE");
   }
 
   return filename;
@@ -150,91 +148,52 @@ const processVcardMessage = async (
   }
 };
 
-const handleQueueLogic = async (
-  whatsappId: number,
-  messageBody: string,
-  ticket: Ticket,
-  contactPayload: ContactPayload
-): Promise<void> => {
-  const { queues, greetingMessage } = await ShowWhatsAppService(whatsappId);
-
-  if (queues.length === 1) {
-    await UpdateTicketService({
-      ticketData: { queueId: queues[0].id },
-      ticketId: ticket.id
-    });
-    return;
-  }
-
-  const selectedOption = messageBody;
-  const choosenQueue = queues[+selectedOption - 1];
-
-  if (choosenQueue) {
-    await UpdateTicketService({
-      ticketData: { queueId: choosenQueue.id },
-      ticketId: ticket.id
-    });
-
-    const body = formatBody(
-      `\u200e${choosenQueue.greetingMessage}`,
-      contactPayload as any
-    );
-
-    try {
-      const sentMessage = await whatsappProvider.sendMessage(
-        whatsappId,
-        `${contactPayload.number}@c.us`,
-        body
-      );
-      await registerMessageAttribution(sentMessage.id, {
-        sentByUserId: null,
-        origin: "BOT"
-      });
-    } catch (error) {
-      logger.error("Error sending queue greeting message:", error);
-    }
-  } else {
-    let options = "";
-    queues.forEach((queue, index) => {
-      options += `*${index + 1}* - ${queue.name}\n`;
-    });
-
-    const body = formatBody(
-      `\u200e${greetingMessage}\n${options}`,
-      contactPayload as any
-    );
-
-    const debouncedSentMessage = debounce(
-      async () => {
-        try {
-          const sentMessage = await whatsappProvider.sendMessage(
-            whatsappId,
-            `${contactPayload.number}@c.us`,
-            body
-          );
-          await registerMessageAttribution(sentMessage.id, {
-            sentByUserId: null,
-            origin: "BOT"
-          });
-        } catch (error) {
-          logger.error("Error sending queue options message:", error);
-        }
-      },
-      3000,
-      ticket.id
-    );
-
-    debouncedSentMessage();
-  }
-};
-
 export const handleMessage = async (
   messagePayload: MessagePayload,
   contactPayload: ContactPayload,
   contextPayload: WhatsappContextPayload,
-  mediaPayload?: MediaPayload
-): Promise<void> => {
+  mediaPayload?: MediaPayload,
+  inputOptions: HandleMessageOptions | boolean = {}
+): Promise<HandleMessageResult> => {
+  const options =
+    typeof inputOptions === "boolean"
+      ? { throwOnFailure: inputOptions }
+      : inputOptions;
   try {
+    const timestampMs =
+      messagePayload.timestamp > 10_000_000_000
+        ? messagePayload.timestamp
+        : messagePayload.timestamp * 1000;
+    const receivedAt = new Date(timestampMs);
+    const eligibleForAutomation =
+      !options.historySync &&
+      !messagePayload.fromMe &&
+      !contextPayload.groupContact &&
+      timestampMs <= Date.now() + 60000 &&
+      timestampMs >= Date.now() - 5 * 60000;
+    const existing = await Message.findByPk(messagePayload.id);
+    if (existing) {
+      const existingRating = await ServiceRating.findOne({
+        where: { responseMessageId: messagePayload.id },
+        attributes: ["id"]
+      });
+      if (existingRating) return "duplicate";
+      if (eligibleForAutomation) {
+        await recordInbound(
+          contactPayload.number,
+          contextPayload.whatsappId,
+          messagePayload.timestamp
+        );
+        await HandleInboundAutomation({
+          ticketId: existing.ticketId,
+          whatsappId: contextPayload.whatsappId,
+          phone: contactPayload.number,
+          body: messagePayload.body,
+          messageId: messagePayload.id
+        });
+      }
+      return "duplicate";
+    }
     const processedMessage = processLocationMessage(messagePayload);
 
     const contact = await CreateOrUpdateContactService({
@@ -242,7 +201,8 @@ export const handleMessage = async (
       number: contactPayload.number,
       lid: contactPayload.lid,
       profilePicUrl: contactPayload.profilePicUrl,
-      isGroup: contactPayload.isGroup
+      isGroup: contactPayload.isGroup,
+      emitEvent: !options.historySync
     });
 
     let groupContact: Contact | undefined;
@@ -252,25 +212,69 @@ export const handleMessage = async (
         number: contextPayload.groupContact.number,
         lid: contextPayload.groupContact.lid,
         profilePicUrl: contextPayload.groupContact.profilePicUrl,
-        isGroup: contextPayload.groupContact.isGroup
+        isGroup: contextPayload.groupContact.isGroup,
+        emitEvent: !options.historySync
       });
     }
 
     const whatsapp = await ShowWhatsAppService(contextPayload.whatsappId);
     if (
+      !options.historySync &&
+      processedMessage.fromMe &&
       contextPayload.unreadMessages === 0 &&
       whatsapp.farewellMessage &&
       formatBody(whatsapp.farewellMessage, contact) === processedMessage.body
     ) {
-      return;
+      return "ignored";
     }
 
-    const ticket = await FindOrCreateTicketService(
-      contact,
-      contextPayload.whatsappId,
-      contextPayload.unreadMessages,
-      groupContact
-    );
+    const pendingServiceRating =
+      !options.historySync &&
+      !processedMessage.fromMe &&
+      !groupContact &&
+      !contact.isInternal
+        ? await FindPendingServiceRating({
+            contactId: contact.id,
+            whatsappId: contextPayload.whatsappId,
+            body: processedMessage.body
+          })
+        : null;
+
+    let ticket: Ticket;
+    if (pendingServiceRating) {
+      // A nota pertence ao atendimento que originou a pesquisa. Mantemos o
+      // ticket fechado e evitamos que uma resposta "0" a "5" abra o bot.
+      ticket = await ShowTicketService(pendingServiceRating.ticketId);
+    } else if (options.historySync) {
+      ticket = (await Ticket.findOne({
+        where: {
+          contactId: groupContact ? groupContact.id : contact.id,
+          whatsappId: contextPayload.whatsappId,
+          ticketType: "PATIENT"
+        },
+        order: [["updatedAt", "DESC"]]
+      })) as Ticket;
+      if (!ticket)
+        ticket = await Ticket.create({
+          contactId: groupContact ? groupContact.id : contact.id,
+          whatsappId: contextPayload.whatsappId,
+          status: "closed",
+          isGroup: Boolean(groupContact),
+          unreadMessages: 0,
+          ticketType: "PATIENT"
+        });
+    } else
+      ticket =
+        processedMessage.fromMe && !groupContact && !contact.isInternal
+          ? await FindNotificationTicket(contact, contextPayload.whatsappId)
+          : await FindOrCreateTicketService(
+              contact,
+              contextPayload.whatsappId,
+              contextPayload.unreadMessages,
+              groupContact,
+              undefined,
+              !processedMessage.fromMe
+            );
 
     const messageData: any = {
       id: processedMessage.id,
@@ -278,18 +282,36 @@ export const handleMessage = async (
       contactId: processedMessage.fromMe ? undefined : contact.id,
       body: processedMessage.body,
       fromMe: processedMessage.fromMe,
-      read: processedMessage.fromMe,
+      read: processedMessage.fromMe || Boolean(pendingServiceRating),
       mediaType: processedMessage.type,
       quotedMsgId: processedMessage.quotedMsgId,
-      ack: processedMessage.ack !== undefined ? processedMessage.ack : 0
+      ack: processedMessage.ack !== undefined ? processedMessage.ack : 0,
+      ...(Number.isFinite(timestampMs) && timestampMs <= Date.now() + 60000
+        ? { createdAt: receivedAt }
+        : {}),
+      ...(options.historySync
+        ? {
+            sentByUserId: null,
+            origin: processedMessage.fromMe ? "UNKNOWN" : "PATIENT"
+          }
+        : {})
     };
 
     if (mediaPayload && processedMessage.hasMedia) {
       const filename = await saveMediaFile(mediaPayload);
       messageData.mediaUrl = filename;
-      messageData.body = processedMessage.body || filename;
-      const [mediaType] = mediaPayload.mimetype.split("/");
-      messageData.mediaType = mediaType;
+      messageData.body =
+        processedMessage.body ||
+        (processedMessage.type === "sticker" ? "Figurinha" : filename);
+      messageData.mediaType = storedMediaType(
+        processedMessage.type,
+        mediaPayload.mimetype
+      );
+    }
+
+    if (options.historySync) {
+      await CreateMessageService({ messageData, emitEvent: false });
+      return "created";
     }
 
     let lastMessageText = "";
@@ -305,9 +327,39 @@ export const handleMessage = async (
 
     const createdMessage = await CreateMessageService({ messageData });
 
+    if (!processedMessage.fromMe && !contextPayload.groupContact)
+      await recordInbound(
+        contact.number,
+        contextPayload.whatsappId,
+        processedMessage.timestamp
+      );
+
     // Respostas dos gestores aos fechamentos permanecem na conversa interna e
     // não entram no bot, no QuarkClinic nem na automação de inatividade.
-    if (ticket.ticketType === "INTERNAL_REPORT") return;
+    if (ticket.ticketType === "INTERNAL_REPORT") return "created";
+
+    if (pendingServiceRating) {
+      await HandleServiceRatingResponse({
+        ratingId: pendingServiceRating.id,
+        body: processedMessage.body,
+        messageId: createdMessage.id
+      });
+      return "created";
+    }
+
+    if (!processedMessage.fromMe && !groupContact) {
+      await CancelPendingServiceRatingsService(
+        contact.id,
+        contextPayload.whatsappId
+      ).catch(error =>
+        logger.warn({
+          info: "Could not cancel pending service rating",
+          contactId: contact.id,
+          whatsappId: contextPayload.whatsappId,
+          err: error
+        })
+      );
+    }
 
     await HandleTicketMessageForInactivity({
       ticket,
@@ -320,43 +372,33 @@ export const handleMessage = async (
       })
     );
 
+    if (processedMessage.fromMe && createdMessage.origin === "HUMAN") {
+      await PausePatientIntakeService(ticket, createdMessage.sentByUserId);
+      return "created";
+    }
     await processVcardMessage(processedMessage);
 
-    const handledByQuark =
-      !contextPayload.groupContact && !processedMessage.fromMe
-        ? await HandleQuarkConfirmationReply({
-            body: processedMessage.body,
-            phone: contact.number,
-            ticket,
-            whatsappId: contextPayload.whatsappId
-          })
-        : false;
-
-    if (
-      !handledByQuark &&
-      !ticket.queue &&
-      !contextPayload.groupContact &&
-      !processedMessage.fromMe &&
-      !ticket.userId &&
-      whatsapp.queues.length >= 1
-    ) {
-      await handleQueueLogic(
-        contextPayload.whatsappId,
-        processedMessage.body,
-        ticket,
-        contactPayload
-      );
+    if (eligibleForAutomation) {
+      await HandleInboundAutomation({
+        ticketId: ticket.id,
+        whatsappId: contextPayload.whatsappId,
+        phone: contact.number,
+        body: processedMessage.body,
+        messageId: processedMessage.id
+      });
     }
+    return "created";
   } catch (err) {
     Sentry.captureException(err);
     logger.error({
       info: "Error handling message",
       err,
-      messagePayload,
-      contactPayload,
-      contextPayload,
-      mediaPayload
+      messageId: messagePayload.id,
+      whatsappId: contextPayload.whatsappId
     });
+    if (options.throwOnFailure || options.historySync)
+      throw new Error("ERR_INCOMING_MESSAGE_PROCESSING");
+    return "ignored";
   }
 };
 
@@ -365,8 +407,6 @@ export const handleMessageAck = async (
   ack: MessageAck
 ): Promise<void> => {
   await new Promise(r => setTimeout(r, 500));
-
-  const io = getIO();
 
   try {
     const messageToUpdate = await Message.findByPk(messageId, {
@@ -384,6 +424,7 @@ export const handleMessageAck = async (
       return;
     }
 
+    if (Number(messageToUpdate.ack) > ack) return;
     await messageToUpdate.update({ ack });
 
     const deliveryUpdate =
@@ -403,7 +444,8 @@ export const handleMessageAck = async (
       });
     }
 
-    io.to(messageToUpdate.ticketId.toString()).emit("appMessage", {
+    const ticket = await ShowTicketService(messageToUpdate.ticketId);
+    await emitTicketEvent(ticket, "appMessage", {
       action: "update",
       message: messageToUpdate
     });

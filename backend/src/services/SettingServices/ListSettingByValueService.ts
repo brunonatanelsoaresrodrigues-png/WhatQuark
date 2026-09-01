@@ -9,7 +9,7 @@ const ListSettingByKeyService = async (
   value: string
 ): Promise<Response | undefined> => {
   const settings = await Setting.findOne({
-    where: { value }
+    where: { key: "userApiToken", value }
   });
 
   if (!settings) {

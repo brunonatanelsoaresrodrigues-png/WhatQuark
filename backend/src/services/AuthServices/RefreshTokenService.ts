@@ -9,6 +9,7 @@ import {
   createAccessToken,
   createRefreshToken
 } from "../../helpers/CreateTokens";
+import { SerializeUser } from "../../helpers/SerializeUser";
 
 interface RefreshTokenPayload {
   id: string;
@@ -16,7 +17,7 @@ interface RefreshTokenPayload {
 }
 
 interface Response {
-  user: User;
+  user: ReturnType<typeof SerializeUser>;
   newToken: string;
   refreshToken: string;
 }
@@ -26,7 +27,9 @@ export const RefreshTokenService = async (
   token: string
 ): Promise<Response> => {
   try {
-    const decoded = verify(token, authConfig.refreshSecret);
+    const decoded = verify(token, authConfig.refreshSecret, {
+      algorithms: ["HS256"]
+    });
     const { id, tokenVersion } = decoded as RefreshTokenPayload;
 
     const user = await ShowUserService(id);
@@ -39,7 +42,7 @@ export const RefreshTokenService = async (
     const newToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
 
-    return { user, newToken, refreshToken };
+    return { user: SerializeUser(user), newToken, refreshToken };
   } catch (err) {
     res.clearCookie("jrt");
     throw new AppError("ERR_SESSION_EXPIRED", 401);

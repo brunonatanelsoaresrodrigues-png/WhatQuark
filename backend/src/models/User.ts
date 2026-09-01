@@ -44,13 +44,20 @@ class User extends Model<User> {
   @Column
   tokenVersion: number;
 
-  @Default("admin")
+  @Default("user")
   @Column
   profile: string;
 
   @Default(false)
   @Column
   canAccessQuarkClinic: boolean;
+
+  @Default(false)
+  @Column
+  canViewOtherAgentsTickets: boolean;
+
+  @Column(DataType.STRING)
+  avatar: string | null;
 
   @ForeignKey(() => Whatsapp)
   @Column

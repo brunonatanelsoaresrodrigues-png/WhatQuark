@@ -13,6 +13,13 @@ interface StoreKeyRequest {
 }
 
 const REDIS_KEY_TYPES = ["session", "sender-keys", "sender-key-memory"];
+const MAX_DATABASE_ATTEMPTS = 3;
+const wait = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms));
+const isDeadlock = (error: any): boolean =>
+  [error?.code, error?.original?.code, error?.parent?.code].includes(
+    "ER_LOCK_DEADLOCK"
+  ) || [error?.errno, error?.original?.errno, error?.parent?.errno].includes(1213);
 
 const StoreWppSessionKeys = async ({
   connectionId,
@@ -30,21 +37,33 @@ const StoreWppSessionKeys = async ({
     return;
   }
 
-  try {
-    await WppKey.upsert({
-      connectionId,
-      type,
-      keyId: id,
-      value: valueJson
-    });
-  } catch (err) {
-    logger.error({
-      info: "Error storing key in database",
-      connectionId,
-      type,
-      keyId: id,
-      err
-    });
+  for (let attempt = 1; attempt <= MAX_DATABASE_ATTEMPTS; attempt += 1) {
+    try {
+      await WppKey.upsert({
+        connectionId,
+        type,
+        keyId: id,
+        value: valueJson
+      });
+      return;
+    } catch (err) {
+      if (isDeadlock(err) && attempt < MAX_DATABASE_ATTEMPTS) {
+        // A curta espera evita que lotes de pre-keys voltem a disputar os
+        // mesmos índices na mesma janela de transação.
+        // eslint-disable-next-line no-await-in-loop
+        await wait(25 * 2 ** (attempt - 1));
+        continue;
+      }
+      logger.error({
+        info: "Error storing key in database",
+        connectionId,
+        type,
+        keyId: id,
+        attempts: attempt,
+        err
+      });
+      return;
+    }
   }
 };
 

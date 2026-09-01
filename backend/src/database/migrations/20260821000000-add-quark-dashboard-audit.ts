@@ -2,14 +2,22 @@ import { QueryInterface, DataTypes } from "sequelize";
 
 module.exports = {
   up: async (queryInterface: QueryInterface) => {
-    await queryInterface.addColumn("QuarkAppointmentNotifications", "messageId", {
-      type: DataTypes.STRING,
-      allowNull: true
-    });
-    await queryInterface.addColumn("QuarkAppointmentNotifications", "ticketId", {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    });
+    await queryInterface.addColumn(
+      "QuarkAppointmentNotifications",
+      "messageId",
+      {
+        type: DataTypes.STRING,
+        allowNull: true
+      }
+    );
+    await queryInterface.addColumn(
+      "QuarkAppointmentNotifications",
+      "ticketId",
+      {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      }
+    );
     await queryInterface.addColumn(
       "QuarkAppointmentNotifications",
       "deliveredAt",

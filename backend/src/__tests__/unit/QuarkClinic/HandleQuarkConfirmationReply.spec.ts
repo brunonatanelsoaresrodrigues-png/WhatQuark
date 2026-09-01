@@ -1,221 +1,165 @@
+import Ticket from "../../../models/Ticket";
 import QuarkAppointment from "../../../models/QuarkAppointment";
-import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
-import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
+import Handle from "../../../services/QuarkClinicServices/HandleQuarkConfirmationReply";
+import Send from "../../../services/WbotServices/SendWhatsAppMessage";
+import { ApplyQuarkDecision } from "../../../services/QuarkClinicServices/ApplyQuarkDecision";
+import { appointmentReference } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { Op } from "sequelize";
-import HandleQuarkConfirmationReply from "../../../services/QuarkClinicServices/HandleQuarkConfirmationReply";
 import {
-  cancelQuarkAppointment,
-  confirmQuarkAppointment
-} from "../../../services/QuarkClinicServices/QuarkClinicClient";
-import SendWhatsAppMessage from "../../../services/WbotServices/SendWhatsAppMessage";
-
+  readState,
+  writeState
+} from "../../../services/MessagingServices/state";
+import { assertExecution } from "../../../services/MessagingServices/policy";
 jest.mock("../../../models/QuarkAppointment", () => ({
   __esModule: true,
-  default: {
-    findAll: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn()
-  }
+  default: { findAll: jest.fn() }
 }));
-
-jest.mock("../../../models/QuarkAppointmentNotification", () => ({
-  __esModule: true,
-  default: { findOne: jest.fn(), update: jest.fn() }
-}));
-
 jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
   __esModule: true,
   default: { findAll: jest.fn() }
 }));
-
-jest.mock("../../../models/QuarkAppointmentResponse", () => ({
-  __esModule: true,
-  default: { create: jest.fn() }
-}));
-
-jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
-  emitQuarkDashboardUpdate: jest.fn()
-}));
-
-jest.mock("../../../services/QuarkClinicServices/config", () => ({
-  isQuarkIntegrationEnabled: jest.fn(() => true),
-  getQuarkConfig: jest.fn(() => ({
-    defaultCountryCode: "55",
-    cancelReason: "Cancelado pelo paciente"
-  }))
-}));
-
-jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
-  confirmQuarkAppointment: jest.fn(),
-  cancelQuarkAppointment: jest.fn()
-}));
-jest.mock(
-  "../../../services/QuarkClinicServices/RecordQuarkAppointmentEventService",
-  () => jest.fn()
-);
-
 jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
   jest.fn()
 );
-
-const appointment = (id: number, hour: number) => ({
-  id,
-  appointmentId: String(id),
-  snapshot: JSON.stringify({ profissionalNome: `Profissional ${id}` }),
-  scheduledAt: new Date(2099, 0, 1, hour, 0),
-  update: jest.fn().mockResolvedValue(undefined)
+jest.mock("../../../services/QuarkClinicServices/ApplyQuarkDecision", () => ({
+  ApplyQuarkDecision: jest.fn()
+}));
+jest.mock("../../../services/QuarkClinicServices/config", () => ({
+  isQuarkIntegrationEnabled: () => true,
+  getQuarkConfig: () => ({ whatsappId: 1 })
+}));
+jest.mock("../../../services/MessagingServices/policy", () => ({
+  assertExecution: jest.fn()
+}));
+jest.mock("../../../services/MessagingServices/state", () => ({
+  readState: jest.fn(),
+  writeState: jest.fn()
+}));
+const phone = "5585999990000";
+const record = {
+  appointmentId: "42",
+  scheduleFingerprint: "a".repeat(64),
+  scheduledAt: new Date("2099-08-21T19:00:00Z"),
+  status: "AGENDADO"
+};
+const reference = appointmentReference("42", record.scheduleFingerprint, phone);
+const ticket = { id: 1, status: "pending", userId: null } as unknown as Ticket;
+const call = (body: string, overrides = {}) =>
+  Handle({ body, phone, whatsappId: 1, ticket, messageId: body, ...overrides });
+const state = new Map();
+beforeEach(() => {
+  jest.resetAllMocks();
+  state.clear();
+  (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([record]);
+  (QuarkAppointmentRecipient.findAll as jest.Mock).mockResolvedValue([]);
+  (Send as jest.Mock).mockResolvedValue({ id: "reply" });
+  (readState as jest.Mock).mockImplementation(
+    (key, fallback) => state.get(key) || fallback
+  );
+  (writeState as jest.Mock).mockImplementation((key, value) => {
+    state.set(key, value);
+    return Promise.resolve();
+  });
 });
-
-describe("HandleQuarkConfirmationReply", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (QuarkAppointmentRecipient.findAll as jest.Mock).mockResolvedValue([]);
-    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
-    (QuarkAppointment.update as jest.Mock).mockResolvedValue([1]);
-    (QuarkAppointmentNotification.update as jest.Mock).mockResolvedValue([0]);
-    (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue({
-      id: 99,
-      sentAt: new Date()
-    });
-    (QuarkAppointmentResponse.create as jest.Mock).mockResolvedValue({
-      id: 1,
-      update: jest.fn().mockResolvedValue(undefined)
-    });
-    (SendWhatsAppMessage as jest.Mock).mockResolvedValue({});
+it.each([
+  "1",
+  "2 pessoas",
+  "Não quero cancelar",
+  "Não sei o endereço",
+  "Sim, preciso remarcar"
+])("does not act on ambiguous text: %s", async body => {
+  expect(await call(body)).toBe(false);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+});
+it("asks for a reference even for a bare SIM with a single appointment", async () => {
+  expect(await call("SIM")).toBe(true);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+  expect(Send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.stringContaining(`CONFIRMAR ${reference}`)
+    })
+  );
+});
+it("confirms only an explicit current reference", async () => {
+  await call(`CONFIRMAR ${reference}`);
+  expect(ApplyQuarkDecision).toHaveBeenCalledWith({
+    appointmentId: "42",
+    phone,
+    choice: 1,
+    fingerprint: record.scheduleFingerprint
   });
+  expect(Send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.stringContaining("confirmada"),
+      policy: expect.objectContaining({ allowPausedBot: true })
+    })
+  );
+});
+it("accepts a reference generated for the Brazilian ninth-digit variant", async () => {
+  const legacyPhone = "558592413638";
+  const currentPhone = "5585992413638";
+  const currentReference = appointmentReference(
+    "42",
+    record.scheduleFingerprint,
+    currentPhone
+  );
 
-  it("confirms the only pending appointment when the patient replies SIM", async () => {
-    const pending = appointment(10, 9);
-    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
+  await call(`CONFIRMAR ${currentReference}`, { phone: legacyPhone });
 
-    await expect(
-      HandleQuarkConfirmationReply({
-        body: "Sim, confirmo",
-        phone: "5585999990000",
-        ticket: {} as any,
-        whatsappId: 1
+  expect(QuarkAppointmentRecipient.findAll).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        phone: { [Op.in]: [legacyPhone, currentPhone] }
       })
-    ).resolves.toBe(true);
-
-    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
-      expect.any(Object),
-      "10"
-    );
-    expect(cancelQuarkAppointment).not.toHaveBeenCalled();
-    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appointmentId: "10",
-        decision: "CONFIRMED",
-        status: "PROCESSING"
-      })
-    );
-    expect(SendWhatsAppMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.stringMatching(
-          /Consulta confirmada com sucesso[\s\S]*Profissional 10\nAtendimento por ordem de chegada/
-        )
-      })
-    );
+    })
+  );
+  expect(ApplyQuarkDecision).toHaveBeenCalledWith(
+    expect.objectContaining({ appointmentId: "42", phone: legacyPhone })
+  );
+});
+it("requires two steps before cancelling", async () => {
+  await call(`CANCELAR ${reference}`);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+  await call(`CONFIRMO CANCELAMENTO ${reference}`);
+  expect(ApplyQuarkDecision).toHaveBeenCalledWith(
+    expect.objectContaining({ choice: 2, appointmentId: "42" })
+  );
+});
+it("does not accept a cancellation without a valid pending confirmation", async () => {
+  await call(`CONFIRMO CANCELAMENTO ${reference}`);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+});
+it("rejects expired cancellation confirmation", async () => {
+  state.set(`quark-cancel:1:${phone}`, {
+    appointmentId: "42",
+    fingerprint: record.scheduleFingerprint,
+    expiresAt: Date.now() - 1
   });
-
-  it("accepts confirmation from an alternate phone linked to the appointment", async () => {
-    const pending = appointment(10, 9);
-    (QuarkAppointmentRecipient.findAll as jest.Mock).mockResolvedValue([
-      { appointmentId: "10" }
-    ]);
-    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
-
-    await HandleQuarkConfirmationReply({
-      body: "SIM",
-      phone: "5585988880000",
-      ticket: {} as any,
-      whatsappId: 1
-    });
-
-    const where = (QuarkAppointment.findAll as jest.Mock).mock.calls[0][0]
-      .where;
-    expect(where[Op.or]).toContainEqual({
-      appointmentId: { [Op.in]: ["10"] }
-    });
-    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
-      expect.any(Object),
-      "10"
-    );
-    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
-      expect.objectContaining({ recipientPhone: "5585988880000" })
-    );
-  });
-
-  it("asks for an appointment number when the phone has multiple pending appointments", async () => {
-    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([
-      appointment(10, 9),
-      appointment(20, 10)
-    ]);
-
-    await HandleQuarkConfirmationReply({
-      body: "SIM",
-      phone: "5585999990000",
-      ticket: {} as any,
-      whatsappId: 1
-    });
-
-    expect(confirmQuarkAppointment).not.toHaveBeenCalled();
-    expect(SendWhatsAppMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ body: expect.stringContaining("SIM 1") })
-    );
-  });
-
-  it("does not reopen a confirmed appointment when only the acknowledgement send fails", async () => {
-    const pending = appointment(10, 9);
-    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([pending]);
-    (SendWhatsAppMessage as jest.Mock).mockRejectedValueOnce(
-      new Error("temporary WhatsApp failure")
-    );
-
-    await expect(
-      HandleQuarkConfirmationReply({
-        body: "SIM",
-        phone: "5585999990000",
-        ticket: {} as any,
-        whatsappId: 1
-      })
-    ).resolves.toBe(true);
-
-    expect(confirmQuarkAppointment).toHaveBeenCalled();
-    expect(pending.update).toHaveBeenCalledWith({ status: "CONFIRMADO" });
-    expect(pending.update).not.toHaveBeenCalledWith({
-      awaitingConfirmation: true
-    });
-  });
-
-  it("cancels the selected appointment when the patient replies NÃO 2", async () => {
-    const first = appointment(10, 9);
-    const second = appointment(20, 10);
-    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([first, second]);
-
-    await HandleQuarkConfirmationReply({
-      body: "NÃO 2",
-      phone: "5585999990000",
-      ticket: {} as any,
-      whatsappId: 1
-    });
-
-    expect(cancelQuarkAppointment).toHaveBeenCalledWith(
-      expect.any(Object),
-      "20"
-    );
-    expect(second.update).toHaveBeenCalledWith({ status: "CANCELADO" });
-    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appointmentId: "20",
-        decision: "CANCELLED"
-      })
-    );
-    expect(SendWhatsAppMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: expect.not.stringContaining("Atendimento por ordem de chegada")
-      })
-    );
-  });
+  await call(`CONFIRMO CANCELAMENTO ${reference}`);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+});
+it("does not interfere with an assigned human conversation", async () => {
+  expect(
+    await call(`CONFIRMAR ${reference}`, { ticket: { ...ticket, userId: 9 } })
+  ).toBe(false);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+});
+it("requires the configured channel", async () => {
+  expect(await call(`CONFIRMAR ${reference}`, { whatsappId: 2 })).toBe(false);
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+});
+it("does not reset the decision if sending the acknowledgment fails", async () => {
+  (Send as jest.Mock).mockRejectedValue(new Error("network"));
+  await expect(call(`CONFIRMAR ${reference}`)).resolves.toBe(true);
+  expect(ApplyQuarkDecision).toHaveBeenCalledTimes(1);
+});
+it("honors the simulation guard", async () => {
+  (assertExecution as jest.Mock).mockRejectedValue(
+    new Error("ERR_QUARK_SIMULATION")
+  );
+  await expect(call(`CONFIRMAR ${reference}`)).rejects.toThrow(
+    "ERR_QUARK_SIMULATION"
+  );
+  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
 });

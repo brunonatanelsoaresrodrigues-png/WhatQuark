@@ -7,6 +7,8 @@ import formatBody from "../../helpers/Mustache";
 import { MessageOrigin } from "../../models/MessageAttribution";
 import { registerMessageAttribution } from "../MessageServices/MessageAttributionService";
 import { logger } from "../../utils/logger";
+import { SendPolicy } from "../MessagingServices/policy";
+import contactJid from "../../helpers/ContactJid";
 
 interface Request {
   body: string;
@@ -14,6 +16,7 @@ interface Request {
   quotedMsg?: Message;
   sentByUserId?: number | null;
   origin?: MessageOrigin;
+  policy?: SendPolicy;
 }
 
 const SendWhatsAppMessage = async ({
@@ -21,13 +24,14 @@ const SendWhatsAppMessage = async ({
   ticket,
   quotedMsg,
   sentByUserId = null,
-  origin = "SYSTEM"
+  origin = "SYSTEM",
+  policy = {}
 }: Request): Promise<ProviderMessage> => {
   if (!ticket.whatsappId) {
     throw new AppError("ERR_TICKET_NO_WHATSAPP");
   }
 
-  const chatId = `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`;
+  const chatId = contactJid(ticket.contact, ticket.isGroup);
 
   try {
     const sentMessage = await whatsappProvider.sendMessage(
@@ -37,7 +41,15 @@ const SendWhatsAppMessage = async ({
       {
         quotedMessageId: quotedMsg?.id,
         quotedMessageFromMe: quotedMsg?.fromMe,
-        linkPreview: false
+        linkPreview: false,
+        policy: {
+          origin,
+          sentByUserId,
+          ticketId: ticket.id,
+          bot: origin === "BOT",
+          proactive: origin === "DAILY_REPORT",
+          ...policy
+        }
       }
     );
 
@@ -52,9 +64,16 @@ const SendWhatsAppMessage = async ({
       })
     );
 
-    await ticket.update({ lastMessage: body });
+    await ticket.update({ lastMessage: body }).catch(() =>
+      logger.error({
+        info: "Sent message could not update ticket",
+        ticketId: ticket.id,
+        messageId: sentMessage.id
+      })
+    );
     return sentMessage;
   } catch (err) {
+    if (err instanceof AppError) throw err;
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

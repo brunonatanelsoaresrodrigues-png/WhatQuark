@@ -1,11 +1,16 @@
 import CheckContactOpenTickets from "../../helpers/CheckContactOpenTickets";
 import SetTicketMessagesAsRead from "../../helpers/SetTicketMessagesAsRead";
-import { getIO } from "../../libs/socket";
+import { getIO, emitTicketEvent } from "../../libs/socket";
 import Ticket from "../../models/Ticket";
+import AppError from "../../errors/AppError";
+import ShowUserService from "../UserServices/ShowUserService";
+import { canAccessTicket } from "../../helpers/TicketAccessPolicy";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import ShowTicketService from "./ShowTicketService";
 import RecordTicketEventService from "./RecordTicketEventService";
+import { withLease } from "../MessagingServices/state";
+import CancelPendingServiceRatingsService from "../ServiceRatingServices/CancelPendingServiceRatingsService";
 
 interface TicketData {
   status?: string;
@@ -26,7 +31,7 @@ interface Response {
   oldUserId: number | undefined;
 }
 
-const UpdateTicketService = async ({
+const updateTicket = async ({
   ticketData,
   ticketId,
   actorUserId = null
@@ -34,6 +39,32 @@ const UpdateTicketService = async ({
   const { status, userId, queueId, whatsappId } = ticketData;
 
   const ticket = await ShowTicketService(ticketId);
+  if (actorUserId) {
+    const actor = await ShowUserService(actorUserId);
+    if (
+      !canAccessTicket(actor, ticket) ||
+      (actor.profile !== "admin" && ticket.userId && ticket.userId !== actor.id)
+    )
+      throw new AppError("ERR_NO_PERMISSION", 403);
+    if (status && !["open", "pending", "closed"].includes(status))
+      throw new AppError("ERR_INVALID_TICKET_STATUS", 400);
+    if (
+      actor.profile !== "admin" &&
+      queueId &&
+      !actor.queues.some(queue => queue.id === queueId)
+    )
+      throw new AppError("ERR_NO_PERMISSION", 403);
+    if (userId) {
+      const assignee = await ShowUserService(userId);
+      const targetQueue = queueId === undefined ? ticket.queueId : queueId;
+      if (
+        targetQueue &&
+        assignee.profile !== "admin" &&
+        !assignee.queues.some(queue => queue.id === targetQueue)
+      )
+        throw new AppError("ERR_INVALID_TICKET_ASSIGNEE", 400);
+    }
+  }
   await SetTicketMessagesAsRead(ticket);
 
   if (whatsappId && ticket.whatsappId !== whatsappId) {
@@ -107,6 +138,13 @@ const UpdateTicketService = async ({
     });
   }
 
+  if (oldStatus === "closed" && ticket.status !== "closed") {
+    await CancelPendingServiceRatingsService(
+      ticket.contactId,
+      ticket.whatsappId
+    );
+  }
+
   const io = getIO();
 
   if (ticket.status !== oldStatus || ticket.user?.id !== oldUserId) {
@@ -116,15 +154,14 @@ const UpdateTicketService = async ({
     });
   }
 
-  io.to(ticket.status)
-    .to("notification")
-    .to(ticketId.toString())
-    .emit("ticket", {
-      action: "update",
-      ticket
-    });
+  await emitTicketEvent(ticket, "ticket", {
+    action: "update",
+    ticket
+  });
 
   return { ticket, oldStatus, oldUserId };
 };
 
+const UpdateTicketService = (request: Request): Promise<Response> =>
+  withLease(`ticket-update:${request.ticketId}`, () => updateTicket(request));
 export default UpdateTicketService;

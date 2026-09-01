@@ -30,6 +30,7 @@ export interface QuarkConfig {
   workerPollIntervalMs: number;
   timezone: string;
   clinicAddress: string;
+  syncLookbackDays: number;
   dryRun: boolean;
   testAllowlist: string[];
 }
@@ -46,7 +47,7 @@ export const getQuarkConfig = (): QuarkConfig => {
   const whatsappIdValue = Number(process.env.QUARK_WHATSAPP_ID);
   const reminderSource =
     process.env.QUARK_REMINDER_HOURS === undefined
-      ? "24,2"
+      ? "24"
       : process.env.QUARK_REMINDER_HOURS;
   const reminderHours = reminderSource
     .split(",")
@@ -55,9 +56,9 @@ export const getQuarkConfig = (): QuarkConfig => {
     .sort((a, b) => a - b);
 
   const sendIntervalMinMs =
-    positiveNumber(process.env.QUARK_SEND_INTERVAL_MIN_SECONDS, 15) * 1000;
+    positiveNumber(process.env.QUARK_SEND_INTERVAL_MIN_SECONDS, 60) * 1000;
   const configuredMaxMs =
-    positiveNumber(process.env.QUARK_SEND_INTERVAL_MAX_SECONDS, 45) * 1000;
+    positiveNumber(process.env.QUARK_SEND_INTERVAL_MAX_SECONDS, 180) * 1000;
   if (configuredMaxMs < sendIntervalMinMs) {
     throw new Error(
       "QUARK_SEND_INTERVAL_MAX_SECONDS must be greater than or equal to QUARK_SEND_INTERVAL_MIN_SECONDS"
@@ -118,12 +119,15 @@ export const getQuarkConfig = (): QuarkConfig => {
     syncHorizonDays: Math.floor(
       positiveNumber(process.env.QUARK_SYNC_HORIZON_DAYS, 365)
     ),
+    syncLookbackDays: Math.floor(
+      positiveNumber(process.env.QUARK_SYNC_LOOKBACK_DAYS, 365)
+    ),
     requestTimeoutMs: positiveNumber(
       process.env.QUARK_REQUEST_TIMEOUT_MS,
       15000
     ),
     maxMessagesPerHour: Math.floor(
-      positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 100)
+      positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 30)
     ),
     quietHoursStart,
     quietHoursEnd,

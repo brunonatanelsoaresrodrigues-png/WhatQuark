@@ -16,6 +16,7 @@ import {
 } from "./config";
 import { emitTicketInactivityUpdate } from "./ticketEvents";
 import RecordTicketEventService from "../TicketServices/RecordTicketEventService";
+import RequestServiceRatingService from "../ServiceRatingServices/RequestServiceRatingService";
 
 let workerTimer: NodeJS.Timeout | undefined;
 let workerStopped = true;
@@ -280,7 +281,12 @@ const processTicket = async (
     const sentMessage = await SendWhatsAppMessage({
       body: config.message,
       ticket,
-      origin: "INACTIVITY"
+      origin: "INACTIVITY",
+      policy: {
+        idempotencyKey: `inactivity:${ticket.id}:${new Date(
+          ticket.awaitingPatientSince
+        ).toISOString()}`
+      }
     });
     noticeMessageId = sentMessage.id;
     await Ticket.update(
@@ -328,6 +334,17 @@ const processTicket = async (
       ticketId: ticket.id,
       reason: INACTIVITY_CLOSE_REASON
     });
+    await RequestServiceRatingService({
+      ticket: ticket.id,
+      ratedUserId: ticket.userId || ticket.inactivityPreviousUserId,
+      trigger: "INACTIVITY"
+    }).catch(error =>
+      logger.warn({
+        info: "Could not request service rating after inactivity closure",
+        ticketId: ticket.id,
+        err: error
+      })
+    );
   }
 };
 

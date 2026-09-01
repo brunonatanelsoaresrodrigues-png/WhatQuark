@@ -1,4 +1,5 @@
 import * as Yup from "yup";
+import { literal } from "sequelize";
 
 import AppError from "../../errors/AppError";
 import { SerializeUser } from "../../helpers/SerializeUser";
@@ -12,6 +13,7 @@ interface UserData {
   queueIds?: number[];
   whatsappId?: number;
   canAccessQuarkClinic?: boolean;
+  canViewOtherAgentsTickets?: boolean;
 }
 
 interface Request {
@@ -25,6 +27,7 @@ interface Response {
   email: string;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canViewOtherAgentsTickets: boolean;
 }
 
 const UpdateUserService = async ({
@@ -36,9 +39,10 @@ const UpdateUserService = async ({
   const schema = Yup.object().shape({
     name: Yup.string().min(2),
     email: Yup.string().email(),
-    profile: Yup.string(),
+    profile: Yup.string().oneOf(["admin", "user"]),
     password: Yup.string(),
-    canAccessQuarkClinic: Yup.boolean().strict()
+    canAccessQuarkClinic: Yup.boolean().strict(),
+    canViewOtherAgentsTickets: Yup.boolean().strict()
   });
 
   const {
@@ -46,9 +50,10 @@ const UpdateUserService = async ({
     password,
     profile,
     name,
-    queueIds = [],
+    queueIds,
     whatsappId,
-    canAccessQuarkClinic
+    canAccessQuarkClinic,
+    canViewOtherAgentsTickets
   } = userData;
 
   try {
@@ -57,7 +62,8 @@ const UpdateUserService = async ({
       password,
       profile,
       name,
-      canAccessQuarkClinic
+      canAccessQuarkClinic,
+      canViewOtherAgentsTickets
     });
   } catch (err) {
     throw new AppError(err.message);
@@ -69,10 +75,12 @@ const UpdateUserService = async ({
     profile,
     name,
     canAccessQuarkClinic,
-    whatsappId: whatsappId ? whatsappId : null
+    canViewOtherAgentsTickets,
+    ...(whatsappId !== undefined ? { whatsappId: whatsappId || null } : {}),
+    tokenVersion: literal("tokenVersion + 1")
   });
 
-  await user.$set("queues", queueIds);
+  if (queueIds !== undefined) await user.$set("queues", queueIds);
 
   await user.reload();
 

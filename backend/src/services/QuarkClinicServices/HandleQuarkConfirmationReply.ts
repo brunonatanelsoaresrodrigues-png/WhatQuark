@@ -1,321 +1,189 @@
 import { Op } from "sequelize";
 import QuarkAppointment from "../../models/QuarkAppointment";
-import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
-import QuarkAppointmentResponse from "../../models/QuarkAppointmentResponse";
 import Ticket from "../../models/Ticket";
-import { logger } from "../../utils/logger";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import {
+  appointmentReference,
   formatAppointmentDateTime,
-  normalizeQuarkPhone,
-  parseConfirmationReply
+  parseConfirmationReply,
+  quarkPhoneVariants
 } from "./appointmentUtils";
 import { getQuarkConfig, isQuarkIntegrationEnabled } from "./config";
-import {
-  cancelQuarkAppointment,
-  confirmQuarkAppointment
-} from "./QuarkClinicClient";
-import { emitQuarkDashboardUpdate } from "./dashboardEvents";
-import RecordQuarkAppointmentEventService from "./RecordQuarkAppointmentEventService";
+import { assertExecution } from "../MessagingServices/policy";
+import { readState, writeState } from "../MessagingServices/state";
+import { ApplyQuarkDecision } from "./ApplyQuarkDecision";
 
 interface Request {
   body: string;
   phone: string;
   ticket: Ticket;
   whatsappId: number;
+  messageId?: string;
 }
-
-interface StoredSnapshot {
-  profissionalNome?: string | null;
+interface PendingCancel {
+  appointmentId: string;
+  fingerprint: string;
+  reference: string;
+  expiresAt: number;
 }
-
-const ARRIVAL_ORDER_NOTICE = "Atendimento por ordem de chegada";
-
-const appointmentDescription = (appointment: QuarkAppointment): string => {
-  const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
-  let professional = "profissional a confirmar";
-  try {
-    const snapshot = JSON.parse(appointment.snapshot) as StoredSnapshot;
-    if (snapshot.profissionalNome) professional = snapshot.profissionalNome;
-  } catch {
-    // The minimal date/time description remains safe for legacy rows.
-  }
-  return `${date}${time ? ` às ${time}` : ""} com ${professional}`;
-};
-
-const sendAppointmentOptions = async (
-  ticket: Ticket,
-  appointments: QuarkAppointment[]
-): Promise<void> => {
-  const options = appointments
-    .slice(0, 9)
-    .map(
-      (appointment, index) =>
-        `${index + 1} — ${appointmentDescription(appointment)}`
-    )
-    .join("\n");
-
-  await SendWhatsAppMessage({
-    body: `Encontramos mais de uma consulta aguardando confirmação:\n\n${options}\n\nResponda *SIM 1* ou *NÃO 1*, trocando o número pela consulta desejada.`,
-    ticket,
-    origin: "QUARK"
-  });
-};
-
-const sendAlreadyApplied = async (
-  ticket: Ticket,
-  choice: 1 | 2,
-  appointment: QuarkAppointment
-): Promise<void> => {
-  await SendWhatsAppMessage({
-    body:
-      choice === 1
-        ? `Esta consulta já está confirmada no QuarkClinic: ${appointmentDescription(
-            appointment
-          )}.\n${ARRIVAL_ORDER_NOTICE}`
-        : `Esta consulta já está cancelada no QuarkClinic: ${appointmentDescription(
-            appointment
-          )}.`,
-    ticket,
-    origin: "QUARK"
-  });
+const description = (appointment: QuarkAppointment) => {
+  const p = formatAppointmentDateTime(appointment.scheduledAt);
+  return `${p.date} às ${p.time}`;
 };
 
 const HandleQuarkConfirmationReply = async ({
   body,
   phone,
   ticket,
-  whatsappId
+  whatsappId,
+  messageId
 }: Request): Promise<boolean> => {
-  if (!isQuarkIntegrationEnabled()) return false;
-
+  if (
+    !isQuarkIntegrationEnabled() ||
+    ticket.userId ||
+    ticket.status === "closed"
+  )
+    return false;
   const reply = parseConfirmationReply(body);
   if (!reply) return false;
-
   const config = getQuarkConfig();
-  if (config.whatsappId && config.whatsappId !== whatsappId) return false;
-
-  const normalizedPhone = normalizeQuarkPhone(phone, "", true);
-  if (!normalizedPhone) return false;
-
+  if (!config.whatsappId || config.whatsappId !== whatsappId) return false;
+  await assertExecution(phone, true);
+  const phoneVariants = quarkPhoneVariants(phone);
   const recipients = await QuarkAppointmentRecipient.findAll({
-    where: { phone: normalizedPhone, active: true }
+    where: {
+      phone: { [Op.in]: phoneVariants },
+      active: true,
+      isPrimary: true
+    }
   });
-  const recipientAppointmentIds = recipients.map(item => item.appointmentId);
-  const phoneOwnership = {
-    [Op.or]: [
-      { phone: normalizedPhone },
-      ...(recipientAppointmentIds.length
-        ? [{ appointmentId: { [Op.in]: recipientAppointmentIds } }]
-        : [])
-    ]
-  };
-
+  const ids = recipients.map(item => item.appointmentId);
   const appointments = await QuarkAppointment.findAll({
     where: {
-      ...phoneOwnership,
+      [Op.or]: [
+        { phone: { [Op.in]: phoneVariants } },
+        ...phoneVariants.map(value => ({
+          phones: { [Op.like]: `%${value}%` }
+        })),
+        ...(ids.length ? [{ appointmentId: { [Op.in]: ids } }] : [])
+      ],
       awaitingConfirmation: true,
       status: "AGENDADO",
       scheduledAt: { [Op.gte]: new Date() }
     },
-    order: [["scheduledAt", "ASC"]]
+    order: [["scheduledAt", "ASC"]],
+    limit: 20
   });
-  if (appointments.length === 0) {
-    const alreadyApplied = await QuarkAppointment.findOne({
-      where: {
-        ...phoneOwnership,
-        status: reply.choice === 1 ? "CONFIRMADO" : "CANCELADO",
-        confirmationRequestedAt: { [Op.ne]: null } as any,
-        scheduledAt: { [Op.gte]: new Date() }
-      },
-      order: [["scheduledAt", "ASC"]]
-    });
-    if (!alreadyApplied) return false;
-    await sendAlreadyApplied(ticket, reply.choice, alreadyApplied);
-    return true;
-  }
-
-  if (appointments.length > 1 && !reply.appointmentOption) {
-    await sendAppointmentOptions(ticket, appointments);
-    return true;
-  }
-
-  const optionIndex = (reply.appointmentOption || 1) - 1;
-  const appointment = appointments[optionIndex];
-  if (!appointment) {
-    await sendAppointmentOptions(ticket, appointments);
-    return true;
-  }
-
-  const [claimed] = await QuarkAppointment.update(
-    { awaitingConfirmation: false },
-    { where: { id: appointment.id, awaitingConfirmation: true } }
-  );
-  if (claimed === 0) {
-    await SendWhatsAppMessage({
-      body: "Esta resposta já está sendo processada. Aguarde a confirmação por alguns instantes.",
+  if (!appointments.length) return false;
+  const send = (text: string, suffix: string) =>
+    SendWhatsAppMessage({
+      body: text,
       ticket,
-      origin: "QUARK"
-    });
-    return true;
-  }
-
-  let responseAudit: QuarkAppointmentResponse | undefined;
-  try {
-    const receivedAt = new Date();
-    const sourceNotification = await QuarkAppointmentNotification.findOne({
-      where: {
-        appointmentId: appointment.appointmentId,
-        status: "SENT",
-        [Op.or]: [{ recipientPhone: normalizedPhone }, { recipientPhone: null }]
-      },
-      order: [["sentAt", "DESC"]]
-    });
-    const responseTimeSeconds = sourceNotification?.sentAt
-      ? Math.max(
-          0,
-          Math.round(
-            (receivedAt.getTime() - sourceNotification.sentAt.getTime()) / 1000
-          )
-        )
-      : null;
-    responseAudit = await QuarkAppointmentResponse.create({
-      appointmentId: appointment.appointmentId,
-      notificationId: sourceNotification?.id || null,
-      recipientPhone: normalizedPhone,
-      decision: reply.choice === 1 ? "CONFIRMED" : "CANCELLED",
-      source: "WHATSAPP",
-      status: "PROCESSING",
-      previousQuarkStatus: appointment.status,
-      newQuarkStatus: null,
-      receivedAt,
-      appliedAt: null,
-      responseTimeSeconds,
-      errorCode: null
-    });
-    emitQuarkDashboardUpdate("response", responseAudit.id);
-  } catch (error) {
-    logger.error({
-      info: "Could not create QuarkClinic response audit",
-      appointmentId: appointment.appointmentId,
-      err: error
-    });
-  }
-
-  let successBody = "";
-  try {
-    if (reply.choice === 1) {
-      await confirmQuarkAppointment(config, appointment.appointmentId);
-      await RecordQuarkAppointmentEventService({
-        record: appointment,
-        eventType: "CONFIRMED",
-        source: "PATIENT_WHATSAPP",
-        newStatus: "CONFIRMADO"
-      });
-      await appointment.update({ status: "CONFIRMADO" });
-      successBody = `✅ Consulta confirmada com sucesso no QuarkClinic!\n\n${appointmentDescription(
-        appointment
-      )}\n${ARRIVAL_ORDER_NOTICE}`;
-    } else {
-      await cancelQuarkAppointment(config, appointment.appointmentId);
-      await RecordQuarkAppointmentEventService({
-        record: appointment,
-        eventType: "CANCELLED",
-        source: "PATIENT_WHATSAPP",
-        newStatus: "CANCELADO"
-      });
-      await appointment.update({ status: "CANCELADO" });
-      successBody = `Consulta cancelada no QuarkClinic conforme solicitado.\n\n${appointmentDescription(
-        appointment
-      )}.\n\nCaso queira realizar um novo agendamento, fale com nossa equipe.`;
-    }
-    await QuarkAppointmentNotification.update(
-      {
-        status: "SUPPRESSED",
-        lastError:
-          reply.choice === 1
-            ? "Appointment confirmed by the patient"
-            : "Appointment cancelled by the patient"
-      },
-      {
-        where: {
-          appointmentId: appointment.appointmentId,
-          status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
-        }
+      origin: "QUARK",
+      policy: {
+        bot: true,
+        allowPausedBot: true,
+        idempotencyKey: `quark-reply:${ticket.id}:${
+          messageId || body
+        }:${suffix}`,
+        expiresAt: new Date(Date.now() + 5 * 60000).toISOString()
       }
-    );
-  } catch (error) {
-    await appointment.update({ awaitingConfirmation: true });
-    const errorCode = (error instanceof Error ? error.message : "Unknown error")
-      .replace(/[\r\n]+/g, " ")
-      .slice(0, 500);
-    if (responseAudit) {
-      await responseAudit
-        .update({
-          status: "FAILED",
-          appliedAt: new Date(),
-          errorCode
-        })
-        .then(() => emitQuarkDashboardUpdate("response", responseAudit?.id))
-        .catch(auditError =>
-          logger.error({
-            info: "Could not update failed QuarkClinic response audit",
-            appointmentId: appointment.appointmentId,
-            err: auditError
-          })
-        );
-    }
-    logger.error({
-      info: "Could not apply patient reply in QuarkClinic",
-      appointmentId: appointment.appointmentId,
-      err: error
     });
-    await SendWhatsAppMessage({
-      body: "Não foi possível processar sua resposta agora. Nossa equipe foi avisada; tente novamente em alguns minutos.",
-      ticket,
-      origin: "QUARK"
-    }).catch(sendError =>
-      logger.error({
-        info: "Could not send QuarkClinic reply failure notice",
-        appointmentId: appointment.appointmentId,
-        err: sendError
-      })
+  const referenceOf = (item: QuarkAppointment) =>
+    appointmentReference(item.appointmentId, item.scheduleFingerprint, phone);
+  const referencesOf = (item: QuarkAppointment) =>
+    phoneVariants.map(value =>
+      appointmentReference(item.appointmentId, item.scheduleFingerprint, value)
+    );
+  const appointment = reply.appointmentReference
+    ? appointments.find(
+        item => referencesOf(item).includes(reply.appointmentReference as string)
+      )
+    : undefined;
+  if (!appointment) {
+    const options = appointments
+      .slice(0, 9)
+      .map(
+        item =>
+          `${description(item)} — CONFIRMAR ${referenceOf(
+            item
+          )} ou CANCELAR ${referenceOf(item)}`
+      )
+      .join("\n");
+    await send(
+      `Escolha a consulta pelo código indicado.\n\n${options}\n\nSe não encontrar sua consulta, escreva ATENDENTE.`,
+      "options"
     );
     return true;
   }
-
-  if (responseAudit) {
-    await responseAudit
-      .update({
-        status: "SUCCESS",
-        newQuarkStatus: reply.choice === 1 ? "CONFIRMADO" : "CANCELADO",
-        appliedAt: new Date(),
-        errorCode: null
-      })
-      .then(() => emitQuarkDashboardUpdate("response", responseAudit?.id))
-      .catch(error =>
-        logger.error({
-          info: "Could not update successful QuarkClinic response audit",
-          appointmentId: appointment.appointmentId,
-          err: error
-        })
-      );
+  const reference = referenceOf(appointment);
+  const pendingKey = `quark-cancel:${whatsappId}:${phone}`;
+  const pending = await readState<PendingCancel | null>(pendingKey, null);
+  const validPending =
+    pending &&
+    pending.appointmentId === appointment.appointmentId &&
+    pending.fingerprint === appointment.scheduleFingerprint &&
+    pending.expiresAt > Date.now();
+  if (validPending && !reply.appointmentReference) {
+    await send(
+      `Para cancelar a consulta de ${description(
+        appointment
+      )}, responda exatamente CONFIRMO CANCELAMENTO ${reference}. Se precisar de ajuda, escreva ATENDENTE.`,
+      "explicit-cancel"
+    );
+    return true;
   }
-
-  await SendWhatsAppMessage({
-    body: successBody,
-    ticket,
-    origin: "QUARK"
-  }).catch(error =>
-    logger.error({
-      info: "QuarkClinic decision was applied but acknowledgement failed",
+  if (reply.choice === 2) {
+    if (!reply.confirmedCancellation) {
+      if (!validPending) {
+        await writeState(pendingKey, {
+          appointmentId: appointment.appointmentId,
+          fingerprint: appointment.scheduleFingerprint,
+          reference,
+          expiresAt: Date.now() + 10 * 60000
+        });
+        await send(
+          `Você deseja cancelar a consulta de ${description(
+            appointment
+          )}?\nPara concluir, responda CONFIRMO CANCELAMENTO ${reference}. Essa confirmação vale por 10 minutos.`,
+          `cancel-question:${reference}`
+        );
+      }
+      return true;
+    }
+    if (!validPending) {
+      await send(
+        "A confirmação de cancelamento expirou ou a consulta mudou. Solicite o cancelamento novamente ou fale com a equipe.",
+        "expired"
+      );
+      return true;
+    }
+  }
+  try {
+    await ApplyQuarkDecision({
       appointmentId: appointment.appointmentId,
-      err: error
-    })
-  );
-
+      phone,
+      choice: reply.choice,
+      fingerprint: appointment.scheduleFingerprint
+    });
+    await writeState(pendingKey, null);
+  } catch (error) {
+    await writeState(`bot-pause:${ticket.id}`, true);
+    await send(
+      "Não consegui concluir esta alteração com segurança. O bot foi pausado nesta conversa. Nossa equipe poderá verificar o agendamento; evite repetir a solicitação agora.",
+      "review"
+    ).catch(() => undefined);
+    throw error;
+  }
+  await send(
+    reply.choice === 1
+      ? `Consulta de ${description(appointment)} confirmada.`
+      : `Consulta de ${description(
+          appointment
+        )} cancelada conforme sua confirmação.`,
+    "applied"
+  ).catch(() => undefined);
   return true;
 };
-
 export default HandleQuarkConfirmationReply;

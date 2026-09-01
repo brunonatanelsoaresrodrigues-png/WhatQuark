@@ -20,12 +20,23 @@ interface QuickAnswerData {
   message: string;
 }
 
+const emitQuickAnswer = (
+  userId: number | null,
+  payload: Record<string, unknown>
+): void => {
+  const io = getIO();
+  if (userId === null) io.emit("quickAnswer", payload);
+  else io.to(`user:${userId}`).to("admin").emit("quickAnswer", payload);
+};
+
 export const index = async (req: Request, res: Response): Promise<Response> => {
   const { searchParam, pageNumber } = req.query as IndexQuery;
 
   const { quickAnswers, count, hasMore } = await ListQuickAnswerService({
     searchParam,
-    pageNumber
+    pageNumber,
+    userId: Number(req.user.id),
+    isAdmin: req.user.profile === "admin"
   });
 
   return res.json({ quickAnswers, count, hasMore });
@@ -46,11 +57,11 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   }
 
   const quickAnswer = await CreateQuickAnswerService({
-    ...newQuickAnswer
+    ...newQuickAnswer,
+    userId: Number(req.user.id)
   });
 
-  const io = getIO();
-  io.emit("quickAnswer", {
+  emitQuickAnswer(quickAnswer.userId, {
     action: "create",
     quickAnswer
   });
@@ -61,7 +72,7 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
 export const show = async (req: Request, res: Response): Promise<Response> => {
   const { quickAnswerId } = req.params;
 
-  const quickAnswer = await ShowQuickAnswerService(quickAnswerId);
+  const quickAnswer = await ShowQuickAnswerService(quickAnswerId, req.user);
 
   return res.status(200).json(quickAnswer);
 };
@@ -87,11 +98,11 @@ export const update = async (
 
   const quickAnswer = await UpdateQuickAnswerService({
     quickAnswerData,
-    quickAnswerId
+    quickAnswerId,
+    requester: req.user
   });
 
-  const io = getIO();
-  io.emit("quickAnswer", {
+  emitQuickAnswer(quickAnswer.userId, {
     action: "update",
     quickAnswer
   });
@@ -105,10 +116,14 @@ export const remove = async (
 ): Promise<Response> => {
   const { quickAnswerId } = req.params;
 
-  await DeleteQuickAnswerService(quickAnswerId);
+  const quickAnswer = await ShowQuickAnswerService(
+    quickAnswerId,
+    req.user,
+    true
+  );
+  await DeleteQuickAnswerService(quickAnswerId, req.user);
 
-  const io = getIO();
-  io.emit("quickAnswer", {
+  emitQuickAnswer(quickAnswer.userId, {
     action: "delete",
     quickAnswerId
   });

@@ -1,13 +1,21 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
-import ConfirmQuarkAppointmentFromDashboardService from "../../../services/QuarkClinicServices/ConfirmQuarkAppointmentFromDashboardService";
+import Confirm from "../../../services/QuarkClinicServices/ConfirmQuarkAppointmentFromDashboardService";
 import { getQuarkConfig } from "../../../services/QuarkClinicServices/config";
-import { confirmQuarkAppointment } from "../../../services/QuarkClinicServices/QuarkClinicClient";
-
+import {
+  confirmQuarkAppointment,
+  getQuarkAppointment
+} from "../../../services/QuarkClinicServices/QuarkClinicClient";
+import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
+import {
+  readState,
+  writeState
+} from "../../../services/MessagingServices/state";
+import { assertExecution } from "../../../services/MessagingServices/policy";
 jest.mock("../../../models/QuarkAppointment", () => ({
   __esModule: true,
-  default: { findOne: jest.fn(), update: jest.fn() }
+  default: { findOne: jest.fn() }
 }));
 jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
@@ -21,6 +29,7 @@ jest.mock("../../../services/QuarkClinicServices/config", () => ({
   getQuarkConfig: jest.fn()
 }));
 jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
+  getQuarkAppointment: jest.fn(),
   confirmQuarkAppointment: jest.fn()
 }));
 jest.mock(
@@ -30,100 +39,135 @@ jest.mock(
 jest.mock("../../../services/QuarkClinicServices/dashboardEvents", () => ({
   emitQuarkDashboardUpdate: jest.fn()
 }));
-
-const localUpdate = jest.fn();
-const auditUpdate = jest.fn();
-const appointment = {
+jest.mock("../../../services/MessagingServices/state", () => ({
+  withLease: (_: string, fn: Function) => fn(),
+  readState: jest.fn(),
+  writeState: jest.fn()
+}));
+jest.mock("../../../services/MessagingServices/policy", () => ({
+  assertExecution: jest.fn()
+}));
+const raw = {
   id: 42,
-  appointmentId: "quark-42",
-  status: "AGENDADO",
-  awaitingConfirmation: true,
-  scheduledAt: new Date("2099-08-21T16:00:00-03:00"),
-  update: localUpdate
+  dataAgendamento: "21-08-2099",
+  horaAgendamento: "16:00:00",
+  telefoneComDDI: "5585999990000",
+  statusMarcacao: "AGENDADO"
 };
-
-describe("ConfirmQuarkAppointmentFromDashboardService", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(appointment);
-    (QuarkAppointment.update as jest.Mock).mockResolvedValue([1]);
-    (QuarkAppointmentNotification.update as jest.Mock).mockResolvedValue([1]);
-    (QuarkAppointmentResponse.create as jest.Mock).mockResolvedValue({
-      id: 10,
-      update: auditUpdate
-    });
-    (getQuarkConfig as jest.Mock).mockReturnValue({ baseUrl: "https://quark" });
-    (confirmQuarkAppointment as jest.Mock).mockResolvedValue(undefined);
-    localUpdate.mockResolvedValue(undefined);
-    auditUpdate.mockResolvedValue(undefined);
+const config = {
+  defaultCountryCode: "55",
+  timezone: "America/Sao_Paulo"
+} as any;
+let record: any;
+const auditUpdate = jest.fn();
+const state = new Map();
+beforeEach(() => {
+  jest.resetAllMocks();
+  state.clear();
+  record = {
+    ...buildAppointmentSnapshot(raw, config),
+    id: 42,
+    update: jest.fn().mockResolvedValue(undefined)
+  };
+  (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+  (QuarkAppointmentResponse.create as jest.Mock).mockResolvedValue({
+    id: 10,
+    update: auditUpdate
   });
-
-  it("confirms in Quark, audits the dashboard source and suppresses stale reminders", async () => {
-    await expect(
-      ConfirmQuarkAppointmentFromDashboardService({
-        appointmentId: "quark-42"
-      })
-    ).resolves.toEqual({ confirmed: true, status: "CONFIRMADO" });
-
-    expect(QuarkAppointment.update).toHaveBeenCalledWith(
-      { status: "CONFIRMING", awaitingConfirmation: false },
-      { where: { id: 42, status: "AGENDADO" } }
-    );
-    expect(confirmQuarkAppointment).toHaveBeenCalledWith(
-      expect.any(Object),
-      "quark-42"
-    );
-    expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appointmentId: "quark-42",
-        decision: "CONFIRMED",
-        source: "DASHBOARD",
-        status: "PROCESSING"
-      })
-    );
-    expect(localUpdate).toHaveBeenCalledWith({
-      status: "CONFIRMADO",
-      awaitingConfirmation: false
-    });
-    expect(QuarkAppointmentNotification.update).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "SUPPRESSED" }),
-      expect.objectContaining({
-        where: expect.objectContaining({ appointmentId: "quark-42" })
-      })
-    );
-  });
-
-  it("restores the local scheduled state when Quark rejects the confirmation", async () => {
-    (confirmQuarkAppointment as jest.Mock).mockRejectedValue(
-      new Error("Quark unavailable")
-    );
-
-    await expect(
-      ConfirmQuarkAppointmentFromDashboardService({
-        appointmentId: "quark-42"
-      })
-    ).rejects.toEqual(expect.objectContaining({ statusCode: 502 }));
-    expect(QuarkAppointment.update).toHaveBeenLastCalledWith(
-      { status: "AGENDADO", awaitingConfirmation: true },
-      { where: { id: 42, status: "CONFIRMING" } }
-    );
-    expect(auditUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "FAILED" })
-    );
-    expect(localUpdate).not.toHaveBeenCalled();
-  });
-
-  it("refuses an appointment that is already confirmed", async () => {
-    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
-      ...appointment,
-      status: "CONFIRMADO"
-    });
-
-    await expect(
-      ConfirmQuarkAppointmentFromDashboardService({
-        appointmentId: "quark-42"
-      })
-    ).rejects.toEqual(expect.objectContaining({ statusCode: 409 }));
-    expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+  (getQuarkConfig as jest.Mock).mockReturnValue(config);
+  (getQuarkAppointment as jest.Mock).mockResolvedValue(raw);
+  (readState as jest.Mock).mockImplementation(
+    (key, fallback) => state.get(key) || fallback
+  );
+  (writeState as jest.Mock).mockImplementation((key, value) => {
+    state.set(key, value);
+    return Promise.resolve();
   });
 });
+it("audits the actor, applies once and suppresses stale notices", async () => {
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).resolves.toEqual({ confirmed: true, status: "CONFIRMADO" });
+  expect(QuarkAppointmentResponse.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actorUserId: 9,
+      source: "DASHBOARD",
+      status: "PROCESSING"
+    })
+  );
+  expect(confirmQuarkAppointment).toHaveBeenCalledWith(
+    config,
+    "42",
+    record.phone
+  );
+  expect(QuarkAppointmentNotification.update).toHaveBeenCalledWith(
+    expect.objectContaining({ status: "SUPPRESSED" }),
+    expect.anything()
+  );
+});
+it("requires an authenticated actor", async () => {
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 0 })
+  ).rejects.toThrow();
+  expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+});
+it("does not bypass simulation for a manual action", async () => {
+  (assertExecution as jest.Mock).mockRejectedValue(
+    new Error("ERR_QUARK_SIMULATION")
+  );
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("ERR_QUARK_SIMULATION");
+  expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+});
+it("refuses stale remote status", async () => {
+  (getQuarkAppointment as jest.Mock).mockResolvedValue({
+    ...raw,
+    statusMarcacao: "CONFIRMADO"
+  });
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("ERR_APPOINTMENT_CHANGED");
+  expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+});
+it("blocks a second mutation after an uncertain result", async () => {
+  (confirmQuarkAppointment as jest.Mock).mockRejectedValue(
+    new Error("QUARK_OPERATION_OUTCOME_UNKNOWN")
+  );
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("ERR_QUARK_REVIEW_REQUIRED");
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("ERR_QUARK_REVIEW_REQUIRED");
+  expect(confirmQuarkAppointment).toHaveBeenCalledTimes(1);
+  expect(auditUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({ status: "UNKNOWN" })
+  );
+});
+it("does not repeat a successful PATCH if local persistence fails", async () => {
+  record.update
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error("DB offline"));
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("DB offline");
+  await expect(
+    Confirm({ appointmentId: "42", actorUserId: 9 })
+  ).rejects.toThrow("ERR_QUARK_REVIEW_REQUIRED");
+  expect(confirmQuarkAppointment).toHaveBeenCalledTimes(1);
+});
+
+it.each([{ telefoneComDDI: "5511999991111" }, { pacienteId: 100 }])(
+  "does not mutate a consultation whose recipient or patient changed remotely",
+  async changed => {
+    (getQuarkAppointment as jest.Mock).mockResolvedValue({
+      ...raw,
+      ...changed
+    });
+    await expect(
+      Confirm({ appointmentId: "42", actorUserId: 9 })
+    ).rejects.toThrow("ERR_APPOINTMENT_CHANGED");
+    expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+  }
+);

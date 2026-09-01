@@ -1,4 +1,4 @@
-import { getIO } from "../../libs/socket";
+import { getIO, emitTicketEvent } from "../../libs/socket";
 import Ticket from "../../models/Ticket";
 import ShowTicketService from "../TicketServices/ShowTicketService";
 
@@ -16,13 +16,10 @@ export const emitTicketInactivityUpdate = async (
     });
   }
 
-  io.to(ticket.status)
-    .to("notification")
-    .to(ticketId.toString())
-    .emit("ticket", {
-      action: "update",
-      ticket
-    });
+  await emitTicketEvent(ticket, "ticket", {
+    action: "update",
+    ticket
+  });
 
   return ticket;
 };

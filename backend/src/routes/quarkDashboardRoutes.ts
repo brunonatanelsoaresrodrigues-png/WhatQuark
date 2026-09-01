@@ -24,6 +24,26 @@ quarkDashboardRoutes.get(
   isAuth,
   QuarkDashboardController.appointments
 );
+quarkDashboardRoutes.get(
+  "/quark/clinic/appointments/:appointmentId",
+  isAuth,
+  QuarkDashboardController.showClinicAppointment
+);
+quarkDashboardRoutes.get(
+  "/quark/clinic/contacts/:contactId",
+  isAuth,
+  QuarkDashboardController.showClinicContact
+);
+quarkDashboardRoutes.get(
+  "/quark/clinic/patients/:patientId",
+  isAuth,
+  QuarkDashboardController.showClinicPatient
+);
+quarkDashboardRoutes.get(
+  "/quark/dashboard/calendar-days",
+  isAuth,
+  QuarkDashboardController.calendarDays
+);
 quarkDashboardRoutes.post(
   "/quark/dashboard/appointments/:appointmentId/reminder",
   isAuth,

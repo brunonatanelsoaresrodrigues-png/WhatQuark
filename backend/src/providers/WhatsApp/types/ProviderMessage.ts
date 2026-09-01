@@ -23,3 +23,23 @@ export interface ProviderMessage {
   hasQuotedMsg?: boolean;
   ack?: MessageAck;
 }
+
+export interface HistorySyncCursor {
+  chatId: string;
+  oldestMessageId: string;
+  oldestMessageFromMe: boolean;
+  oldestMessageTimestampMs: number;
+}
+
+export interface HistorySyncProgress {
+  totalChats: number;
+  processedChats: number;
+  importedMessages: number;
+  duplicateMessages: number;
+  failedMessages: number;
+  failedChats: number;
+}
+
+export interface HistorySyncResult extends HistorySyncProgress {
+  limitedChats: number;
+}

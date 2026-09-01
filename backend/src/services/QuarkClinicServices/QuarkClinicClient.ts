@@ -1,23 +1,60 @@
+/* eslint-disable no-await-in-loop */
 import https from "https";
 import { URL } from "url";
+import { assertNotShuttingDown } from "../../utils/shutdownState";
 import { QuarkConfig } from "./config";
-import { QuarkAppointmentDto, QuarkPagedResponse } from "./types";
+import {
+  CreateQuarkAppointmentRequest,
+  CreateQuarkPatientRequest,
+  QuarkAgendaDto,
+  QuarkAppointmentDto,
+  QuarkFreeSlotDayDto,
+  QuarkPagedResponse,
+  QuarkPatientDto,
+  QuarkProfessionalDto
+} from "./types";
+import { assertExecution } from "../MessagingServices/policy";
 
-class QuarkHttpError extends Error {
+export class QuarkHttpError extends Error {
   statusCode: number;
+  retryAfterMs: number;
 
-  constructor(statusCode: number, path: string) {
+  constructor(statusCode: number, path: string, retryAfter = "") {
     super(`QuarkClinic API returned HTTP ${statusCode} for ${path}`);
     this.statusCode = statusCode;
+    const seconds = Number(retryAfter);
+    this.retryAfterMs =
+      Math.max(
+        0,
+        Number.isFinite(seconds)
+          ? seconds * 1000
+          : Date.parse(retryAfter) - Date.now()
+      ) || 0;
   }
 }
 
+// The Quark API invalidates one of two requests made at the same time with the
+// same credentials. Keep a process-wide queue so the appointment synchronizer,
+// dashboard and patient intake never race each other for the same API key.
+let requestQueue: Promise<void> = Promise.resolve();
+
+const enqueueRequest = <T>(operation: () => Promise<T>): Promise<T> => {
+  const result = requestQueue.then(operation, operation);
+  requestQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+};
+
 const requestJsonOnce = <T>(
   config: QuarkConfig,
-  method: "GET" | "PATCH",
+  method: "GET" | "PATCH" | "POST",
   path: string,
-  query: Record<string, string | number | undefined> = {}
+  query: Record<string, string | number | undefined> = {},
+  payload?: unknown
 ): Promise<T> => {
+  assertNotShuttingDown();
   const url = new URL(`${config.baseUrl}${path}`);
   Object.keys(query).forEach(key => {
     const value = query[key];
@@ -25,12 +62,20 @@ const requestJsonOnce = <T>(
   });
 
   return new Promise<T>((resolve, reject) => {
+    const serializedPayload =
+      payload === undefined ? undefined : JSON.stringify(payload);
     const req = https.request(
       url,
       {
         method,
         headers: {
           Accept: "application/json",
+          ...(serializedPayload
+            ? {
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(serializedPayload)
+              }
+            : {}),
           "Auth-token": config.authToken,
           "X-Chave-Key": config.xChaveKey,
           "X-Secret-Key": config.xSecretKey
@@ -40,12 +85,22 @@ const requestJsonOnce = <T>(
         let body = "";
         response.setEncoding("utf8");
         response.on("data", chunk => {
+          if (body.length + String(chunk).length > 10 * 1024 * 1024) {
+            req.destroy(new Error("QUARK_RESPONSE_TOO_LARGE"));
+            return;
+          }
           body += chunk;
         });
         response.on("end", () => {
           const statusCode = response.statusCode || 0;
           if (statusCode < 200 || statusCode >= 300) {
-            reject(new QuarkHttpError(statusCode, path));
+            reject(
+              new QuarkHttpError(
+                statusCode,
+                path,
+                String(response.headers?.["retry-after"] || "")
+              )
+            );
             return;
           }
 
@@ -64,6 +119,7 @@ const requestJsonOnce = <T>(
       req.destroy(new Error(`QuarkClinic API timed out for ${path}`));
     });
     req.on("error", reject);
+    if (serializedPayload) req.write(serializedPayload);
     req.end();
   });
 };
@@ -73,22 +129,34 @@ const wait = (milliseconds: number): Promise<void> =>
 
 const requestJson = async <T>(
   config: QuarkConfig,
-  method: "GET" | "PATCH",
+  method: "GET" | "PATCH" | "POST",
   path: string,
-  query: Record<string, string | number | undefined> = {}
+  query: Record<string, string | number | undefined> = {},
+  payload?: unknown
 ): Promise<T> => {
   for (let attempt = 1; attempt <= config.maxRetryAttempts; attempt += 1) {
     try {
-      return await requestJsonOnce<T>(config, method, path, query);
+      return await enqueueRequest(() =>
+        requestJsonOnce<T>(config, method, path, query, payload)
+      );
     } catch (error) {
+      if (error instanceof Error && error.message === "ERR_SHUTTING_DOWN")
+        throw error;
       const statusCode =
         error instanceof QuarkHttpError ? error.statusCode : undefined;
+      // POST may have been applied even when the response was lost. Retrying it
+      // here could create duplicate patients or appointments; the intake
+      // booking ledger performs a recovery check before an explicit retry.
       const temporary =
         statusCode === undefined || statusCode === 429 || statusCode >= 500;
-      if (!temporary || attempt >= config.maxRetryAttempts) throw error;
+      if (method !== "GET" || !temporary || attempt >= config.maxRetryAttempts)
+        throw error;
 
       const backoff = Math.min(30000, 1000 * 2 ** (attempt - 1));
-      await wait(backoff + Math.floor(Math.random() * 1000));
+      const retryAfter =
+        error instanceof QuarkHttpError ? error.retryAfterMs : 0;
+      if (retryAfter > 30000) throw error;
+      await wait(Math.max(backoff, retryAfter));
     }
   }
 
@@ -99,9 +167,30 @@ const assertSuccessfulResponse = <T>(
   result: QuarkPagedResponse<T>,
   operation: string
 ): void => {
-  if (result.status && result.status !== "OK") {
+  if (!result || result.status !== "OK") {
     throw new Error(`QuarkClinic API failed while ${operation}`);
   }
+};
+
+const listPaged = async <T>(
+  config: QuarkConfig,
+  path: string,
+  operation: string
+): Promise<T[]> => {
+  const values: T[] = [];
+  for (let page = 0; page < 100; page += 1) {
+    const result = await requestJson<QuarkPagedResponse<T>>(
+      config,
+      "GET",
+      path,
+      { page }
+    );
+    assertSuccessfulResponse(result, operation);
+    const currentPage = Array.isArray(result.response) ? result.response : [];
+    values.push(...currentPage);
+    if (currentPage.length < 100) break;
+  }
+  return values;
 };
 
 export const listQuarkAppointments = async (
@@ -124,36 +213,264 @@ export const listQuarkAppointments = async (
     );
 
     assertSuccessfulResponse(result, "listing appointments");
-    const currentPage = Array.isArray(result.response) ? result.response : [];
+    if (!Array.isArray(result.response))
+      throw new Error("QUARK_INVALID_RESPONSE");
+    const currentPage = result.response;
     appointments.push(...currentPage);
 
     if (currentPage.length < 100) break;
+    if (page === 99) throw new Error("QUARK_PAGINATION_LIMIT_REACHED");
   }
 
   return appointments;
 };
 
-export const confirmQuarkAppointment = async (
+export const getQuarkAppointment = async (
   config: QuarkConfig,
   appointmentId: string
-): Promise<void> => {
-  const result = await requestJson<QuarkPagedResponse<never>>(
+): Promise<QuarkAppointmentDto> => {
+  const result = await requestJson<QuarkPagedResponse<QuarkAppointmentDto>>(
     config,
-    "PATCH",
-    `/v1/agendamentos/${encodeURIComponent(appointmentId)}/confirmar`
+    "GET",
+    `/v1/agendamentos/${encodeURIComponent(appointmentId)}`
   );
-  assertSuccessfulResponse(result, "confirming an appointment");
+  assertSuccessfulResponse(result, "reading appointment");
+  if (!Array.isArray(result.response))
+    throw new Error("QUARK_INVALID_RESPONSE");
+  const appointment = result.response.find(
+    item => String(item.id) === appointmentId
+  );
+  if (!appointment) throw new Error("QUARK_APPOINTMENT_NOT_FOUND");
+  return appointment;
 };
 
-export const cancelQuarkAppointment = async (
+const applyStatus = async (
   config: QuarkConfig,
-  appointmentId: string
+  appointmentId: string,
+  desired: "CONFIRMADO" | "CANCELADO",
+  phone?: string
 ): Promise<void> => {
-  const result = await requestJson<QuarkPagedResponse<never>>(
+  await assertExecution(phone, true);
+  const before = await getQuarkAppointment(config, appointmentId);
+  if (before.statusMarcacao === desired) return;
+  const allowedStatuses =
+    desired === "CANCELADO" ? ["AGENDADO", "CONFIRMADO"] : ["AGENDADO"];
+  if (!allowedStatuses.includes(String(before.statusMarcacao || "")))
+    throw new Error("QUARK_APPOINTMENT_STATE_CHANGED");
+  await assertExecution(phone, true);
+  try {
+    const result = await enqueueRequest(async () => {
+      await assertExecution(phone, true);
+      return requestJsonOnce<QuarkPagedResponse<never>>(
+        config,
+        "PATCH",
+        `/v1/agendamentos/${encodeURIComponent(appointmentId)}/${
+          desired === "CONFIRMADO" ? "confirmar" : "cancelar"
+        }`,
+        desired === "CANCELADO" ? { motivo: config.cancelReason } : {}
+      );
+    });
+    assertSuccessfulResponse(result, "applying appointment decision");
+    // A successful envelope only means the Quark endpoint accepted the
+    // request. Re-read the appointment before reporting success so an API
+    // no-op can never become an optimistic local confirmation.
+    for (const delay of [0, 250, 750]) {
+      if (delay) await wait(delay);
+      const verified = await getQuarkAppointment(config, appointmentId);
+      if (verified.statusMarcacao === desired) return;
+    }
+    throw new Error("QUARK_OPERATION_OUTCOME_UNKNOWN");
+  } catch (error) {
+    try {
+      const after = await getQuarkAppointment(config, appointmentId);
+      if (after.statusMarcacao === desired) return;
+    } catch (_) {
+      /* An unavailable read must not authorize a repeated PATCH. */
+    }
+    if (
+      error instanceof QuarkHttpError &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500 &&
+      error.statusCode !== 408
+    )
+      throw error;
+    throw new Error("QUARK_OPERATION_OUTCOME_UNKNOWN");
+  }
+};
+export const confirmQuarkAppointment = (
+  config: QuarkConfig,
+  appointmentId: string,
+  phone?: string
+) => applyStatus(config, appointmentId, "CONFIRMADO", phone);
+export const cancelQuarkAppointment = (
+  config: QuarkConfig,
+  appointmentId: string,
+  phone?: string
+) => applyStatus(config, appointmentId, "CANCELADO", phone);
+
+export const listQuarkProfessionals = (
+  config: QuarkConfig
+): Promise<QuarkProfessionalDto[]> =>
+  listPaged<QuarkProfessionalDto>(
     config,
-    "PATCH",
-    `/v1/agendamentos/${encodeURIComponent(appointmentId)}/cancelar`,
-    { motivo: config.cancelReason }
+    "/v1/profissionais",
+    "listing professionals"
   );
-  assertSuccessfulResponse(result, "cancelling an appointment");
+
+export const listQuarkAgendas = (
+  config: QuarkConfig
+): Promise<QuarkAgendaDto[]> =>
+  listPaged<QuarkAgendaDto>(config, "/v1/agendas", "listing agendas");
+
+export const listQuarkFreeSlots = async (
+  config: QuarkConfig,
+  agendaId: number | string,
+  date: string
+): Promise<QuarkFreeSlotDayDto[]> => {
+  const result = await requestJson<QuarkFreeSlotDayDto[]>(
+    config,
+    "GET",
+    `/v1/agendas/${encodeURIComponent(String(agendaId))}/horarios-livres`,
+    { data: date }
+  );
+  return Array.isArray(result) ? result : [];
+};
+
+const extractPatient = (
+  value: unknown,
+  expectedId?: string
+): QuarkPatientDto | null => {
+  if (!value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const patient = extractPatient(item, expectedId);
+      if (patient) return patient;
+    }
+    return null;
+  }
+  const object = value as Record<string, unknown>;
+  if (
+    object.id !== undefined &&
+    (!expectedId || String(object.id) === expectedId)
+  ) {
+    return object as unknown as QuarkPatientDto;
+  }
+  for (const nested of [object.response, object.paciente, object.patient]) {
+    const patient = extractPatient(nested, expectedId);
+    if (patient) return patient;
+  }
+  return null;
+};
+
+export const getQuarkPatient = async (
+  config: QuarkConfig,
+  patientId: string
+): Promise<QuarkPatientDto | null> => {
+  try {
+    const result = await requestJson<unknown>(
+      config,
+      "GET",
+      `/v1/pacientes/${encodeURIComponent(patientId)}`
+    );
+    return extractPatient(result, patientId);
+  } catch (error) {
+    if (error instanceof QuarkHttpError && error.statusCode === 404)
+      return null;
+    throw error;
+  }
+};
+
+export const findQuarkPatientByCpf = async (
+  config: QuarkConfig,
+  cpf: string
+): Promise<QuarkPatientDto | null> => {
+  try {
+    const result = await requestJson<unknown>(
+      config,
+      "GET",
+      "/v1/pacientes/existe",
+      { cpf }
+    );
+    return extractPatient(result);
+  } catch (error) {
+    if (error instanceof QuarkHttpError && error.statusCode === 404)
+      return null;
+    throw error;
+  }
+};
+
+const numericApiId = (result: unknown, operation: string): number => {
+  const direct = Number(result);
+  if (Number.isInteger(direct) && direct > 0) return direct;
+  if (result && typeof result === "object") {
+    const object = result as Record<string, unknown>;
+    const nested = Number(object.id || object.response);
+    if (Number.isInteger(nested) && nested > 0) return nested;
+  }
+  throw new Error(`QuarkClinic API returned no id while ${operation}`);
+};
+
+export const createQuarkPatient = async (
+  config: QuarkConfig,
+  patient: CreateQuarkPatientRequest
+): Promise<number> => {
+  await assertExecution(
+    patient.telefone?.replace(/\D/g, "").replace(/^(?=\d{10,11}$)/, "55"),
+    true
+  );
+  return numericApiId(
+    await requestJson<unknown>(config, "POST", "/v1/pacientes", {}, patient),
+    "creating a patient"
+  );
+};
+
+export const createQuarkAppointment = async (
+  config: QuarkConfig,
+  appointment: CreateQuarkAppointmentRequest
+): Promise<number> => {
+  await assertExecution(
+    appointment.telefonePaciente
+      ?.replace(/\D/g, "")
+      .replace(/^(?=\d{10,11}$)/, "55"),
+    true
+  );
+  const appointmentId = numericApiId(
+    await requestJson<unknown>(
+      config,
+      "POST",
+      "/v1/agendamentos",
+      {},
+      appointment
+    ),
+    "creating an appointment"
+  );
+  const dateKey = (value: unknown): string => {
+    const raw = String(value || "").trim();
+    let match = raw.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+    if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+    match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+    return match ? `${match[1]}-${match[2]}-${match[3]}` : raw;
+  };
+  const matchesRequest = (remote: QuarkAppointmentDto): boolean =>
+    String(remote.id) === String(appointmentId) &&
+    String(remote.pacienteId || "") === String(appointment.pacienteId) &&
+    String(remote.agendaId || "") === String(appointment.agendaId) &&
+    dateKey(remote.dataAgendamento) === dateKey(appointment.data) &&
+    String(remote.horaAgendamento || "").slice(0, 5) ===
+      String(appointment.hora).slice(0, 5) &&
+    String(remote.statusMarcacao || "").toUpperCase() !== "CANCELADO";
+
+  // A returned id is not sufficient evidence that the requested slot and
+  // patient were persisted. Verify the authoritative record before the bot
+  // tells the patient that the appointment exists.
+  for (const delay of [0, 500, 1500, 3000]) {
+    if (delay) await wait(delay);
+    try {
+      const remote = await getQuarkAppointment(config, String(appointmentId));
+      if (matchesRequest(remote)) return appointmentId;
+    } catch (_) {
+      /* Eventual consistency is tolerated only within this bounded window. */
+    }
+  }
+  throw new Error("QUARK_BOOKING_OUTCOME_UNKNOWN");
 };

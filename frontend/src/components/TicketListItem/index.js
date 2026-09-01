@@ -1,280 +1,210 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
-
+import React, { useContext, useState } from "react";
 import { useHistory, useParams } from "react-router-dom";
-import { parseISO, format, isSameDay } from "date-fns";
-import clsx from "clsx";
-
-import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
-import ListItem from "@material-ui/core/ListItem";
-import ListItemText from "@material-ui/core/ListItemText";
-import ListItemAvatar from "@material-ui/core/ListItemAvatar";
-import Typography from "@material-ui/core/Typography";
-import Avatar from "@material-ui/core/Avatar";
-import Divider from "@material-ui/core/Divider";
-import Badge from "@material-ui/core/Badge";
-import Chip from "@material-ui/core/Chip";
-
-import { i18n } from "../../translate/i18n";
-
-import api from "../../services/api";
-import ButtonWithSpinner from "../ButtonWithSpinner";
-import MarkdownWrapper from "../MarkdownWrapper";
-import { Tooltip } from "@material-ui/core";
+import { Box, Button, ButtonBase, Chip, Typography, makeStyles } from "@material-ui/core";
 import { AuthContext } from "../../context/Auth/AuthContext";
+import api from "../../services/api";
 import toastError from "../../errors/toastError";
-
+import ContactAvatar from "../ContactAvatar";
+import { contactDisplayName } from "../../services/contactIdentity";
 const useStyles = makeStyles(theme => ({
-	ticket: {
-		position: "relative",
-	},
-
-	pendingTicket: {
-		cursor: "unset",
-	},
-
-	noTicketsDiv: {
-		display: "flex",
-		height: "100px",
-		margin: 40,
-		flexDirection: "column",
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	noTicketsText: {
-		textAlign: "center",
-		color: "rgb(104, 121, 146)",
-		fontSize: "14px",
-		lineHeight: "1.4",
-	},
-
-	noTicketsTitle: {
-		textAlign: "center",
-		fontSize: "16px",
-		fontWeight: "600",
-		margin: "0px",
-	},
-
-	contactNameWrapper: {
-		display: "flex",
-		justifyContent: "space-between",
-	},
-
-	lastMessageTime: {
-		justifySelf: "flex-end",
-	},
-
-	closedBadge: {
-		alignSelf: "center",
-		justifySelf: "flex-end",
-		marginRight: 32,
-		marginLeft: "auto",
-	},
-
-	contactLastMessage: {
-		paddingRight: 20,
-	},
-
-	newMessagesCount: {
-		alignSelf: "center",
-		marginRight: 8,
-		marginLeft: "auto",
-	},
-
-	waitingPatientChip: {
-		alignSelf: "center",
-		fontSize: "0.68rem",
-		height: 20,
-		marginRight: 8,
-	},
-
-	badgeStyle: {
-		color: "white",
-		backgroundColor: green[500],
-	},
-
-	acceptButton: {
-		position: "absolute",
-		left: "50%",
-	},
-
-	ticketQueueColor: {
-		flex: "none",
-		width: "8px",
-		height: "100%",
-		position: "absolute",
-		top: "0%",
-		left: "0%",
-	},
-
-	userTag: {
-		position: "absolute",
-		marginRight: 5,
-		right: 5,
-		bottom: 5,
-		background: "#2576D2",
-		color: "#ffffff",
-		border: "1px solid #CCC",
-		padding: 1,
-		paddingLeft: 5,
-		paddingRight: 5,
-		borderRadius: 10,
-		fontSize: "0.9em"
-	},
+  row: {
+    animation: theme.productTokens.animations.arrive,
+    border: `1px solid ${theme.palette.divider}`,
+    borderLeft: "2px solid transparent",
+    padding: "8px 10px",
+    marginBottom: 5,
+    borderRadius: theme.productTokens.radii.xs,
+    background: theme.modeTokens.surfaceMuted,
+    boxShadow: theme.productTokens.shadows.rest,
+    transition: `transform ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}, background-color ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}, border-color ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}, box-shadow ${theme.productTokens.motion.duration.micro}ms ${theme.productTokens.motion.easing}`,
+    // A linha sobe em direcao a cor do painel no hover, em vez de escurecer.
+    "&:hover": {
+      transform: "translateY(-1px)",
+      background: theme.modeTokens.surface,
+      borderColor: theme.modeTokens.borderStrong,
+      boxShadow: theme.productTokens.shadows.soft
+    }
+  },
+  unreadRow: {
+    background: theme.modeTokens.surfaceRaised,
+    "& $lastMessage": {
+      color: theme.palette.text.primary,
+      fontWeight: 500
+    }
+  },
+  waitingRow: {
+    borderLeftColor: theme.statusTokens.warning.border
+  },
+  resolvedRow: {
+    borderLeftColor: theme.statusTokens.success.border,
+    opacity: 0.88
+  },
+  selected: {
+    borderLeftColor: theme.palette.primary.main,
+    background: theme.modeTokens.surfaceTint,
+    borderColor: theme.modeTokens.borderStrong,
+    boxShadow: theme.productTokens.shadows.soft,
+    "&:hover": {
+      background: theme.modeTokens.surfaceTint
+    }
+  },
+  preview: {
+    width: "100%",
+    display: "flex",
+    textAlign: "left",
+    gap: 9,
+    borderRadius: theme.productTokens.radii.sm,
+    padding: "1px 0",
+    justifyContent: "flex-start"
+  },
+  text: {
+    flex: 1,
+    minWidth: 0
+  },
+  top: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  meta: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    margin: "5px 0 0 47px"
+  },
+  chip: {
+    height: 18,
+    maxWidth: "100%",
+    fontSize: 12,
+    color: theme.palette.text.secondary,
+    background: theme.modeTokens.surfaceMuted,
+    borderColor: theme.palette.divider,
+    borderRadius: theme.productTokens.radii.pill,
+    "& .MuiChip-label": {
+      padding: "0 7px",
+      fontWeight: 450
+    }
+  },
+  chipWarning: {
+    color: theme.statusTokens.warning.fg,
+    background: theme.statusTokens.warning.bg,
+    borderColor: theme.statusTokens.warning.border
+  },
+  chipSuccess: {
+    color: theme.statusTokens.success.fg,
+    background: theme.statusTokens.success.bg,
+    borderColor: theme.statusTokens.success.border
+  },
+  chipInfo: {
+    color: theme.statusTokens.info.fg,
+    background: theme.statusTokens.info.bg,
+    borderColor: theme.statusTokens.info.border
+  },
+  unread: {
+    minWidth: 18,
+    height: 18,
+    display: "grid",
+    placeItems: "center",
+    borderRadius: theme.productTokens.radii.pill,
+    padding: "1px 6px",
+    background: theme.palette.primary.main,
+    color: theme.palette.primary.contrastText,
+    fontSize: 12,
+    fontWeight: 600
+  },
+  lastMessage: {
+    marginTop: 3,
+    fontSize: ".75rem",
+    lineHeight: 1.5
+  },
+  ticketTime: {
+    fontSize: ".66rem"
+  }
 }));
-
-const TicketListItem = ({ ticket }) => {
-	const classes = useStyles();
-	const history = useHistory();
-	const [loading, setLoading] = useState(false);
-	const { ticketId } = useParams();
-	const isMounted = useRef(true);
-	const { user } = useContext(AuthContext);
-
-	useEffect(() => {
-		return () => {
-			isMounted.current = false;
-		};
-	}, []);
-
-	const handleAcepptTicket = async id => {
-		setLoading(true);
-		try {
-			await api.put(`/tickets/${id}`, {
-				status: "open",
-				userId: user?.id,
-			});
-		} catch (err) {
-			setLoading(false);
-			toastError(err);
-		}
-		if (isMounted.current) {
-			setLoading(false);
-		}
-		history.push(`/tickets/${id}`);
-	};
-
-	const handleSelectTicket = id => {
-		history.push(`/tickets/${id}`);
-	};
-
-	return (
-		<React.Fragment key={ticket.id}>
-			<ListItem
-				dense
-				button
-				onClick={e => {
-					if (ticket.status === "pending") return;
-					handleSelectTicket(ticket.id);
-				}}
-				selected={ticketId && +ticketId === ticket.id}
-				className={clsx(classes.ticket, {
-					[classes.pendingTicket]: ticket.status === "pending",
-				})}
-			>
-				<Tooltip
-					arrow
-					placement="right"
-					title={ticket.queue?.name || "Sem fila"}
-				>
-					<span
-						style={{ backgroundColor: ticket.queue?.color || "#7C7C7C" }}
-						className={classes.ticketQueueColor}
-					></span>
-				</Tooltip>
-				<ListItemAvatar>
-					<Avatar src={ticket?.contact?.profilePicUrl} />
-				</ListItemAvatar>
-				<ListItemText
-					disableTypography
-					primary={
-						<span className={classes.contactNameWrapper}>
-							<Typography
-								noWrap
-								component="span"
-								variant="body2"
-								color="textPrimary"
-							>
-								{ticket.contact.name}
-							</Typography>
-							{ticket.status === "closed" && (
-								<Badge
-									className={classes.closedBadge}
-									badgeContent={ticket.closedByInactivity ? "inatividade" : "closed"}
-									color="primary"
-								/>
-							)}
-							{ticket.lastMessage && (
-								<Typography
-									className={classes.lastMessageTime}
-									component="span"
-									variant="body2"
-									color="textSecondary"
-								>
-									{isSameDay(parseISO(ticket.updatedAt), new Date()) ? (
-										<>{format(parseISO(ticket.updatedAt), "HH:mm")}</>
-									) : (
-										<>{format(parseISO(ticket.updatedAt), "dd/MM/yyyy")}</>
-									)}
-								</Typography>
-							)}
-							{ticket.whatsappId && (
-								<div className={classes.userTag} title={i18n.t("ticketsList.connectionTitle")}>{ticket.whatsapp?.name}</div>
-							)}
-						</span>
-					}
-					secondary={
-						<span className={classes.contactNameWrapper}>
-							<Typography
-								className={classes.contactLastMessage}
-								noWrap
-								component="span"
-								variant="body2"
-								color="textSecondary"
-							>
-								{ticket.lastMessage ? (
-									<MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>
-								) : (
-									<br />
-								)}
-							</Typography>
-							{ticket.awaitingPatientSince && (
-								<Chip
-									className={classes.waitingPatientChip}
-									size="small"
-									variant="outlined"
-									color="secondary"
-									label={i18n.t("ticketsList.waitingPatient")}
-								/>
-							)}
-
-							<Badge
-								className={classes.newMessagesCount}
-								badgeContent={ticket.unreadMessages}
-								classes={{
-									badge: classes.badgeStyle,
-								}}
-							/>
-						</span>
-					}
-				/>
-				{ticket.status === "pending" && (
-					<ButtonWithSpinner
-						color="primary"
-						variant="contained"
-						className={classes.acceptButton}
-						size="small"
-						loading={loading}
-						onClick={e => handleAcepptTicket(ticket.id)}
-					>
-						{i18n.t("ticketsList.buttons.accept")}
-					</ButtonWithSpinner>
-				)}
-			</ListItem>
-			<Divider variant="inset" component="li" />
-		</React.Fragment>
-	);
-};
-
-export default TicketListItem;
+export default function TicketListItem({
+  ticket
+}) {
+  const classes = useStyles();
+  const history = useHistory();
+  const {
+    ticketId
+  } = useParams();
+  const {
+    user
+  } = useContext(AuthContext);
+  const [loading, setLoading] = useState(false);
+  const accept = async () => {
+    setLoading(true);
+    try {
+      await api.put(`/tickets/${ticket.id}`, {
+        status: "open",
+        userId: user.id
+      });
+      history.push(`/tickets/${ticket.id}`);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const date = new Date(ticket.updatedAt);
+  const selected = Number(ticketId) === ticket.id;
+  const contactName = contactDisplayName(ticket.contact);
+  const rowStates = [
+    classes.row,
+    ticket.unreadMessages ? classes.unreadRow : "",
+    ticket.status === "pending" ? classes.waitingRow : "",
+    ticket.status === "closed" ? classes.resolvedRow : "",
+    selected ? classes.selected : ""
+  ].filter(Boolean).join(" ");
+  return <div className={rowStates}>
+      <ButtonBase className={classes.preview} onClick={() => history.push(`/tickets/${ticket.id}`)} aria-label={`Abrir atendimento de ${contactName}`} aria-current={selected ? "true" : undefined}>
+        <ContactAvatar contact={ticket.contact} />
+        <div className={classes.text}>
+          <div className={classes.top}>
+            <Typography variant="body2" noWrap style={{
+            fontWeight: 600,
+            fontSize: ".79rem"
+          }}>
+              {contactName}
+            </Typography>
+            <Typography variant="caption" color="textSecondary" className={classes.ticketTime} style={{
+            flexShrink: 0
+          }}>
+              {Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit"
+            })}
+            </Typography>
+          </div>
+          <Typography variant="body2" noWrap color="textSecondary" className={classes.lastMessage}>
+            {ticket.lastMessage || "Nenhuma mensagem ainda"}
+          </Typography>
+        </div>
+        {!!ticket.unreadMessages && <span className={classes.unread} aria-label={`${ticket.unreadMessages} mensagens não lidas`}>
+            {ticket.unreadMessages}
+          </span>}
+      </ButtonBase>
+      <div className={classes.meta}>
+        <Chip className={classes.chip} variant="outlined" label={ticket.queue?.name || "Sem setor"} />
+        {ticket.user?.name && <Typography variant="caption" color="textSecondary" noWrap style={{
+        fontSize: 12,
+        flex: 1
+      }}>
+            {ticket.user.name}
+          </Typography>}
+        {ticket.awaitingPatientSince && <Chip className={`${classes.chip} ${classes.chipInfo}`} variant="outlined" label="Aguardando paciente" />}
+        {ticket.status === "closed" && <Chip className={`${classes.chip} ${classes.chipSuccess}`} variant="outlined" label={ticket.closedByInactivity ? "Resolvido por inatividade" : "Resolvido"} />}
+        {ticket.status === "pending" && <>
+          <Chip className={`${classes.chip} ${classes.chipWarning}`} variant="outlined" label="Na fila" />
+          <Box ml="auto">
+            <Button size="small" color="primary" disabled={loading} onClick={accept}>
+              {loading ? "Aceitando…" : "Aceitar"}
+            </Button>
+          </Box>
+        </>}
+      </div>
+    </div>;
+}

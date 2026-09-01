@@ -1,15 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-
+import { mp3EncoderVitePlugin, mp3EncoderEsbuildPlugin } from "./tooling/mp3EncoderCompat.mjs";
 export default defineConfig({
-  plugins: [
-    react({
-      jsxRuntime: "classic",
-    }),
-  ],
+  plugins: [mp3EncoderVitePlugin(), react({
+    jsxRuntime: "classic"
+  })],
   server: {
     port: 3000,
-    open: true,
+    open: true
   },
   build: {
     outDir: "build",
@@ -17,36 +15,35 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          "material-ui": [
-            "@material-ui/core",
-            "@material-ui/icons",
-            "@material-ui/lab",
-          ],
-        },
-      },
-    },
+          "material-ui-core": ["@material-ui/core"],
+          "emoji-picker": ["emoji-mart"],
+          "audio-recorder": ["mic-recorder-to-mp3"]
+        }
+      }
+    }
   },
   envPrefix: "VITE_",
   esbuild: {
     loader: "jsx",
     include: /src\/.*\.[jt]sx?$/,
-    exclude: [],
+    exclude: []
   },
   define: {
-    global: "globalThis",
+    global: "globalThis"
   },
   optimizeDeps: {
-    include: [
-      "mic-recorder-to-mp3",
-      "@material-ui/core",
-      "@material-ui/icons",
-      "@material-ui/lab",
-    ],
-    exclude: [],
+    esbuildOptions: {
+      loader: {
+        ".js": "jsx"
+      },
+      plugins: [mp3EncoderEsbuildPlugin()]
+    },
+    include: ["howler", "@material-ui/core"],
+    exclude: []
   },
   resolve: {
     alias: {
-      "jss-plugin-globalThis": "jss-plugin-global",
-    },
-  },
+      "jss-plugin-globalThis": "jss-plugin-global"
+    }
+  }
 });

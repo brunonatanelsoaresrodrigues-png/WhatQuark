@@ -24,6 +24,12 @@ const safeError = (error: unknown): string =>
 const retryDelayMinutes = (attempts: number): number =>
   [5, 15, 30, 60, 120][Math.min(attempts, 4)];
 
+export const dailyReportRunStatus = (
+  sent: number,
+  failed: number
+): "COMPLETED" | "PARTIAL" | "FAILED" =>
+  failed > 0 ? (sent > 0 ? "PARTIAL" : "FAILED") : "COMPLETED";
+
 const claimDelivery = async (
   deliveryId?: number
 ): Promise<DailyReportDelivery | null> =>
@@ -52,16 +58,27 @@ const claimDelivery = async (
     return delivery;
   });
 
-const updateRunCompletion = async (reportRunId: number): Promise<void> => {
-  const remaining = await DailyReportDelivery.count({
-    where: {
-      reportRunId,
-      status: { [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY"] }
-    }
-  });
+export const updateRunCompletion = async (
+  reportRunId: number
+): Promise<void> => {
+  const [remaining, sent, failed] = await Promise.all([
+    DailyReportDelivery.count({
+      where: {
+        reportRunId,
+        status: { [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY"] }
+      }
+    }),
+    DailyReportDelivery.count({ where: { reportRunId, status: "SENT" } }),
+    DailyReportDelivery.count({
+      where: { reportRunId, status: { [Op.in]: ["DEAD_LETTER", "FAILED"] } }
+    })
+  ]);
   if (remaining === 0) {
     await DailyReportRun.update(
-      { status: "COMPLETED", completedAt: new Date() },
+      {
+        status: dailyReportRunStatus(sent, failed),
+        completedAt: new Date()
+      },
       { where: { id: reportRunId } }
     );
   } else {
@@ -190,7 +207,12 @@ const SendDailyReportDeliveryService = async (
     const message = await SendWhatsAppMessage({
       body: run.renderedBody,
       ticket,
-      origin: "DAILY_REPORT"
+      origin: "DAILY_REPORT",
+      policy: {
+        proactive: true,
+        internalReport: true,
+        idempotencyKey: `daily-report:${delivery.id}`
+      }
     });
     await delivery.update({
       status: "SENT",

@@ -1,3 +1,4 @@
+import TableEmptyState from "../../components/TableEmptyState";
 import React, { useEffect, useReducer, useState } from "react";
 
 import openSocket from "../../services/socket-io";
@@ -7,19 +8,16 @@ import {
   IconButton,
   makeStyles,
   Paper,
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Typography,
+  Typography
 } from "@material-ui/core";
 
 import MainContainer from "../../components/MainContainer";
-import MainHeader from "../../components/MainHeader";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
+import PageHeading from "../../components/PageHeading";
 import TableRowSkeleton from "../../components/TableRowSkeleton";
-import Title from "../../components/Title";
 import { i18n } from "../../translate/i18n";
 import toastError from "../../errors/toastError";
 import api from "../../services/api";
@@ -27,19 +25,15 @@ import { DeleteOutline, Edit } from "@material-ui/icons";
 import QueueModal from "../../components/QueueModal";
 import { toast } from "react-toastify";
 import ConfirmationModal from "../../components/ConfirmationModal";
+import ResponsiveTable from "../../components/ResponsiveTable";
 
-const useStyles = makeStyles((theme) => ({
-  mainPaper: {
-    flex: 1,
-    padding: theme.spacing(1),
-    overflowY: "scroll",
-    ...theme.scrollbarStyles,
-  },
+const useStyles = makeStyles(theme => ({
+  mainPaper: theme.panelStyles,
   customTableCell: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-  },
+    justifyContent: "center"
+  }
 }));
 
 const reducer = (state, action) => {
@@ -47,8 +41,8 @@ const reducer = (state, action) => {
     const queues = action.payload;
     const newQueues = [];
 
-    queues.forEach((queue) => {
-      const queueIndex = state.findIndex((q) => q.id === queue.id);
+    queues.forEach(queue => {
+      const queueIndex = state.findIndex(q => q.id === queue.id);
       if (queueIndex !== -1) {
         state[queueIndex] = queue;
       } else {
@@ -61,7 +55,7 @@ const reducer = (state, action) => {
 
   if (action.type === "UPDATE_QUEUES") {
     const queue = action.payload;
-    const queueIndex = state.findIndex((u) => u.id === queue.id);
+    const queueIndex = state.findIndex(u => u.id === queue.id);
 
     if (queueIndex !== -1) {
       state[queueIndex] = queue;
@@ -73,7 +67,7 @@ const reducer = (state, action) => {
 
   if (action.type === "DELETE_QUEUE") {
     const queueId = action.payload;
-    const queueIndex = state.findIndex((q) => q.id === queueId);
+    const queueIndex = state.findIndex(q => q.id === queueId);
     if (queueIndex !== -1) {
       state.splice(queueIndex, 1);
     }
@@ -113,7 +107,7 @@ const Queues = () => {
   useEffect(() => {
     const socket = openSocket();
 
-    socket.on("queue", (data) => {
+    socket.on("queue", data => {
       if (data.action === "update" || data.action === "create") {
         dispatch({ type: "UPDATE_QUEUES", payload: data.queue });
       }
@@ -138,7 +132,7 @@ const Queues = () => {
     setSelectedQueue(null);
   };
 
-  const handleEditQueue = (queue) => {
+  const handleEditQueue = queue => {
     setSelectedQueue(queue);
     setQueueModalOpen(true);
   };
@@ -148,7 +142,7 @@ const Queues = () => {
     setSelectedQueue(null);
   };
 
-  const handleDeleteQueue = async (queueId) => {
+  const handleDeleteQueue = async queueId => {
     try {
       await api.delete(`/queue/${queueId}`);
       toast.success(i18n.t("Queue deleted successfully!"));
@@ -178,9 +172,10 @@ const Queues = () => {
         onClose={handleCloseQueueModal}
         queueId={selectedQueue?.id}
       />
-      <MainHeader>
-        <Title>{i18n.t("queues.title")}</Title>
-        <MainHeaderButtonsWrapper>
+      <PageHeading
+        title={i18n.t("queues.title")}
+        description="Distribua o atendimento entre os setores da sua operação."
+        actions={
           <Button
             variant="contained"
             color="primary"
@@ -188,10 +183,10 @@ const Queues = () => {
           >
             {i18n.t("queues.buttons.add")}
           </Button>
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
+        }
+      />
       <Paper className={classes.mainPaper} variant="outlined">
-        <Table size="small">
+        <ResponsiveTable size="medium" aria-label="Registros">
           <TableHead>
             <TableRow>
               <TableCell align="center">
@@ -210,22 +205,22 @@ const Queues = () => {
           </TableHead>
           <TableBody>
             <>
-              {queues.map((queue) => (
+              {queues.map(queue => (
                 <TableRow key={queue.id}>
-                  <TableCell align="center">{queue.name}</TableCell>
-                  <TableCell align="center">
+                  <TableCell data-mobile-primary align="center">{queue.name}</TableCell>
+                  <TableCell data-label="Cor" align="center">
                     <div className={classes.customTableCell}>
                       <span
                         style={{
                           backgroundColor: queue.color,
                           width: 60,
                           height: 20,
-                          alignSelf: "center",
+                          alignSelf: "center"
                         }}
                       />
                     </div>
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell data-label="Saudação" align="center">
                     <div className={classes.customTableCell}>
                       <Typography
                         style={{ width: 300, align: "center" }}
@@ -236,9 +231,10 @@ const Queues = () => {
                       </Typography>
                     </div>
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell data-label="Ações" data-mobile-actions align="center">
                     <IconButton
                       size="small"
+                      aria-label={`Editar ${queue.name}`}
                       onClick={() => handleEditQueue(queue)}
                     >
                       <Edit />
@@ -246,6 +242,7 @@ const Queues = () => {
 
                     <IconButton
                       size="small"
+                      aria-label="Excluir registro"
                       onClick={() => {
                         setSelectedQueue(queue);
                         setConfirmModalOpen(true);
@@ -256,10 +253,13 @@ const Queues = () => {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && queues.length === 0 && (
+                <TableEmptyState columns={4} />
+              )}
               {loading && <TableRowSkeleton columns={4} />}
             </>
           </TableBody>
-        </Table>
+        </ResponsiveTable>
       </Paper>
     </MainContainer>
   );

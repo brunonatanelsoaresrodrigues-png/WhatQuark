@@ -17,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [14.x]
+        node-version: [22.x]
 
     steps:
       - name: Checkout repository
@@ -30,11 +30,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm install
+        run: npm ci --legacy-peer-deps
 
       - run: npm run build
         working-directory: backend
 
-      - name: Test QuarkClinic integration
-        run: npx jest src/__tests__/unit/QuarkClinic --runInBand --coverage=false
+      - name: Test backend unit suites
+        run: npm run test:unit
         working-directory: backend

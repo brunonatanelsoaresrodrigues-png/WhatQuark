@@ -1,5 +1,7 @@
 # Integração QuarkClinic + WhaTicket
 
+> Atualização: regras anteriores de resposta por SIM/NÃO, múltiplos destinatários e retry foram substituídas. Siga o [guia atual de mensageria](messaging-safety-rollout.md), mantendo o conector não oficial.
+
 Esta integração consulta a API oficial do QuarkClinic por polling, detecta
 eventos de agenda e grava cada mensagem em uma outbox persistente antes de usar
 os serviços internos de envio do WhaTicket.

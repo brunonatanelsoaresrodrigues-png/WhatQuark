@@ -7,6 +7,10 @@ import ShowTicketService from "../../../services/TicketServices/ShowTicketServic
 import { emitTicketInactivityUpdate } from "../../../services/TicketInactivityServices/ticketEvents";
 import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
 
+jest.mock("../../../services/MessagingServices/state", () => ({
+  withLease: jest.fn((_id: string, action: () => Promise<any>) => action())
+}));
+
 jest.mock("../../../models/Ticket", () => ({
   __esModule: true,
   default: { findOne: jest.fn(), create: jest.fn() }

@@ -4,6 +4,7 @@
  */
 
 module.exports = {
+  setupFiles: ["<rootDir>/src/__tests__/setup.ts"],
   // All imported modules in your tests should be mocked automatically
   // automock: false,
 

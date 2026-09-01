@@ -4,9 +4,17 @@ import {
   parseConfirmationChoice,
   parseConfirmationReply,
   parseQuarkScheduledAt,
-  selectQuarkPhones
+  quarkPatientIdFrom,
+  quarkPhoneVariants,
+  selectQuarkPhones,
+  quarkCpfFrom
 } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
+
+it("extracts and validates CPF fields returned by Quark", () => {
+  expect(quarkCpfFrom({ id: 1, cpf: "529.982.247-25" })).toBe("52998224725");
+  expect(quarkCpfFrom({ id: 1, paciente: { cpf: "11111111111" } })).toBeNull();
+});
 
 const config: QuarkConfig = {
   baseUrl: "https://api.example.test",
@@ -21,6 +29,7 @@ const config: QuarkConfig = {
   sendIntervalMinMs: 10000,
   sendIntervalMaxMs: 25000,
   syncHorizonDays: 365,
+  syncLookbackDays: 365,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
   quietHoursStart: "20:00",
@@ -35,6 +44,13 @@ const config: QuarkConfig = {
 };
 
 describe("QuarkClinic appointment helpers", () => {
+  it("keeps opaque patient ids and rejects legacy null-like values", () => {
+    expect(quarkPatientIdFrom("ABC_123-xyz")).toBe("ABC_123-xyz");
+    expect(quarkPatientIdFrom(" null ")).toBeNull();
+    expect(quarkPatientIdFrom("undefined")).toBeNull();
+    expect(quarkPatientIdFrom(null)).toBeNull();
+  });
+
   it("adds the configured DDI to a Brazilian local number", () => {
     expect(normalizeQuarkPhone("(11) 98765-4321", "55")).toBe("5511987654321");
   });
@@ -43,6 +59,23 @@ describe("QuarkClinic appointment helpers", () => {
     expect(normalizeQuarkPhone("+55 11 98765-4321", "55", true)).toBe(
       "5511987654321"
     );
+  });
+
+  it("matches Brazilian mobile phones with or without the ninth digit", () => {
+    expect(quarkPhoneVariants("+55 (85) 9241-3638")).toEqual([
+      "558592413638",
+      "5585992413638"
+    ]);
+    expect(quarkPhoneVariants("5585992413638")).toEqual([
+      "5585992413638",
+      "558592413638"
+    ]);
+  });
+
+  it("does not add a ninth digit to a Brazilian landline", () => {
+    expect(quarkPhoneVariants("+55 (85) 3241-3638")).toEqual([
+      "558532413638"
+    ]);
   });
 
   it("returns the main and alternate Quark phones without duplicates", () => {
@@ -87,30 +120,33 @@ describe("QuarkClinic appointment helpers", () => {
     );
 
     expect(parsed).not.toBeNull();
-    expect(parsed?.getFullYear()).toBe(2026);
-    expect(parsed?.getMonth()).toBe(7);
-    expect(parsed?.getDate()).toBe(20);
-    expect(parsed?.getHours()).toBe(14);
-    expect(parsed?.getMinutes()).toBe(35);
+    expect(parsed?.toISOString()).toBe("2026-08-20T17:35:00.000Z");
   });
-
-  it("accepts only reply choices 1 and 2 at the start of a message", () => {
-    expect(parseConfirmationChoice("1")).toBe(1);
-    expect(parseConfirmationChoice("2 - cancelar")).toBe(2);
-    expect(parseConfirmationChoice("12")).toBeNull();
-    expect(parseConfirmationChoice("confirmar")).toBeNull();
+  it.each([
+    "1",
+    "2 - cancelar",
+    "2 pessoas",
+    "12",
+    "confirmar",
+    "Sim, preciso remarcar",
+    "Não quero cancelar",
+    "Não sei o endereço",
+    "nao 2",
+    "Sim, confirmo"
+  ])("does not turn ambiguous text %s into an action", body => {
+    expect(parseConfirmationReply(body)).toBeNull();
   });
-
-  it("accepts unambiguous SIM and NÃO replies with an optional appointment number", () => {
+  it("parses explicit reference commands and exact legacy answers", () => {
     expect(parseConfirmationReply("SIM")).toEqual({ choice: 1 });
-    expect(parseConfirmationReply("Sim, confirmo")).toEqual({ choice: 1 });
     expect(parseConfirmationReply("NÃO")).toEqual({ choice: 2 });
-    expect(parseConfirmationReply("nao 2")).toEqual({
-      choice: 2,
-      appointmentOption: 2
+    expect(parseConfirmationReply("CONFIRMAR AB12CD34")).toMatchObject({
+      choice: 1,
+      appointmentReference: "AB12CD34"
     });
-    expect(parseConfirmationReply("acho que sim")).toBeNull();
-    expect(parseConfirmationReply("talvez não")).toBeNull();
+    expect(
+      parseConfirmationReply("CONFIRMO CANCELAMENTO AB12CD34")
+    ).toMatchObject({ choice: 2, confirmedCancellation: true });
+    expect(parseQuarkScheduledAt("31-02-2026", "10:00")).toBeNull();
   });
 
   it("changes the schedule fingerprint when an old appointment is moved", () => {

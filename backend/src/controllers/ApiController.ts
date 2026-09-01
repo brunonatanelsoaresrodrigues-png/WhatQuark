@@ -6,7 +6,7 @@ import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import Message from "../models/Message";
 import Whatsapp from "../models/Whatsapp";
 import CreateOrUpdateContactService from "../services/ContactServices/CreateOrUpdateContactService";
-import FindOrCreateTicketService from "../services/TicketServices/FindOrCreateTicketService";
+import FindNotificationTicket from "../services/TicketServices/FindNotificationTicket";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import CheckIsValidContact from "../services/WbotServices/CheckIsValidContact";
 import CheckContactNumber from "../services/WbotServices/CheckNumber";
@@ -62,21 +62,26 @@ const createContact = async (
     }
   }
 
-  const createTicket = await FindOrCreateTicketService(contact, whatsapp.id, 1);
+  const createTicket = await FindNotificationTicket(contact, whatsapp.id);
 
   const ticket = await ShowTicketService(createTicket.id);
 
-  SetTicketMessagesAsRead(ticket);
+  await SetTicketMessagesAsRead(ticket);
 
   return ticket;
 };
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
+  const requestKey = req.header("Idempotency-Key");
+  if (!requestKey || !/^[a-zA-Z0-9_-]{16,100}$/.test(requestKey))
+    throw new AppError("ERR_IDEMPOTENCY_KEY_REQUIRED", 400);
   const newContact: ContactData = req.body;
   const { whatsappId }: WhatsappData = req.body;
   const { body, quotedMsg }: MessageData = req.body;
   const medias = req.files as Express.Multer.File[];
 
+  if (typeof newContact.number !== "string")
+    throw new AppError("ERR_INVALID_NUMBER", 400);
   newContact.number = newContact.number.replace("-", "").replace(" ", "");
 
   const schema = Yup.object().shape({
@@ -93,14 +98,18 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
 
   const contactAndTicket = await createContact(whatsappId, newContact.number);
 
-  if (medias) {
+  if (medias?.length) {
     await Promise.all(
-      medias.map(async (media: Express.Multer.File) => {
+      medias.map(async (media: Express.Multer.File, index: number) => {
         await SendWhatsAppMedia({
           body,
           media,
           ticket: contactAndTicket,
-          origin: "SYSTEM"
+          origin: "SYSTEM",
+          policy: {
+            proactive: true,
+            idempotencyKey: `api:${requestKey}:${index}`
+          }
         });
       })
     );
@@ -109,7 +118,8 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
       body,
       ticket: contactAndTicket,
       quotedMsg,
-      origin: "SYSTEM"
+      origin: "SYSTEM",
+      policy: { proactive: true, idempotencyKey: `api:${requestKey}` }
     });
   }
 

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { getIO } from "../libs/socket";
+import { emitTicketEvent } from "../libs/socket";
+import AppError from "../errors/AppError";
 
 import CreateTicketService from "../services/TicketServices/CreateTicketService";
 import DeleteTicketService from "../services/TicketServices/DeleteTicketService";
@@ -10,6 +11,9 @@ import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import formatBody from "../helpers/Mustache";
 import SetTicketWaitingForPatientService from "../services/TicketInactivityServices/SetTicketWaitingForPatientService";
+import EnsureTicketDeletionPermissionService from "../services/TicketServices/EnsureTicketDeletionPermissionService";
+import RequestServiceRatingService from "../services/ServiceRatingServices/RequestServiceRatingService";
+import { logger } from "../utils/logger";
 
 type IndexQuery = {
   searchParam: string;
@@ -17,6 +21,7 @@ type IndexQuery = {
   status: string;
   date: string;
   showAll: string;
+  assignee: string;
   withUnreadMessages: string;
   queueIds: string;
 };
@@ -35,6 +40,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     date,
     searchParam,
     showAll,
+    assignee,
     queueIds: queueIdsStringified,
     withUnreadMessages
   } = req.query as IndexQuery;
@@ -44,7 +50,18 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
   let queueIds: number[] = [];
 
   if (queueIdsStringified) {
-    queueIds = JSON.parse(queueIdsStringified);
+    try {
+      const parsed = JSON.parse(queueIdsStringified);
+      if (
+        !Array.isArray(parsed) ||
+        !parsed.every(id => Number.isInteger(id) && id > 0)
+      ) {
+        throw new Error("Invalid queues");
+      }
+      queueIds = parsed;
+    } catch {
+      throw new AppError("ERR_INVALID_QUEUE_FILTER", 400);
+    }
   }
 
   const { tickets, count, hasMore } = await ListTicketsService({
@@ -53,6 +70,7 @@ export const index = async (req: Request, res: Response): Promise<Response> => {
     status,
     date,
     showAll,
+    assignee,
     userId,
     queueIds,
     withUnreadMessages
@@ -67,12 +85,11 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   const ticket = await CreateTicketService({
     contactId,
     status,
-    userId,
+    userId: req.user.profile === "admin" ? userId : Number(req.user.id),
     actorUserId: Number(req.user.id)
   });
 
-  const io = getIO();
-  io.to(ticket.status).emit("ticket", {
+  await emitTicketEvent(ticket, "ticket", {
     action: "update",
     ticket
   });
@@ -94,14 +111,17 @@ export const update = async (
 ): Promise<Response> => {
   const { ticketId } = req.params;
   const ticketData: TicketData = req.body;
+  if (req.user.profile !== "admin" && req.body.whatsappId !== undefined) {
+    throw new AppError("ERR_NO_PERMISSION", 403);
+  }
 
-  const { ticket } = await UpdateTicketService({
+  const { ticket, oldStatus, oldUserId } = await UpdateTicketService({
     ticketData,
     ticketId,
     actorUserId: Number(req.user.id)
   });
 
-  if (ticket.status === "closed") {
+  if (ticket.status === "closed" && oldStatus !== "closed") {
     const whatsapp = await ShowWhatsAppService(ticket.whatsappId);
 
     const { farewellMessage } = whatsapp;
@@ -111,9 +131,26 @@ export const update = async (
         body: formatBody(farewellMessage, ticket.contact),
         ticket,
         sentByUserId: Number(req.user.id),
-        origin: "SYSTEM"
+        origin: "SYSTEM",
+        policy: {
+          idempotencyKey: `farewell:${
+            ticket.id
+          }:${ticket.updatedAt.toISOString()}`
+        }
       });
     }
+
+    await RequestServiceRatingService({
+      ticket,
+      ratedUserId: ticket.userId || oldUserId || Number(req.user.id),
+      trigger: "MANUAL_RESOLUTION"
+    }).catch(error =>
+      logger.warn({
+        info: "Could not request service rating after ticket resolution",
+        ticketId: ticket.id,
+        err: error
+      })
+    );
   }
 
   return res.status(200).json(ticket);
@@ -145,10 +182,11 @@ export const remove = async (
 ): Promise<Response> => {
   const { ticketId } = req.params;
 
+  await EnsureTicketDeletionPermissionService(req.user.id);
+
   const ticket = await DeleteTicketService(ticketId);
 
-  const io = getIO();
-  io.to(ticket.status).to(ticketId).to("notification").emit("ticket", {
+  await emitTicketEvent(ticket, "ticket", {
     action: "delete",
     ticketId: +ticketId
   });

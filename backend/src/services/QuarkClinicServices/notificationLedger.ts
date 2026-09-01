@@ -1,4 +1,4 @@
-import { UniqueConstraintError } from "sequelize";
+import { UniqueConstraintError, Transaction } from "sequelize";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 
 export interface QuarkOutboxPayload {
@@ -7,6 +7,8 @@ export interface QuarkOutboxPayload {
   body: string;
   requestsConfirmation: boolean;
   validUntil: string | null;
+  scheduleFingerprint?: string;
+  sendOnlyOnWeekday?: number;
 }
 
 export const createQuarkNotificationOnce = async (
@@ -14,24 +16,30 @@ export const createQuarkNotificationOnce = async (
   notificationKey: string,
   eventType: string,
   payload: QuarkOutboxPayload,
-  status: "PENDING" | "SUPPRESSED" = "PENDING"
+  status: "PENDING" | "SUPPRESSED" = "PENDING",
+  transaction?: Transaction
 ): Promise<boolean> => {
   try {
-    await QuarkAppointmentNotification.create({
-      appointmentId,
-      notificationKey,
-      eventType,
-      recipientPhone: payload.phone,
-      payload: JSON.stringify(payload),
-      status,
-      attempts: 0,
-      nextAttemptAt: new Date(),
-      processingStartedAt: null,
-      workerId: null,
-      sentAt: null,
-      lastError: null
+    const [, created] = await QuarkAppointmentNotification.findOrCreate({
+      where: { appointmentId, notificationKey },
+      transaction,
+      defaults: {
+        appointmentId,
+        notificationKey,
+        eventType,
+        recipientPhone: payload.phone,
+        payload: JSON.stringify(payload),
+        status,
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        priorityAt: payload.validUntil ? new Date(payload.validUntil) : null,
+        processingStartedAt: null,
+        workerId: null,
+        sentAt: null,
+        lastError: null
+      }
     });
-    return true;
+    return created;
   } catch (error) {
     if (error instanceof UniqueConstraintError) return false;
     throw error;

@@ -18,6 +18,10 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
   @Column
   id: number;
 
+  @AllowNull
+  @Column(DataType.INTEGER)
+  actorUserId: number | null;
+
   @Column(DataType.STRING(64))
   appointmentId: string;
 
@@ -37,7 +41,7 @@ class QuarkAppointmentResponse extends Model<QuarkAppointmentResponse> {
   source: "WHATSAPP" | "DASHBOARD";
 
   @Column(DataType.STRING(16))
-  status: "PROCESSING" | "SUCCESS" | "FAILED";
+  status: "PROCESSING" | "SUCCESS" | "FAILED" | "UNKNOWN";
 
   @AllowNull
   @Column(DataType.STRING(64))

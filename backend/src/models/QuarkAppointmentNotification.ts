@@ -40,13 +40,18 @@ class QuarkAppointmentNotification extends Model<QuarkAppointmentNotification> {
     | "SENT"
     | "FAILED_RETRY"
     | "DEAD_LETTER"
-    | "SUPPRESSED";
+    | "SUPPRESSED"
+    | "UNKNOWN";
 
   @Column
   attempts: number;
 
   @Column(DataType.DATE)
   nextAttemptAt: Date;
+
+  @AllowNull
+  @Column(DataType.DATE)
+  priorityAt: Date | null;
 
   @AllowNull
   @Column(DataType.DATE)

@@ -70,7 +70,23 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      WHATSAPP_PROVIDER: whaileys
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-whaileys}
+      MESSAGING_MODE: ${MESSAGING_MODE:-simulation}
+      MESSAGING_TEST_ALLOWLIST: ${MESSAGING_TEST_ALLOWLIST:-}
+      MESSAGING_MAX_PER_HOUR: ${MESSAGING_MAX_PER_HOUR:-100}
+      MESSAGING_MIN_INTERVAL_SECONDS: ${MESSAGING_MIN_INTERVAL_SECONDS:-2}
+      MESSAGING_MAX_NOTICES_PER_DAY: ${MESSAGING_MAX_NOTICES_PER_DAY:-3}
+      BOT_FALLBACK_QUEUE_ID: ${BOT_FALLBACK_QUEUE_ID:-}
+      DASHBOARD_SLA_MINUTES: ${DASHBOARD_SLA_MINUTES:-5}
+      CLOUD_WHATSAPP_ID: ${CLOUD_WHATSAPP_ID:-}
+      CLOUD_PHONE_NUMBER_ID: ${CLOUD_PHONE_NUMBER_ID:-}
+      CLOUD_API_VERSION: ${CLOUD_API_VERSION:-}
+      CLOUD_ACCESS_TOKEN: ${CLOUD_ACCESS_TOKEN:-}
+      CLOUD_APP_SECRET: ${CLOUD_APP_SECRET:-}
+      CLOUD_VERIFY_TOKEN: ${CLOUD_VERIFY_TOKEN:-}
+      CLOUD_QUARK_APPOINTMENT_TEMPLATE: ${CLOUD_QUARK_APPOINTMENT_TEMPLATE:-}
+      CLOUD_QUARK_CANCELLED_TEMPLATE: ${CLOUD_QUARK_CANCELLED_TEMPLATE:-}
+      CLOUD_TEMPLATE_LANGUAGE: ${CLOUD_TEMPLATE_LANGUAGE:-pt_BR}
       LOG_LEVEL: info
       WHAILEYS_LOG_LEVEL: error
       DB_DIALECT: mysql
@@ -88,6 +104,7 @@ services:
       REDIS_DB: "0"
       TZ: America/Sao_Paulo
       QUARK_INTEGRATION_ENABLED: ${QUARK_INTEGRATION_ENABLED:-false}
+      PATIENT_INTAKE_QUARK_BOOKING_ENABLED: ${PATIENT_INTAKE_QUARK_BOOKING_ENABLED:-true}
       QUARK_API_BASE_URL: ${QUARK_API_BASE_URL:-https://api.quark.tec.br/clinic/ext}
       QUARK_AUTH_TOKEN: ${QUARK_AUTH_TOKEN:-}
       QUARK_X_CHAVE_KEY: ${QUARK_X_CHAVE_KEY:-}
@@ -100,7 +117,7 @@ services:
       QUARK_TIMEZONE: ${QUARK_TIMEZONE:-America/Sao_Paulo}
       QUARK_DEFAULT_COUNTRY_CODE: ${QUARK_DEFAULT_COUNTRY_CODE:-55}
       QUARK_CLINIC_ADDRESS: ${QUARK_CLINIC_ADDRESS:-}
-      QUARK_REMINDER_HOURS: ${QUARK_REMINDER_HOURS:-24,2}
+      QUARK_REMINDER_HOURS: ${QUARK_REMINDER_HOURS:-24}
       QUARK_SEND_INTERVAL_MIN_SECONDS: ${QUARK_SEND_INTERVAL_MIN_SECONDS:-15}
       QUARK_SEND_INTERVAL_MAX_SECONDS: ${QUARK_SEND_INTERVAL_MAX_SECONDS:-45}
       QUARK_MAX_MESSAGES_PER_HOUR: ${QUARK_MAX_MESSAGES_PER_HOUR:-100}
@@ -112,6 +129,7 @@ services:
       QUARK_DRY_RUN: ${QUARK_DRY_RUN:-true}
       QUARK_TEST_ALLOWLIST: ${QUARK_TEST_ALLOWLIST:-}
       QUARK_CANCEL_REASON: ${QUARK_CANCEL_REASON:-Cancelado pelo paciente atraves da confirmacao no WhatsApp}
+      QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN: ${QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN:-false}
       TICKET_INACTIVITY_ENABLED: ${TICKET_INACTIVITY_ENABLED:-false}
       TICKET_INACTIVITY_TIMEOUT_MINUTES: ${TICKET_INACTIVITY_TIMEOUT_MINUTES:-15}
       TICKET_INACTIVITY_POLL_INTERVAL_SECONDS: ${TICKET_INACTIVITY_POLL_INTERVAL_SECONDS:-30}
@@ -127,16 +145,33 @@ services:
       DAILY_REPORT_SEND_INTERVAL_SECONDS: ${DAILY_REPORT_SEND_INTERVAL_SECONDS:-20}
       DAILY_REPORT_MAX_RETRY_ATTEMPTS: ${DAILY_REPORT_MAX_RETRY_ATTEMPTS:-5}
       DAILY_REPORT_ALLOW_WEEKENDS: ${DAILY_REPORT_ALLOW_WEEKENDS:-true}
+      IDENTITY_CENTER_ENABLED: ${IDENTITY_CENTER_ENABLED:-true}
+      IDENTITY_RECONCILIATION_ENABLED: ${IDENTITY_RECONCILIATION_ENABLED:-true}
+      IDENTITY_RECONCILIATION_HOUR: ${IDENTITY_RECONCILIATION_HOUR:-3}
+      IDENTITY_QUARK_ENRICHMENT_LIMIT: ${IDENTITY_QUARK_ENRICHMENT_LIMIT:-100}
+      OPERATIONAL_HEALTH_ENABLED: ${OPERATIONAL_HEALTH_ENABLED:-true}
+      HOST_HEALTH_FILE: /run/whaticket-backups/health.json
+      AI_ASSISTANT_ENABLED: ${AI_ASSISTANT_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-45000}
     ports:
       - "127.0.0.1:3101:3000"
     volumes:
       - backend_public:/usr/src/app/public
       - backend_auth:/usr/src/app/.wwebjs_auth
+      - /var/backups/whaticket:/run/whaticket-backups:ro
     depends_on:
       mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     stop_grace_period: 40s
     restart: unless-stopped
     mem_limit: 512m
@@ -153,7 +188,13 @@ services:
     ports:
       - "127.0.0.1:3100:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     mem_limit: 96m
     memswap_limit: 192m

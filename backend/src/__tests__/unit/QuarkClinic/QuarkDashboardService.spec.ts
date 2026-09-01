@@ -1,5 +1,6 @@
 import sequelize from "../../../database";
 import {
+  getQuarkDashboardCalendarDays,
   getQuarkDashboardSummary,
   getQuarkDashboardTimeseries,
   listQuarkDashboardAppointments
@@ -115,6 +116,43 @@ describe("QuarkDashboardService", () => {
         cancelled: 0
       }
     ]);
+  });
+
+  it("returns lightweight appointment totals for each calendar day", async () => {
+    (sequelize.query as jest.Mock).mockResolvedValueOnce([
+      {
+        day: "2026-08-24",
+        total: "12",
+        scheduled: "3",
+        awaitingResponse: "5",
+        confirmed: "4",
+        cancelled: "0"
+      }
+    ]);
+
+    const result = await getQuarkDashboardCalendarDays({
+      from: "2026-08-01",
+      to: "2026-08-31",
+      status: "SCHEDULED",
+      messageStatus: "REMINDER_SENT"
+    });
+    const sql = (sequelize.query as jest.Mock).mock.calls[0][0] as string;
+
+    expect(result).toEqual([
+      {
+        day: "2026-08-24",
+        total: 12,
+        scheduled: 3,
+        awaitingResponse: 5,
+        confirmed: 4,
+        cancelled: 0
+      }
+    ]);
+    expect(sql).toContain("GROUP BY DATE(a.scheduledAt)");
+    expect(sql).toContain("a.status = 'AGENDADO'");
+    expect(sql).toContain("n.eventType IN ('REMINDER', 'MANUAL_REMINDER')");
+    expect(sql).not.toContain("a.patientName");
+    expect(sql).not.toContain("a.phone");
   });
 
   it("returns complete admin patient data and the linked conversation", async () => {

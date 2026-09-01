@@ -2,6 +2,7 @@ import { Sequelize, Op } from "sequelize";
 import Queue from "../../models/Queue";
 import User from "../../models/User";
 import Whatsapp from "../../models/Whatsapp";
+import { SerializeUser } from "../../helpers/SerializeUser";
 
 interface Request {
   searchParam?: string;
@@ -9,7 +10,7 @@ interface Request {
 }
 
 interface Response {
-  users: User[];
+  users: ReturnType<typeof SerializeUser>[];
   count: number;
   hasMore: boolean;
 }
@@ -41,7 +42,10 @@ const ListUsersService = async ({
       "email",
       "profile",
       "canAccessQuarkClinic",
-      "createdAt"
+      "canViewOtherAgentsTickets",
+      "createdAt",
+      "updatedAt",
+      "avatar"
     ],
     limit,
     offset,
@@ -55,7 +59,7 @@ const ListUsersService = async ({
   const hasMore = count > offset + users.length;
 
   return {
-    users,
+    users: users.map(SerializeUser),
     count,
     hasMore
   };

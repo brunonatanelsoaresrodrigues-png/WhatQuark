@@ -1,6 +1,7 @@
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
+  changedAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
   reminderAppointmentMessage
@@ -25,37 +26,35 @@ const snapshot = buildAppointmentSnapshot(
   config
 );
 
-describe("QuarkClinic message templates", () => {
-  it("uses the full Quark patient and appointment data with textual replies", () => {
-    const body = newAppointmentMessage(
-      snapshot,
-      "Avenida Ulisses Bezerra, 2227 - Fortaleza"
-    );
-
-    expect(body).toContain("CLAUDESON NASCIMENTO DA SILVA");
-    expect(body).toContain("ASDRUBAL PEREZ SOTO");
+describe("Appointment notices", () => {
+  it("keeps new appointment notices concise", () => {
+    const body = newAppointmentMessage(snapshot);
     expect(body).toContain("21/08/2026 às 16:00");
-    expect(body).toContain("Consulta");
     expect(body).toContain("ESSENCIAL SAÚDE");
-    expect(body).toContain("Avenida Ulisses Bezerra, 2227 - Fortaleza");
-    expect(body).toContain("SIM para confirmar");
-    expect(body).toContain("NÃO para cancelar");
-    expect(body).not.toContain("confirmarConsultaWhatsapp");
+    expect(body).not.toContain("CLAUDESON");
+    expect(body).not.toContain("ASDRUBAL");
   });
-
-  it("identifies the two-hour reminder as a same-day reminder", () => {
-    expect(reminderAppointmentMessage(snapshot, 2)).toContain(
-      "sua consulta é hoje"
-    );
-  });
-
-  it("creates a manual confirmation reminder without guessing the day", () => {
+  it("identifies the Quark patient and professional in reminders", () => {
     const body = manualReminderAppointmentMessage(snapshot);
-
-    expect(body).toContain("Lembrete de consulta");
-    expect(body).toContain("CLAUDESON NASCIMENTO DA SILVA");
-    expect(body).toContain("SIM para confirmar");
-    expect(body).not.toContain("sua consulta é amanhã");
-    expect(body).not.toContain("sua consulta é hoje");
+    expect(body).toContain("Olá, CLAUDESON NASCIMENTO DA SILVA!");
+    expect(body).toContain("*Profissional:* ASDRUBAL PEREZ SOTO");
+    expect(body).toContain("*Data:* 21/08/2026");
+    expect(body).toContain("*Horário:* 16:00");
+    expect(body).toContain("*Local:* ESSENCIAL SAÚDE");
+    expect(body).not.toMatch(/hoje|amanhã|ordem de chegada|NÃO para cancelar/);
+  });
+  it("does not guess today or tomorrow for delayed reminders", () => {
+    expect(reminderAppointmentMessage(snapshot, 2)).toContain("21/08/2026");
+    expect(reminderAppointmentMessage(snapshot, 2)).not.toMatch(/hoje|amanhã/);
+  });
+  it("uses same-day wording when the changed appointment time already passed", () => {
+    const body = changedAppointmentMessage(
+      snapshot,
+      "",
+      new Date("2026-08-21T20:00:00.000Z"),
+      "America/Sao_Paulo"
+    );
+    expect(body).toContain("agendamento de hoje, às 16:00");
+    expect(body).not.toContain("está prevista");
   });
 });

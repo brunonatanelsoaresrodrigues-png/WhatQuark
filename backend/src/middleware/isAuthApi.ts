@@ -14,7 +14,9 @@ const isAuthApi = async (
     throw new AppError("ERR_SESSION_EXPIRED", 401);
   }
 
-  const [, token] = authHeader.split(" ");
+  const match = /^Bearer ([^\s]+)$/i.exec(authHeader);
+  if (!match) throw new AppError("ERR_SESSION_EXPIRED", 401);
+  const token = match[1];
 
   try {
     const getToken = await ListSettingByValueService(token);
@@ -26,11 +28,7 @@ const isAuthApi = async (
       throw new AppError("ERR_SESSION_EXPIRED", 401);
     }
   } catch (err) {
-    console.log(err);
-    throw new AppError(
-      "Invalid token. We'll try to assign a new one on next request",
-      403
-    );
+    throw new AppError("ERR_SESSION_EXPIRED", 401);
   }
 
   return next();

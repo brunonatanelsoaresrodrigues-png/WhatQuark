@@ -12,6 +12,7 @@ interface Request {
   profile?: string;
   whatsappId?: number;
   canAccessQuarkClinic?: boolean;
+  canViewOtherAgentsTickets?: boolean;
 }
 
 interface Response {
@@ -20,6 +21,7 @@ interface Response {
   id: number;
   profile: string;
   canAccessQuarkClinic: boolean;
+  canViewOtherAgentsTickets: boolean;
 }
 
 const CreateUserService = async ({
@@ -27,11 +29,13 @@ const CreateUserService = async ({
   password,
   name,
   queueIds = [],
-  profile = "admin",
+  profile = "user",
   whatsappId,
-  canAccessQuarkClinic = false
+  canAccessQuarkClinic = false,
+  canViewOtherAgentsTickets = false
 }: Request): Promise<Response> => {
   const schema = Yup.object().shape({
+    profile: Yup.string().oneOf(["admin", "user"]).required(),
     name: Yup.string().required().min(2),
     email: Yup.string()
       .email()
@@ -48,15 +52,18 @@ const CreateUserService = async ({
         }
       ),
     password: Yup.string().required().min(5),
-    canAccessQuarkClinic: Yup.boolean().strict()
+    canAccessQuarkClinic: Yup.boolean().strict(),
+    canViewOtherAgentsTickets: Yup.boolean().strict()
   });
 
   try {
     await schema.validate({
+      profile,
       email,
       password,
       name,
-      canAccessQuarkClinic
+      canAccessQuarkClinic,
+      canViewOtherAgentsTickets
     });
   } catch (err) {
     throw new AppError(err.message);
@@ -69,6 +76,7 @@ const CreateUserService = async ({
       name,
       profile,
       canAccessQuarkClinic,
+      canViewOtherAgentsTickets,
       whatsappId: whatsappId ? whatsappId : null
     },
     { include: ["queues", "whatsapp"] }

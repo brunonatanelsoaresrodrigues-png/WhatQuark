@@ -2,6 +2,7 @@ import User from "../../models/User";
 import AppError from "../../errors/AppError";
 import Ticket from "../../models/Ticket";
 import UpdateDeletedUserOpenTicketsStatus from "../../helpers/UpdateDeletedUserOpenTicketsStatus";
+import { removeStoredUserAvatar } from "./UserAvatarService";
 
 const DeleteUserService = async (id: string | number): Promise<void> => {
   const user = await User.findOne({
@@ -20,7 +21,9 @@ const DeleteUserService = async (id: string | number): Promise<void> => {
     UpdateDeletedUserOpenTicketsStatus(userOpenTickets);
   }
 
+  const avatar = user.avatar;
   await user.destroy();
+  await removeStoredUserAvatar(avatar);
 };
 
 export default DeleteUserService;

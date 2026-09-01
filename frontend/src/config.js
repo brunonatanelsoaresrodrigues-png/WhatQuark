@@ -16,8 +16,5 @@ export function getHoursCloseTicketsAuto() {
 }
 
 export function getQuarkClinicUrl() {
-  return getConfig(
-    "VITE_QUARK_CLINIC_URL",
-    "https://ng.quarkclinic.com.br/"
-  );
+  return getConfig("VITE_QUARK_CLINIC_URL", "https://ng.quarkclinic.com.br/");
 }

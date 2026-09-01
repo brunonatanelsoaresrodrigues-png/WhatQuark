@@ -19,7 +19,10 @@ import {
   SendMediaOptions,
   MessageType,
   MessageAck,
-  ProviderContact
+  ProviderContact,
+  HistorySyncCursor,
+  HistorySyncProgress,
+  HistorySyncResult
 } from "../types";
 import {
   handleMessage,
@@ -355,10 +358,12 @@ const sendMedia = async (
   const mediaOptions: MessageSendOptions = {
     caption: options?.caption,
     sendAudioAsVoice: options?.sendAudioAsVoice,
+    sendMediaAsSticker: options?.sendAsSticker,
     quotedMessageId: options?.quotedMessageId
   };
 
   if (
+    !options?.sendAsSticker &&
     messageMedia.mimetype.startsWith("image/") &&
     !/^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)
   ) {
@@ -404,6 +409,14 @@ const fetchChatMessages = async (
   const messages = await chat.fetchMessages({ limit });
 
   return messages.map(convertToProviderMessage);
+};
+
+const syncHistory = async (
+  _sessionId: number,
+  _cursors: HistorySyncCursor[],
+  _onProgress?: (progress: HistorySyncProgress) => void
+): Promise<HistorySyncResult> => {
+  throw new AppError("ERR_HISTORY_SYNC_NOT_SUPPORTED", 400);
 };
 
 const getContacts = async (sessionId: number): Promise<ProviderContact[]> => {
@@ -478,7 +491,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         sessions.push(wbot);
       }
 
-      io.emit("whatsappSession", {
+      io.to("admin").emit("whatsappSession", {
         action: "update",
         session: whatsapp
       });
@@ -502,7 +515,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         retries: whatsapp.retries + 1
       });
 
-      io.emit("whatsappSession", {
+      io.to("admin").emit("whatsappSession", {
         action: "update",
         session: whatsapp
       });
@@ -518,7 +531,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
           retries: 0
         });
 
-        io.emit("whatsappSession", {
+        io.to("admin").emit("whatsappSession", {
           action: "update",
           session: whatsapp
         });
@@ -541,7 +554,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       try {
         await whatsapp.update({ status: newState });
 
-        io.emit("whatsappSession", {
+        io.to("admin").emit("whatsappSession", {
           action: "update",
           session: whatsapp
         });
@@ -555,7 +568,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
       try {
         await whatsapp.update({ status: "OPENING", session: "" });
 
-        io.emit("whatsappSession", {
+        io.to("admin").emit("whatsappSession", {
           action: "update",
           session: whatsapp
         });
@@ -637,5 +650,6 @@ export const WhatsappWebJsProvider: WhatsappProvider = {
   getProfilePicUrl,
   getContacts,
   sendSeen,
-  fetchChatMessages
+  fetchChatMessages,
+  syncHistory
 };

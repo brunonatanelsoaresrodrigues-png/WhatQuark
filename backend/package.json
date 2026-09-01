@@ -8,12 +8,12 @@
     "watch": "tsc -w",
     "start": "nodemon dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only --ignore node_modules src/server.ts",
-    "pretest": "NODE_ENV=test sequelize db:migrate && NODE_ENV=test sequelize db:seed:all",
-    "test": "NODE_ENV=test jest",
-    "posttest": "NODE_ENV=test sequelize db:migrate:undo:all",
+    "test": "npm run test:unit",
     "db:migrate": "npm run build && sequelize db:migrate",
     "db:seed": "sequelize db:seed:all",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test:unit": "jest --runInBand --testPathIgnorePatterns=src/__tests__/unit/User --coverage=false",
+    "test:integration": "jest src/__tests__/unit/User --runInBand"
   },
   "author": "",
   "license": "MIT",
@@ -89,5 +89,8 @@
     "ts-jest": "^26.4.1",
     "ts-node-dev": "^1.0.0-pre.63",
     "typescript": "^4.7.4"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

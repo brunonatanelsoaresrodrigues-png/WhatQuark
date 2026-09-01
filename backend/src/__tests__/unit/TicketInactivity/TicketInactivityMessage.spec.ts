@@ -12,7 +12,7 @@ Caso ainda precise de ajuda, basta enviar uma nova mensagem para iniciarmos outr
 
 A Essencial Saúde agradece pelo contato e permanece à disposição! 💚`);
     expect(INACTIVITY_CLOSE_REASON).toBe(
-      "Sem retorno do paciente — 15 minutos"
+      "Sem retorno do paciente — prazo de inatividade atingido"
     );
   });
 });

@@ -7,6 +7,8 @@ import formatBody from "../../helpers/Mustache";
 import { MessageOrigin } from "../../models/MessageAttribution";
 import { registerMessageAttribution } from "../MessageServices/MessageAttributionService";
 import { logger } from "../../utils/logger";
+import { SendPolicy } from "../MessagingServices/policy";
+import contactJid from "../../helpers/ContactJid";
 
 interface Request {
   media: Express.Multer.File;
@@ -14,6 +16,9 @@ interface Request {
   body?: string;
   sentByUserId?: number | null;
   origin?: MessageOrigin;
+  policy?: SendPolicy;
+  sendAsSticker?: boolean;
+  removeFileAfterSend?: boolean;
 }
 
 const SendWhatsAppMedia = async ({
@@ -21,14 +26,17 @@ const SendWhatsAppMedia = async ({
   ticket,
   body,
   sentByUserId = null,
-  origin = "SYSTEM"
+  origin = "SYSTEM",
+  policy = {},
+  sendAsSticker = false,
+  removeFileAfterSend = true
 }: Request): Promise<ProviderMessage> => {
   try {
     if (!ticket.whatsappId) {
       throw new AppError("ERR_TICKET_NO_WHATSAPP");
     }
 
-    const chatId = `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`;
+    const chatId = contactJid(ticket.contact, ticket.isGroup);
 
     const hasBody = body
       ? formatBody(body as string, ticket.contact)
@@ -41,9 +49,19 @@ const SendWhatsAppMedia = async ({
     };
 
     const mediaOptions = {
+      policy: {
+        origin,
+        sentByUserId,
+        ticketId: ticket.id,
+        cleanupMediaPath:
+          removeFileAfterSend && process.env.WHATSAPP_PROVIDER !== "cloud",
+        ...policy
+      },
       caption: hasBody,
       sendAudioAsVoice: true,
+      sendAsSticker,
       sendMediaAsDocument:
+        !sendAsSticker &&
         media.mimetype.startsWith("image/") &&
         !/^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)
     };
@@ -66,13 +84,20 @@ const SendWhatsAppMedia = async ({
       })
     );
 
-    await ticket.update({ lastMessage: body || media.filename });
+    await ticket.update({ lastMessage: body || media.filename }).catch(() =>
+      logger.error({
+        info: "Sent media could not update ticket",
+        ticketId: ticket.id,
+        messageId: sentMessage.id
+      })
+    );
 
-    fs.unlinkSync(media.path);
+    if (removeFileAfterSend && process.env.WHATSAPP_PROVIDER !== "cloud")
+      await fs.promises.unlink(media.path).catch(() => undefined);
 
     return sentMessage;
   } catch (err) {
-    console.log(err);
+    if (err instanceof AppError) throw err;
     throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };

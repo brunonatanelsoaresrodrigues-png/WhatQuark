@@ -11,11 +11,13 @@ export const emitQuarkDashboardUpdate = (
   id?: number | string
 ): void => {
   try {
-    getIO().emit("quarkDashboard", {
-      event,
-      id: id === undefined ? null : id,
-      occurredAt: new Date().toISOString()
-    });
+    getIO()
+      .to("admin")
+      .emit("quarkDashboard", {
+        event,
+        id: id === undefined ? null : id,
+        occurredAt: new Date().toISOString()
+      });
   } catch {
     // Metrics must never interrupt appointment synchronization or messaging.
   }

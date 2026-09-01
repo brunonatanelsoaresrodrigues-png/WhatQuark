@@ -1,0 +1,6 @@
+FROM whaticket-frontend:audit-fixes-candidate AS compiled
+FROM whaticket-frontend:lid-phone-fix-20260830-1755
+
+# Preserve the production-proven Nginx entrypoint/configuration and replace
+# only the versioned frontend assets built and tested for this release.
+COPY --from=compiled /var/www/public/ /usr/share/nginx/html/

@@ -8,6 +8,11 @@ import ListWhatsAppsService from "../services/WhatsappService/ListWhatsAppsServi
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
 import UpdateWhatsAppService from "../services/WhatsappService/UpdateWhatsAppService";
 import { whatsappProvider } from "../providers/WhatsApp";
+import AppError from "../errors/AppError";
+import {
+  GetWhatsAppHistorySyncStatusService,
+  StartWhatsAppHistorySyncService
+} from "../services/WhatsappService/SyncWhatsAppHistoryService";
 
 interface WhatsappData {
   name: string;
@@ -21,6 +26,16 @@ interface WhatsappData {
 export const index = async (req: Request, res: Response): Promise<Response> => {
   const whatsapps = await ListWhatsAppsService();
 
+  if (req.user.profile !== "admin") {
+    return res.json(
+      whatsapps.map(({ id, name, status, isDefault }) => ({
+        id,
+        name,
+        status,
+        isDefault
+      }))
+    );
+  }
   return res.status(200).json(whatsapps);
 };
 
@@ -46,13 +61,13 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   StartWhatsAppSession(whatsapp);
 
   const io = getIO();
-  io.emit("whatsapp", {
+  io.to("admin").emit("whatsapp", {
     action: "update",
     whatsapp
   });
 
   if (oldDefaultWhatsapp) {
-    io.emit("whatsapp", {
+    io.to("admin").emit("whatsapp", {
       action: "update",
       whatsapp: oldDefaultWhatsapp
     });
@@ -69,6 +84,31 @@ export const show = async (req: Request, res: Response): Promise<Response> => {
   return res.status(200).json(whatsapp);
 };
 
+export const historySyncStatus = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  if (req.user.profile !== "admin") {
+    throw new AppError("ERR_NO_PERMISSION", 403);
+  }
+  const whatsappId = Number(req.params.whatsappId);
+  await ShowWhatsAppService(whatsappId);
+  return res.status(200).json(GetWhatsAppHistorySyncStatusService(whatsappId));
+};
+
+export const syncHistory = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  if (req.user.profile !== "admin") {
+    throw new AppError("ERR_NO_PERMISSION", 403);
+  }
+  const whatsappId = Number(req.params.whatsappId);
+  await ShowWhatsAppService(whatsappId);
+  const status = await StartWhatsAppHistorySyncService(whatsappId);
+  return res.status(202).json(status);
+};
+
 export const update = async (
   req: Request,
   res: Response
@@ -82,13 +122,13 @@ export const update = async (
   });
 
   const io = getIO();
-  io.emit("whatsapp", {
+  io.to("admin").emit("whatsapp", {
     action: "update",
     whatsapp
   });
 
   if (oldDefaultWhatsapp) {
-    io.emit("whatsapp", {
+    io.to("admin").emit("whatsapp", {
       action: "update",
       whatsapp: oldDefaultWhatsapp
     });
@@ -107,7 +147,7 @@ export const remove = async (
   await whatsappProvider.removeSession(+whatsappId);
 
   const io = getIO();
-  io.emit("whatsapp", {
+  io.to("admin").emit("whatsapp", {
     action: "delete",
     whatsappId: +whatsappId
   });

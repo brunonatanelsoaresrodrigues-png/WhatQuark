@@ -7,7 +7,9 @@
 
 # WhaTicket!
 
-**NOTE**: The new version of whatsapp-web.js required Node 14. Upgrade your installations to keep using it.
+**Atualização deste projeto:** [proteções de envio, bot, Quark e interface — mantendo a API não oficial](docs/messaging-safety-rollout.md). O modo inicial é simulação; siga o guia antes de atualizar produção.
+
+**Current setup:** use Node 22 or newer. Read [the security update and deployment guide](docs/security-update.md) before installing or upgrading this fork. The historical installation instructions below describe the upstream project and may use obsolete variables or defaults.
 
 A _very simple_ Ticket System based on WhatsApp messages.
 
@@ -51,7 +53,7 @@ docker run --name whaticketdb -e MYSQL_ROOT_PASSWORD=strongpassword -e MYSQL_DAT
 # Before copy .env.example to .env first and set the variables in the file.
 docker-compose up -d mysql
 
-# To administer this mysql database easily using phpmyadmin. 
+# To administer this mysql database easily using phpmyadmin.
 # It will run by default on port 9000, but can be changed in .env using `PMA_PORT`
 docker-compose -f docker-compose.phpmyadmin.yaml up -d
 ```
@@ -185,7 +187,7 @@ docker run --name whaticketdb -e MYSQL_ROOT_PASSWORD=strongpassword -e MYSQL_DAT
 # Before copy .env.example to .env first and set the variables in the file.
 docker-compose up -d mysql
 
-# To administer this mysql database easily using phpmyadmin. 
+# To administer this mysql database easily using phpmyadmin.
 # It will run by default on port 9000, but can be changed in .env using `PMA_PORT`
 docker-compose -f docker-compose.phpmyadmin.yaml up -d
 ```
@@ -400,7 +402,7 @@ To run WhaTicket using docker you must perform the following steps:
 cp .env.example .env
 ```
 
-Now it will be necessary to configure the .env using its information, the variables are the same as those mentioned in the deployment using ubuntu, with the exception of mysql settings that were not in the .env. 
+Now it will be necessary to configure the .env using its information, the variables are the same as those mentioned in the deployment using ubuntu, with the exception of mysql settings that were not in the .env.
 
 ```bash
 # MYSQL

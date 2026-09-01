@@ -62,6 +62,27 @@ class Ticket extends Model<Ticket> {
   @Column(DataType.STRING(32))
   ticketType: "PATIENT" | "INTERNAL_REPORT";
 
+  @Column(DataType.STRING(40))
+  intakeStatus: string | null;
+
+  @Column(DataType.STRING(32))
+  intakeReason: string | null;
+
+  @Column(DataType.DATE)
+  intakeStartedAt: Date | null;
+
+  @Column(DataType.DATE)
+  intakeCompletedAt: Date | null;
+
+  @Column(DataType.DATE)
+  intakePausedAt: Date | null;
+
+  @Column(DataType.TEXT)
+  intakeContext: string | null;
+
+  @Column(DataType.DATE)
+  intakeContextExpiresAt: Date | null;
+
   @CreatedAt
   createdAt: Date;
 

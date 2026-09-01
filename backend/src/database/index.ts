@@ -1,5 +1,7 @@
 import { Sequelize } from "sequelize-typescript";
 import User from "../models/User";
+import AutomationState from "../models/AutomationState";
+import OutboundMessage from "../models/OutboundMessage";
 import Setting from "../models/Setting";
 import Contact from "../models/Contact";
 import Ticket from "../models/Ticket";
@@ -24,6 +26,14 @@ import DailyReportRun from "../models/DailyReportRun";
 import DailyReportDelivery from "../models/DailyReportDelivery";
 import DailyReportRecipientEvent from "../models/DailyReportRecipientEvent";
 import QuarkAppointmentRecipient from "../models/QuarkAppointmentRecipient";
+import PatientIntakeBooking from "../models/PatientIntakeBooking";
+import SavedSticker from "../models/SavedSticker";
+import ContactIdentityIssue from "../models/ContactIdentityIssue";
+import ContactQuarkLink from "../models/ContactQuarkLink";
+import ContactIdentityAudit from "../models/ContactIdentityAudit";
+import OperationalIncident from "../models/OperationalIncident";
+import AiSuggestion from "../models/AiSuggestion";
+import ServiceRating from "../models/ServiceRating";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -32,6 +42,8 @@ const dbConfig = require("../config/database");
 const sequelize = new Sequelize(dbConfig);
 
 const models = [
+  AutomationState,
+  OutboundMessage,
   User,
   Contact,
   Ticket,
@@ -56,7 +68,15 @@ const models = [
   DailyReportRun,
   DailyReportDelivery,
   DailyReportRecipientEvent,
-  QuarkAppointmentRecipient
+  QuarkAppointmentRecipient,
+  PatientIntakeBooking,
+  SavedSticker,
+  ContactIdentityIssue,
+  ContactQuarkLink,
+  ContactIdentityAudit,
+  OperationalIncident,
+  AiSuggestion,
+  ServiceRating
 ];
 
 sequelize.addModels(models);

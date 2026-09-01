@@ -1,4 +1,5 @@
-export const INACTIVITY_CLOSE_REASON = "Sem retorno do paciente — 15 minutos";
+export const INACTIVITY_CLOSE_REASON =
+  "Sem retorno do paciente — prazo de inatividade atingido";
 
 export const DEFAULT_INACTIVITY_MESSAGE = `Seu atendimento será encerrado por falta de interação.
 
