@@ -16,18 +16,22 @@ os serviços internos de envio do WhaTicket.
   silenciosa. Nenhum agendamento que já existia vira disparo em massa.
 - Se a linha de base falhar, seu estado permanece BASELINING. A retomada
   continua silenciosa e só muda para ACTIVE depois de todas as janelas.
-- Depois da baseline, um novo agendamento gera CREATED; alterações de data,
-  hora, profissional, unidade, procedimento ou telefone geram RESCHEDULED ou
-  UPDATED; status de cancelamento gera CANCELLED.
+- Depois da baseline, novos agendamentos e alterações continuam registrados
+  como CREATED, RESCHEDULED ou UPDATED para auditoria, mas não geram mensagens
+  imediatas. Pedidos automáticos de confirmação são enviados apenas nas janelas
+  de 24h e 2h; status de cancelamento continua gerando o aviso CANCELLED.
 - Agendamentos anteriores ao dia atual são ignorados. A ausência isolada de um
   registro na resposta não é interpretada como cancelamento.
 - Lembretes usam QUARK_REMINDER_HOURS. Lembretes que já estariam vencidos na
   baseline e lembretes coincidentes com uma mensagem de criação/alteração são
   suprimidos para evitar mensagens em sequência.
-- Respostas SIM/1 e NÃO/2 são aplicadas ao agendamento futuro pendente do
-  número que respondeu. Quando o mesmo telefone tem mais de uma consulta
-  pendente, o sistema pede SIM 1, NÃO 1, SIM 2 ou NÃO 2 e não escolhe
-  silenciosamente. SIM/1 confirma no Quark e NÃO/2 cancela no Quark.
+- Quando existe uma única consulta futura pendente para o número, os novos
+  avisos orientam responder somente CONFIRMAR ou CANCELAR, sem referência ou
+  código. Respostas SIM/NÃO, 1/2 e referências antigas permanecem reconhecidas
+  apenas para compatibilidade com mensagens já enviadas. Quando o mesmo telefone tem mais de uma consulta pendente, o sistema
+  apresenta uma lista e pede CONFIRMAR 1, CANCELAR 1, CONFIRMAR 2 ou CANCELAR
+  2, sem escolher silenciosamente. Respostas numéricas continuam reservadas ao
+  menu enquanto a triagem estiver ativa.
 
 ## Persistência e idempotência
 

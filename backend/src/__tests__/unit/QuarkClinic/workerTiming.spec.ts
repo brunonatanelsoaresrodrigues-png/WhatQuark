@@ -34,4 +34,12 @@ describe("QuarkClinic worker timing", () => {
 
     expect(quietHoursDelayMs(config, atNoonSaoPaulo)).toBe(0);
   });
+
+  it("releases the queue exactly when quiet hours end", () => {
+    const oneMinuteBefore = new Date("2026-08-20T10:59:00.000Z");
+    const atEightAm = new Date("2026-08-20T11:00:00.000Z");
+
+    expect(quietHoursDelayMs(config, oneMinuteBefore)).toBe(60 * 1000);
+    expect(quietHoursDelayMs(config, atEightAm)).toBe(0);
+  });
 });

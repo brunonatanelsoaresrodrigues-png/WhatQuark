@@ -24,3 +24,11 @@ ssl/
 *.log
 backend/public/*
 !backend/public/.gitkeep
+
+# Generated local reports and release packages
+outputs/
+report_work/
+squadchat-code-*.bundle
+*.tar
+*.tar.gz
+*.tgz

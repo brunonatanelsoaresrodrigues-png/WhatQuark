@@ -34,7 +34,14 @@ const messages = {
   ERR_NO_STICKER_FOUND: "A figurinha não está mais disponível.",
   ERR_MESSAGE_IS_NOT_STICKER: "Esta mensagem não contém uma figurinha válida.",
   ERR_STICKER_PROVIDER_UNSUPPORTED:
-    "O provedor configurado não permite enviar figurinhas."
+    "O provedor configurado não permite enviar figurinhas.",
+  ERR_MESSAGE_EDIT_NOT_ALLOWED: "Esta mensagem não pode ser editada.",
+  ERR_MESSAGE_EDIT_WINDOW_EXPIRED:
+    "O prazo de 15 minutos para editar esta mensagem terminou.",
+  ERR_INVALID_MESSAGE_BODY:
+    "A mensagem editada deve ter entre 1 e 4.096 caracteres.",
+  ERR_EDITING_WAPP_MSG:
+    "O WhatsApp não aceitou a edição. Atualize a conversa e tente novamente."
 };
 const toastError = err => {
   const errorMsg = err.response?.data?.message || err.response?.data?.error;

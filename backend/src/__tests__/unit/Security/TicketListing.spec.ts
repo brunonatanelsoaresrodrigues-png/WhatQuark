@@ -43,4 +43,17 @@ describe("ticket listing scope", () => {
     ]);
     expect(scope[Op.and][1][Op.or][0].queueId[Op.in]).toEqual([2]);
   });
+
+  it.each([
+    ["open", "DESC"],
+    ["pending", "ASC"],
+    ["closed", "DESC"]
+  ])("uses the operational order for %s tickets", async (status, direction) => {
+    await ListTicketsService({ userId: "1", queueIds: [2], status });
+
+    const query = (Ticket.findAndCountAll as jest.Mock).mock.calls[0][0];
+    expect(query.attributes.include[0][1]).toBe("sortAt");
+    expect(query.order[0][1]).toBe(direction);
+    expect(query.order[1]).toEqual(["id", direction]);
+  });
 });

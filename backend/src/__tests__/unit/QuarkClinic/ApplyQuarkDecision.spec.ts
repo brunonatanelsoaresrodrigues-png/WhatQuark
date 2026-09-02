@@ -3,6 +3,7 @@ import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotifi
 import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
 import { ApplyQuarkDecision } from "../../../services/QuarkClinicServices/ApplyQuarkDecision";
 import {
+  cancelQuarkAppointment,
   confirmQuarkAppointment,
   getQuarkAppointment
 } from "../../../services/QuarkClinicServices/QuarkClinicClient";
@@ -119,4 +120,29 @@ it("still rejects an unrelated recipient", async () => {
 
   expect(getQuarkAppointment).not.toHaveBeenCalled();
   expect(confirmQuarkAppointment).not.toHaveBeenCalled();
+});
+
+it("allows a confirmed appointment to be cancelled during rescheduling", async () => {
+  const confirmed = { ...raw, statusMarcacao: "CONFIRMADO" };
+  record = {
+    ...buildAppointmentSnapshot(confirmed, config),
+    update: jest.fn().mockResolvedValue(undefined)
+  };
+  (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+  (getQuarkAppointment as jest.Mock).mockResolvedValue(confirmed);
+
+  await expect(
+    ApplyQuarkDecision({
+      appointmentId: "42",
+      phone: currentPhone,
+      choice: 2,
+      fingerprint: record.scheduleFingerprint
+    })
+  ).resolves.toBeUndefined();
+
+  expect(cancelQuarkAppointment).toHaveBeenCalledWith(
+    expect.anything(),
+    "42",
+    currentPhone
+  );
 });

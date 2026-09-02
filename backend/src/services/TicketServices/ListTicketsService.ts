@@ -1,4 +1,12 @@
-import { Op, fn, where, col, Includeable, WhereOptions } from "sequelize";
+import {
+  Op,
+  fn,
+  where,
+  col,
+  literal,
+  Includeable,
+  WhereOptions
+} from "sequelize";
 import { startOfDay, endOfDay, parseISO } from "date-fns";
 
 import Ticket from "../../models/Ticket";
@@ -40,6 +48,33 @@ export const buildTicketAssigneeCondition = (
   return {
     [Op.or]: [{ userId: requesterUserId }, { status: "pending" }]
   };
+};
+
+const latestMessageActivitySql = `COALESCE(
+  (SELECT MAX(activityMessage.createdAt)
+   FROM Messages AS activityMessage
+   WHERE activityMessage.ticketId = Ticket.id),
+  Ticket.updatedAt,
+  Ticket.createdAt
+)`;
+
+const oldestUnreadActivitySql = `COALESCE(
+  (SELECT MIN(queueMessage.createdAt)
+   FROM Messages AS queueMessage
+   WHERE queueMessage.ticketId = Ticket.id
+     AND queueMessage.fromMe = 0
+     AND queueMessage.read = 0),
+  Ticket.updatedAt,
+  Ticket.createdAt
+)`;
+
+export const ticketSortDirection = (status?: string): "ASC" | "DESC" =>
+  status === "pending" ? "ASC" : "DESC";
+
+export const ticketSortAtSql = (status?: string): string => {
+  if (status === "pending") return oldestUnreadActivitySql;
+  if (status === "closed") return "Ticket.updatedAt";
+  return latestMessageActivitySql;
 };
 
 const ListTicketsService = async ({
@@ -171,14 +206,19 @@ const ListTicketsService = async ({
 
   const limit = 40;
   const offset = limit * (+pageNumber - 1);
+  const sortAtSql = ticketSortAtSql(status);
+  const sortDirection = ticketSortDirection(status);
 
   const { count, rows: tickets } = await Ticket.findAndCountAll({
     where: { [Op.and]: [ticketAccessWhere(viewer), whereCondition] },
     include: includeCondition,
+    attributes: {
+      include: [[literal(sortAtSql), "sortAt"]]
+    },
     distinct: true,
     limit,
     offset,
-    order: [["updatedAt", "DESC"]]
+    order: [[literal(sortAtSql), sortDirection], ["id", sortDirection]]
   });
 
   const hasMore = count > offset + tickets.length;

@@ -431,6 +431,13 @@ const messages = {
         }
       },
       messageOptionsMenu: {
+        edit: "Editar",
+        edited: "editado",
+        editTitle: "Editar mensaje",
+        editHelp: "{{count}} de {{limit}} caracteres · disponible durante 15 minutos",
+        editCancel: "Cancelar",
+        editSave: "Guardar",
+        editSuccess: "Mensaje editado.",
         delete: "Borrar",
         reply: "Responder",
         confirmationModal: {

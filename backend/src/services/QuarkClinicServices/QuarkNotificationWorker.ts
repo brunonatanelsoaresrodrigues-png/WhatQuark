@@ -13,9 +13,10 @@ import { QuarkOutboxPayload } from "./notificationLedger";
 import { quietHoursDelayMs, randomSendIntervalMs } from "./workerTiming";
 import { assertExecution } from "../MessagingServices/policy";
 import {
-  appointmentReference,
-  formatAppointmentDateTime
+  formatAppointmentDateTime,
+  quarkPhoneVariants
 } from "./appointmentUtils";
+import { removeLegacyConfirmationCodes } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import {
   isSameDayReschedule,
@@ -36,7 +37,7 @@ const triggerWorker = (config: QuarkConfig, delay: number): void => {
   workerTimer.unref();
 };
 
-const claimNextNotification = async (): Promise<
+export const claimNextNotification = async (): Promise<
   QuarkAppointmentNotification | undefined
 > =>
   sequelize.transaction(async transaction => {
@@ -47,6 +48,7 @@ const claimNextNotification = async (): Promise<
       },
       order: [
         ["priorityAt", "ASC"],
+        ["nextAttemptAt", "ASC"],
         ["createdAt", "ASC"]
       ],
       transaction,
@@ -88,37 +90,119 @@ export const recoverStuckNotifications = async (
   const threshold = new Date(Date.now() - config.processingTimeoutMs);
   if (config.whatsappId) {
     const uncertain = await QuarkAppointmentNotification.findAll({
-      where: { status: "UNKNOWN" },
-      limit: 20
+      where: {
+        [Op.or]: [
+          { status: "UNKNOWN" },
+          { status: "FAILED_RETRY", lastError: "ERR_MESSAGE_QUEUED" }
+        ]
+      },
+      order: [["updatedAt", "ASC"]],
+      limit: 100
     });
     for (const notice of uncertain) {
-      const row = await OutboundMessage.findByPk(
-        digest(
-          `${config.whatsappId}:${notice.recipientPhone}:quark-notice:${notice.id}`
-        )
-      );
-      if (row?.status === "SENT" && row.messageId) {
-        const payload = JSON.parse(notice.payload) as QuarkOutboxPayload;
-        await notice.update({
-          status: "SENT",
-          messageId: row.messageId,
-          sentAt: row.finishedAt,
-          lastError: null
-        });
-        if (payload.requestsConfirmation && payload.scheduleFingerprint)
-          await QuarkAppointment.update(
-            {
-              awaitingConfirmation: true,
-              confirmationRequestedAt: row.finishedAt
-            },
-            {
-              where: {
-                appointmentId: notice.appointmentId,
-                status: "AGENDADO",
-                scheduleFingerprint: payload.scheduleFingerprint
+      try {
+        const outboundIds = quarkPhoneVariants(
+          notice.recipientPhone || "",
+          config.defaultCountryCode
+        ).map(phone =>
+          digest(`${config.whatsappId}:${phone}:quark-notice:${notice.id}`)
+        );
+        const rows = outboundIds.length
+          ? await OutboundMessage.findAll({
+              where: { id: { [Op.in]: outboundIds } },
+              order: [["updatedAt", "DESC"]]
+            })
+          : [];
+        const row =
+          rows.find(item => item.status === "SENT" && item.messageId) ||
+          rows[0];
+        if (!row) {
+          // The worker stopped after claiming the notice but before the
+          // durable central queue entry was created. Nothing can have been
+          // delivered, so retrying is safe and prevents a stranded UNKNOWN.
+          if (notice.status === "UNKNOWN")
+            await notice.update({
+              status: "PENDING",
+              nextAttemptAt: new Date(),
+              processingStartedAt: null,
+              workerId: null,
+              lastError: null
+            });
+          continue;
+        }
+
+        if (row.status === "SENT" && row.messageId) {
+          const payload = JSON.parse(notice.payload) as QuarkOutboxPayload;
+          const sentAt = row.finishedAt || row.updatedAt || new Date();
+          await notice.update({
+            status: "SENT",
+            messageId: row.messageId,
+            sentAt,
+            processingStartedAt: null,
+            workerId: null,
+            lastError: null
+          });
+          if (payload.requestsConfirmation && payload.scheduleFingerprint)
+            await QuarkAppointment.update(
+              {
+                awaitingConfirmation: true,
+                confirmationRequestedAt: sentAt
+              },
+              {
+                where: {
+                  appointmentId: notice.appointmentId,
+                  status: "AGENDADO",
+                  scheduleFingerprint: payload.scheduleFingerprint
+                }
               }
-            }
+            );
+          continue;
+        }
+
+        if (row.status === "PENDING") {
+          const minimumRetryAt = new Date(
+            Date.now() + Math.max(5 * 60 * 1000, config.sendIntervalMaxMs || 0)
           );
+          await notice.update({
+            status: "FAILED_RETRY",
+            nextAttemptAt:
+              row.dueAt && row.dueAt > minimumRetryAt
+                ? row.dueAt
+                : minimumRetryAt,
+            processingStartedAt: null,
+            workerId: null,
+            lastError: "ERR_MESSAGE_QUEUED"
+          });
+          continue;
+        }
+
+        if (["PROCESSING", "UNKNOWN"].includes(row.status)) {
+          await notice.update({
+            status: "UNKNOWN",
+            processingStartedAt: null,
+            workerId: null,
+            lastError: row.errorCode || "ERR_SEND_OUTCOME_UNKNOWN"
+          });
+          continue;
+        }
+
+        if (["BLOCKED", "FAILED"].includes(row.status)) {
+          const outboundError = row.errorCode || "ERR_OUTBOUND_BLOCKED";
+          await notice.update({
+            status: isPermanentError(outboundError)
+              ? "DEAD_LETTER"
+              : "SUPPRESSED",
+            processingStartedAt: null,
+            workerId: null,
+            lastError: outboundError
+          });
+        }
+      } catch (error) {
+        logger.warn({
+          info: "Queued Quark notification could not be reconciled",
+          notificationId: notice.id,
+          err: error
+        });
       }
     }
   }
@@ -190,6 +274,16 @@ export const processNotification = async (
       return;
     }
 
+    if (["CREATED", "UPDATED", "RESCHEDULED"].includes(notification.eventType)) {
+      await notification.update({
+        status: "SUPPRESSED",
+        processingStartedAt: null,
+        workerId: null,
+        lastError: "Confirmation notices are sent only in reminder windows"
+      });
+      return;
+    }
+
     const payload = parsePayload(notification);
     if (!payload.phone) throw new Error("QUARK_PERMANENT_INVALID_PHONE");
     if (!payload.scheduleFingerprint)
@@ -250,19 +344,11 @@ export const processNotification = async (
       dates.time,
       String(stored.clinicaNome || "nossa clínica")
     ];
-    if (notification.eventType !== "CANCELLED")
-      parameters.push(
-        appointmentReference(
-          record.appointmentId,
-          record.scheduleFingerprint,
-          payload.phone
-        )
-      );
     const sentMessage = await SendQuarkWhatsAppMessage(
       config,
       payload.phone,
       payload.patientName,
-      payload.body,
+      removeLegacyConfirmationCodes(payload.body),
       {
         idempotencyKey: `quark-notice:${notification.id}`,
         proactive: true,
@@ -318,7 +404,10 @@ export const processNotification = async (
     emitQuarkDashboardUpdate("notification", notification.id);
   } catch (error) {
     const lastError = sanitizeError(error);
-    const unknown = accepted || lastError === "ERR_SEND_OUTCOME_UNKNOWN";
+    const unknown =
+      accepted ||
+      lastError === "ERR_SEND_OUTCOME_UNKNOWN" ||
+      lastError === "ERR_LOCAL_PERSISTENCE_PENDING";
     const waiting = [
       "ERR_MESSAGE_QUEUED",
       "ERR_MESSAGING_PAUSED",
@@ -338,7 +427,12 @@ export const processNotification = async (
         ? "DEAD_LETTER"
         : "SUPPRESSED",
       attempts: notification.attempts + (waiting ? 0 : 1),
-      nextAttemptAt: new Date(Date.now() + 60000),
+      nextAttemptAt: new Date(
+        Date.now() +
+          (lastError === "ERR_MESSAGE_QUEUED"
+            ? Math.max(5 * 60 * 1000, config.sendIntervalMaxMs)
+            : 60000)
+      ),
       processingStartedAt: null,
       workerId: null,
       lastError

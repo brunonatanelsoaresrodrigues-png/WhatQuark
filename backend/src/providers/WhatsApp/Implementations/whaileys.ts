@@ -1450,6 +1450,25 @@ const deleteMessage = async (
   await wbot.sendMessage(normalizedChatId, { delete: key });
 };
 
+const editMessage = async (
+  sessionId: number,
+  chatId: string,
+  messageId: string,
+  body: string
+): Promise<void> => {
+  const wbot = getWbot(sessionId);
+  const normalizedChatId = normalizeJid(chatId);
+
+  await wbot.sendMessage(normalizedChatId, {
+    text: body,
+    edit: {
+      remoteJid: normalizedChatId,
+      id: messageId,
+      fromMe: true
+    }
+  });
+};
+
 const checkNumber = async (
   sessionId: number,
   number: string
@@ -1792,6 +1811,7 @@ export const WhaileysProvider: WhatsappProvider = {
   sendMessage,
   sendMedia,
   deleteMessage,
+  editMessage,
   checkNumber,
   getProfilePicUrl,
   getContacts,

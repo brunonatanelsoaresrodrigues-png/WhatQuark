@@ -17,6 +17,7 @@ import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import PageSkeleton from "../PageSkeleton";
 import ConversationSearchPanel from "../ConversationSearchPanel";
+import { i18n } from "../../translate/i18n";
 const useStyles = makeStyles(theme => ({
   messagesListWrapper: {
     overflow: "hidden",
@@ -224,6 +225,11 @@ const useStyles = makeStyles(theme => ({
     marginTop: 2,
     marginRight: -12,
     color: theme.palette.text.secondary
+  },
+  editedLabel: {
+    fontSize: 11,
+    fontStyle: "italic",
+    marginRight: 5
   },
   dailyTimestamp: {
     alignItems: "center",
@@ -640,6 +646,9 @@ const MessagesList = ({
                   {message.quotedMsg && renderQuotedMessage(message)}
                   {shouldRenderMessageBody(message) && <MarkdownWrapper>{message.body}</MarkdownWrapper>}
                   <span className={classes.timestamp}>
+                    {message.editedAt && <span className={classes.editedLabel}>
+                        {i18n.t("messageOptionsMenu.edited")}
+                      </span>}
                     {format(parseISO(message.createdAt), "HH:mm")}
                     {renderMessageAck(message)}
                   </span>

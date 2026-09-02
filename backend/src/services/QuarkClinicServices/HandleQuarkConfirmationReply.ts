@@ -21,15 +21,16 @@ interface Request {
   whatsappId: number;
   messageId?: string;
 }
-interface PendingCancel {
-  appointmentId: string;
-  fingerprint: string;
-  reference: string;
+interface PendingOptions {
+  items: Array<{ appointmentId: string; fingerprint: string }>;
   expiresAt: number;
 }
 const description = (appointment: QuarkAppointment) => {
   const p = formatAppointmentDateTime(appointment.scheduledAt);
-  return `${p.date} às ${p.time}`;
+  const patient = String(appointment.patientName || "Paciente")
+    .replace(/[\r\n*_~`]+/g, " ")
+    .trim();
+  return `${patient} — ${p.date} às ${p.time}`;
 };
 
 const HandleQuarkConfirmationReply = async ({
@@ -90,76 +91,50 @@ const HandleQuarkConfirmationReply = async ({
         expiresAt: new Date(Date.now() + 5 * 60000).toISOString()
       }
     });
-  const referenceOf = (item: QuarkAppointment) =>
-    appointmentReference(item.appointmentId, item.scheduleFingerprint, phone);
   const referencesOf = (item: QuarkAppointment) =>
     phoneVariants.map(value =>
       appointmentReference(item.appointmentId, item.scheduleFingerprint, value)
     );
+  const optionsKey = `quark-options:${whatsappId}:${phone}`;
+  const pendingOptions = reply.appointmentOption
+    ? await readState<PendingOptions | null>(optionsKey, null)
+    : null;
+  const selectedOption =
+    pendingOptions && pendingOptions.expiresAt > Date.now()
+      ? pendingOptions.items[reply.appointmentOption! - 1]
+      : undefined;
   const appointment = reply.appointmentReference
-    ? appointments.find(
-        item => referencesOf(item).includes(reply.appointmentReference as string)
+    ? appointments.find(item =>
+        referencesOf(item).includes(reply.appointmentReference as string)
       )
+    : selectedOption
+    ? appointments.find(
+        item =>
+          item.appointmentId === selectedOption.appointmentId &&
+          item.scheduleFingerprint === selectedOption.fingerprint
+      )
+    : !reply.appointmentOption && appointments.length === 1
+    ? appointments[0]
     : undefined;
   if (!appointment) {
-    const options = appointments
-      .slice(0, 9)
-      .map(
-        item =>
-          `${description(item)} — CONFIRMAR ${referenceOf(
-            item
-          )} ou CANCELAR ${referenceOf(item)}`
-      )
+    const offered = appointments.slice(0, 9);
+    const options = offered
+      .map((item, index) => `${index + 1} — ${description(item)}`)
       .join("\n");
+    await writeState(optionsKey, {
+      items: offered.map(item => ({
+        appointmentId: item.appointmentId,
+        fingerprint: item.scheduleFingerprint
+      })),
+      expiresAt: Date.now() + 30 * 60 * 1000
+    });
     await send(
-      `Escolha a consulta pelo código indicado.\n\n${options}\n\nSe não encontrar sua consulta, escreva ATENDENTE.`,
+      `Há mais de uma consulta pendente. Escolha pelo número da lista:\n\n${options}\n\nResponda, por exemplo, CONFIRMAR 1 ou CANCELAR 1. Se não encontrar sua consulta, escreva ATENDENTE.`,
       "options"
     );
     return true;
   }
-  const reference = referenceOf(appointment);
   const pendingKey = `quark-cancel:${whatsappId}:${phone}`;
-  const pending = await readState<PendingCancel | null>(pendingKey, null);
-  const validPending =
-    pending &&
-    pending.appointmentId === appointment.appointmentId &&
-    pending.fingerprint === appointment.scheduleFingerprint &&
-    pending.expiresAt > Date.now();
-  if (validPending && !reply.appointmentReference) {
-    await send(
-      `Para cancelar a consulta de ${description(
-        appointment
-      )}, responda exatamente CONFIRMO CANCELAMENTO ${reference}. Se precisar de ajuda, escreva ATENDENTE.`,
-      "explicit-cancel"
-    );
-    return true;
-  }
-  if (reply.choice === 2) {
-    if (!reply.confirmedCancellation) {
-      if (!validPending) {
-        await writeState(pendingKey, {
-          appointmentId: appointment.appointmentId,
-          fingerprint: appointment.scheduleFingerprint,
-          reference,
-          expiresAt: Date.now() + 10 * 60000
-        });
-        await send(
-          `Você deseja cancelar a consulta de ${description(
-            appointment
-          )}?\nPara concluir, responda CONFIRMO CANCELAMENTO ${reference}. Essa confirmação vale por 10 minutos.`,
-          `cancel-question:${reference}`
-        );
-      }
-      return true;
-    }
-    if (!validPending) {
-      await send(
-        "A confirmação de cancelamento expirou ou a consulta mudou. Solicite o cancelamento novamente ou fale com a equipe.",
-        "expired"
-      );
-      return true;
-    }
-  }
   try {
     await ApplyQuarkDecision({
       appointmentId: appointment.appointmentId,
@@ -168,6 +143,7 @@ const HandleQuarkConfirmationReply = async ({
       fingerprint: appointment.scheduleFingerprint
     });
     await writeState(pendingKey, null);
+    await writeState(optionsKey, null);
   } catch (error) {
     await writeState(`bot-pause:${ticket.id}`, true);
     await send(

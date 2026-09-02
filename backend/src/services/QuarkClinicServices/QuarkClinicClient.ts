@@ -253,7 +253,9 @@ const applyStatus = async (
   await assertExecution(phone, true);
   const before = await getQuarkAppointment(config, appointmentId);
   if (before.statusMarcacao === desired) return;
-  if (before.statusMarcacao !== "AGENDADO")
+  const allowedStatuses =
+    desired === "CANCELADO" ? ["AGENDADO", "CONFIRMADO"] : ["AGENDADO"];
+  if (!allowedStatuses.includes(String(before.statusMarcacao || "")))
     throw new Error("QUARK_APPOINTMENT_STATE_CHANGED");
   await assertExecution(phone, true);
   try {
@@ -269,6 +271,15 @@ const applyStatus = async (
       );
     });
     assertSuccessfulResponse(result, "applying appointment decision");
+    // A successful envelope only means the Quark endpoint accepted the
+    // request. Re-read the appointment before reporting success so an API
+    // no-op can never become an optimistic local confirmation.
+    for (const delay of [0, 250, 750]) {
+      if (delay) await wait(delay);
+      const verified = await getQuarkAppointment(config, appointmentId);
+      if (verified.statusMarcacao === desired) return;
+    }
+    throw new Error("QUARK_OPERATION_OUTCOME_UNKNOWN");
   } catch (error) {
     try {
       const after = await getQuarkAppointment(config, appointmentId);
@@ -423,7 +434,7 @@ export const createQuarkAppointment = async (
       .replace(/^(?=\d{10,11}$)/, "55"),
     true
   );
-  return numericApiId(
+  const appointmentId = numericApiId(
     await requestJson<unknown>(
       config,
       "POST",
@@ -433,4 +444,33 @@ export const createQuarkAppointment = async (
     ),
     "creating an appointment"
   );
+  const dateKey = (value: unknown): string => {
+    const raw = String(value || "").trim();
+    let match = raw.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+    if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+    match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+    return match ? `${match[1]}-${match[2]}-${match[3]}` : raw;
+  };
+  const matchesRequest = (remote: QuarkAppointmentDto): boolean =>
+    String(remote.id) === String(appointmentId) &&
+    String(remote.pacienteId || "") === String(appointment.pacienteId) &&
+    String(remote.agendaId || "") === String(appointment.agendaId) &&
+    dateKey(remote.dataAgendamento) === dateKey(appointment.data) &&
+    String(remote.horaAgendamento || "").slice(0, 5) ===
+      String(appointment.hora).slice(0, 5) &&
+    String(remote.statusMarcacao || "").toUpperCase() !== "CANCELADO";
+
+  // A returned id is not sufficient evidence that the requested slot and
+  // patient were persisted. Verify the authoritative record before the bot
+  // tells the patient that the appointment exists.
+  for (const delay of [0, 500, 1500, 3000]) {
+    if (delay) await wait(delay);
+    try {
+      const remote = await getQuarkAppointment(config, String(appointmentId));
+      if (matchesRequest(remote)) return appointmentId;
+    } catch (_) {
+      /* Eventual consistency is tolerated only within this bounded window. */
+    }
+  }
+  throw new Error("QUARK_BOOKING_OUTCOME_UNKNOWN");
 };

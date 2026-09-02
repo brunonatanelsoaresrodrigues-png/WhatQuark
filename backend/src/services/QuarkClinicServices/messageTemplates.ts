@@ -4,12 +4,105 @@ import {
 } from "./appointmentUtils";
 import { clinicTimezone, dateParts } from "./clinicTime";
 const clean = (value: string) => value.replace(/[\r\n*_~`]+/g, " ").trim();
+const normalized = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+const knownClinicAddress = (clinic: string): string =>
+  normalized(clinic) === "ESSENCIAL SAUDE"
+    ? "Avenida Ulisses Bezerra, 2227 - Cidade dos Funcionários, FORTALEZA, 60822-490"
+    : "";
+
+const parsePrice = (value: unknown): number | null => {
+  if (typeof value === "number")
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const compact = value.replace(/[^\d,.-]/g, "");
+  const decimal = compact.includes(",")
+    ? compact.replace(/\./g, "").replace(",", ".")
+    : compact;
+  const parsed = Number(decimal);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const procedurePrice = (appointment: AppointmentSnapshot): string => {
+  const procedure = appointment.raw.procedimento;
+  const informedPrice = [
+    procedure?.valor,
+    procedure?.preco,
+    procedure?.valorParticular,
+    appointment.raw.valorProcedimento,
+    appointment.raw.precoProcedimento
+  ]
+    .map(parsePrice)
+    .find(value => value !== null);
+  const procedureName = normalized(procedure?.nome || "");
+  const knownPrice = procedureName.includes("PSIQUIATR")
+    ? 350
+    : procedureName.includes("LAUDO")
+    ? 450
+    : procedureName.includes("ANAMNESE")
+    ? 100
+    : procedureName.includes("SESSAO")
+    ? 80
+    : null;
+  const price = informedPrice ?? knownPrice;
+  return price === null
+    ? ""
+    : new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+      })
+        .format(price)
+        .replace(/[\u00a0\u202f]/g, " ");
+};
+
+export const confirmationReplyInstructions = `Por favor, responda apenas com uma das opções:
+
+*CONFIRMAR* — para confirmar
+*CANCELAR* — para cancelar`;
+
+export const removeLegacyConfirmationCodes = (body: string): string =>
+  body
+    .replace(/\b(CONFIRMAR|CANCELAR)\s+[A-F0-9]{8}\b/gi, "$1")
+    .replace(/\*CONFIRMAR\*\s+ou\s+\*1\*/gi, "*CONFIRMAR*")
+    .replace(/\*CANCELAR\*\s+ou\s+\*2\*/gi, "*CANCELAR*");
+
+export const appointmentNoticeOptOut =
+  "Para deixar de receber avisos, responda *PARAR*.";
 const details = (appointment: AppointmentSnapshot) => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
   const clinic = clean(appointment.raw.clinicaNome || "nossa unidade");
   return `Sua consulta está prevista para ${date}${
     time ? ` às ${time}` : ""
   }, em ${clinic}.`;
+};
+
+const reminderDetails = (
+  appointment: AppointmentSnapshot,
+  configuredAddress = ""
+) => {
+  const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
+  const patient = clean(appointment.patientName || "Paciente");
+  const professional = clean(
+    appointment.raw.profissional?.nome || "Profissional não informado"
+  );
+  const clinic = clean(appointment.raw.clinicaNome || "nossa unidade");
+  const procedure = clean(
+    appointment.raw.procedimento?.nome || "procedimento não informado"
+  );
+  const price = procedurePrice(appointment);
+  const address = clean(configuredAddress || knownClinicAddress(clinic));
+
+  return `Caro(a) Paciente ${patient}, você possui um agendamento com o(a) profissional ${professional} no dia ${date}${
+    time ? ` às ${time}` : " em horário a confirmar"
+  } para o procedimento ${procedure}${
+    price ? `, no valor de ${price}` : ""
+  }, na clínica ${clinic}${
+    address ? `, localizada no endereço: ${address}` : ""
+  }.`;
 };
 export const newAppointmentMessage = (
   appointment: AppointmentSnapshot,
@@ -52,10 +145,10 @@ export const cancelledAppointmentMessage = (
 export const reminderAppointmentMessage = (
   appointment: AppointmentSnapshot,
   _hours: number,
-  _address = "",
+  address = "",
   _mondayAdvance = false
-) => `Lembrete de consulta.\n${details(appointment)}`;
+) => reminderDetails(appointment, address);
 export const manualReminderAppointmentMessage = (
   appointment: AppointmentSnapshot,
-  _address = ""
-) => reminderAppointmentMessage(appointment, 24);
+  address = ""
+) => reminderAppointmentMessage(appointment, 24, address);

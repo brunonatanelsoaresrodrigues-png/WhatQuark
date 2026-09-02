@@ -214,6 +214,7 @@ export const CloudWhatsAppProvider: WhatsappProvider = {
     );
   },
   deleteMessage: unsupported,
+  editMessage: unsupported,
   async checkNumber(id, number) {
     assertChannel(id);
     if (!/^\d{8,15}$/.test(number))

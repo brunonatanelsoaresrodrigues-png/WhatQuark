@@ -4,7 +4,7 @@ import { toast } from "react-toastify";
 import openSocket from "../../services/socket-io";
 import clsx from "clsx";
 import { IconButton, Paper, Tooltip, makeStyles, useMediaQuery } from "@material-ui/core";
-import { Search } from "@material-ui/icons";
+import { PersonOutline, Search } from "@material-ui/icons";
 import ContactDrawer from "../ContactDrawer";
 import MessageInput from "../MessageInput/";
 import TicketContext from "../TicketContext";
@@ -85,7 +85,7 @@ const Ticket = () => {
   } = useParams();
   const history = useHistory();
   const classes = useStyles();
-  const wideScreen = useMediaQuery("(min-width:1280px)");
+  const wideScreen = useMediaQuery("(min-width:1440px)");
   const [drawerOpen, setDrawerOpen] = useState(wideScreen);
   useEffect(() => setDrawerOpen(wideScreen), [wideScreen]);
   const [loading, setLoading] = useState(true);
@@ -239,6 +239,17 @@ const Ticket = () => {
             <TicketInfo contact={contact} ticket={ticket} onClick={handleDrawerOpen} />
           </div>
           <div className={classes.ticketActionButtons}>
+            {!drawerOpen && (
+              <Tooltip title="Abrir detalhes do contato">
+                <IconButton
+                  size="small"
+                  aria-label="Abrir detalhes do contato"
+                  onClick={handleDrawerOpen}
+                >
+                  <PersonOutline />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title="Pesquisar nesta conversa (Ctrl + F)">
               <IconButton
                 size="small"
@@ -259,7 +270,7 @@ const Ticket = () => {
           <MessageInput key={ticketId} ticketStatus={ticket.status} sendBlocked={sendBlocked} droppedFiles={droppedFiles} onDroppedFilesHandled={() => setDroppedFiles([])} assistantDraft={assistantDraft} onAssistantDraftHandled={() => setAssistantDraft(null)} />
         </ReplyMessageProvider>
       </Paper>
-      <ContactDrawer open={drawerOpen} docked={wideScreen} handleDrawerClose={handleDrawerClose} contact={contact} ticket={ticket} context={context} loading={loading} />
+      <ContactDrawer open={drawerOpen} docked={wideScreen} handleDrawerClose={handleDrawerClose} contact={contact} ticket={ticket} context={context} loading={loading} onContextRefresh={loadContext} />
     </div>;
 };
 export default Ticket;

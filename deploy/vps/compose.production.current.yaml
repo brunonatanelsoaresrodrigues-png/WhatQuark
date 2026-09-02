@@ -58,7 +58,7 @@ services:
     networks:
     - internal
   backend:
-    image: whaticket-backend:quark-phone-variants-20260831-1830
+    image: whaticket-backend:quark-full-audit-20260901-1105
     command:
     - sh
     - -c
@@ -86,6 +86,7 @@ services:
       TZ: America/Sao_Paulo
       DASHBOARD_SLA_MINUTES: ${DASHBOARD_SLA_MINUTES:-5}
       QUARK_INTEGRATION_ENABLED: ${QUARK_INTEGRATION_ENABLED:-false}
+      PATIENT_INTAKE_QUARK_BOOKING_ENABLED: ${PATIENT_INTAKE_QUARK_BOOKING_ENABLED:-true}
       QUARK_API_BASE_URL: ${QUARK_API_BASE_URL:-https://api.quark.tec.br/clinic/ext}
       QUARK_AUTH_TOKEN: ${QUARK_AUTH_TOKEN:-}
       QUARK_X_CHAVE_KEY: ${QUARK_X_CHAVE_KEY:-}

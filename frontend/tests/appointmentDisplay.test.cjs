@@ -49,3 +49,28 @@ test("uses readable appointment status labels", () => {
   assert.equal(display.appointmentStatusLabel("AGENDADO"), "Agendada");
   assert.equal(display.appointmentStatusLabel("EM_ATENDIMENTO"), "EM_ATENDIMENTO");
 });
+
+test("only enables manual confirmation for a future scheduled appointment", () => {
+  const currentTime = new Date("2026-09-01T15:00:00.000Z").getTime();
+  assert.equal(
+    display.appointmentConfirmationDisabledReason(
+      { status: "AGENDADO", scheduledAt: "2026-09-02T15:00:00.000Z" },
+      currentTime
+    ),
+    ""
+  );
+  assert.equal(
+    display.appointmentConfirmationDisabledReason(
+      { status: "CONFIRMADO", scheduledAt: "2026-09-02T15:00:00.000Z" },
+      currentTime
+    ),
+    "A consulta já está confirmada."
+  );
+  assert.equal(
+    display.appointmentConfirmationDisabledReason(
+      { status: "AGENDADO", scheduledAt: "2026-09-01T14:59:59.000Z" },
+      currentTime
+    ),
+    "O horário da consulta já passou."
+  );
+});

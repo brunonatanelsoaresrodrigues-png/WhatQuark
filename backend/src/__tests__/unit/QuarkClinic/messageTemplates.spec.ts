@@ -4,6 +4,7 @@ import {
   changedAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
+  removeLegacyConfirmationCodes,
   reminderAppointmentMessage
 } from "../../../services/QuarkClinicServices/messageTemplates";
 
@@ -21,25 +22,56 @@ const snapshot = buildAppointmentSnapshot(
     telefoneComDDI: "+5585999990000",
     clinicaNome: "ESSENCIAL SAÚDE",
     profissional: { nome: "ASDRUBAL PEREZ SOTO" },
-    procedimento: { nome: "Consulta" }
+    procedimento: { nome: "Consulta Psiquiatria" }
   },
   config
 );
 
-describe("Privacy-aware appointment notices", () => {
-  it.each([newAppointmentMessage, manualReminderAppointmentMessage])(
-    "uses absolute dates and omits unnecessary health details",
-    render => {
-      const body = render(snapshot);
-      expect(body).toContain("21/08/2026 às 16:00");
-      expect(body).toContain("ESSENCIAL SAÚDE");
-      expect(body).not.toContain("CLAUDESON");
-      expect(body).not.toContain("ASDRUBAL");
-      expect(body).not.toMatch(
-        /hoje|amanhã|ordem de chegada|NÃO para cancelar/
-      );
-    }
-  );
+describe("Appointment notices", () => {
+  it("keeps new appointment notices concise", () => {
+    const body = newAppointmentMessage(snapshot);
+    expect(body).toContain("21/08/2026 às 16:00");
+    expect(body).toContain("ESSENCIAL SAÚDE");
+    expect(body).not.toContain("CLAUDESON");
+    expect(body).not.toContain("ASDRUBAL");
+  });
+  it("identifies the Quark patient and professional in reminders", () => {
+    const body = manualReminderAppointmentMessage(snapshot);
+    expect(body).toContain(
+      "Caro(a) Paciente CLAUDESON NASCIMENTO DA SILVA"
+    );
+    expect(body).toContain("profissional ASDRUBAL PEREZ SOTO");
+    expect(body).toContain("no dia 21/08/2026 às 16:00");
+    expect(body).toContain("procedimento Consulta Psiquiatria");
+    expect(body).toContain("no valor de R$ 350,00");
+    expect(body).toContain("na clínica ESSENCIAL SAÚDE");
+    expect(body).toContain(
+      "Avenida Ulisses Bezerra, 2227 - Cidade dos Funcionários, FORTALEZA, 60822-490"
+    );
+    expect(body).not.toMatch(/hoje|amanhã|ordem de chegada|NÃO para cancelar/);
+  });
+  it("prefers a procedure price supplied by Quark", () => {
+    const body = manualReminderAppointmentMessage({
+      ...snapshot,
+      raw: {
+        ...snapshot.raw,
+        procedimento: {
+          ...snapshot.raw.procedimento,
+          valor: "420,50"
+        }
+      }
+    });
+    expect(body).toContain("R$ 420,50");
+  });
+  it("removes appointment codes and numeric shortcuts from queued legacy text", () => {
+    expect(
+      removeLegacyConfirmationCodes(
+        "Para confirmar: **CONFIRMAR B2DB68F5**\nPara cancelar: **CANCELAR B2DB68F5**\n*CONFIRMAR* ou *1*\n*CANCELAR* ou *2*"
+      )
+    ).toBe(
+      "Para confirmar: **CONFIRMAR**\nPara cancelar: **CANCELAR**\n*CONFIRMAR*\n*CANCELAR*"
+    );
+  });
   it("does not guess today or tomorrow for delayed reminders", () => {
     expect(reminderAppointmentMessage(snapshot, 2)).toContain("21/08/2026");
     expect(reminderAppointmentMessage(snapshot, 2)).not.toMatch(/hoje|amanhã/);

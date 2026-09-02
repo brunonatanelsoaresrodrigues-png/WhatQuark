@@ -2,6 +2,7 @@ import Intake from "../../../services/PatientIntakeServices/PatientIntakeService
 import AutomationState from "../../../models/AutomationState";
 import { HandleInboundAutomation } from "../../../services/MessagingServices/HandleInboundAutomation";
 import {
+  digest,
   readState,
   writeState
 } from "../../../services/MessagingServices/state";
@@ -100,6 +101,22 @@ it("does not process the same provider event twice", async () => {
   expect(Send).toHaveBeenCalledTimes(1);
   expect(HandleQuark).toHaveBeenCalledTimes(1);
 });
+it("recovers a provider event abandoned in PROCESSING", async () => {
+  const eventId = `incoming:${digest(
+    `${input.whatsappId}:${input.messageId}`
+  )}`;
+  state.set(eventId, {
+    status: "PROCESSING",
+    startedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString()
+  });
+
+  await HandleInboundAutomation(input);
+
+  expect(HandleQuark).toHaveBeenCalledTimes(1);
+  expect(state.get(eventId)).toEqual(
+    expect.objectContaining({ status: "APPLIED", ticketId: 1 })
+  );
+});
 it("hands off after one clarification instead of looping menus", async () => {
   await HandleInboundAutomation(input);
   await HandleInboundAutomation({
@@ -195,6 +212,30 @@ it("preserves intake and deduplicates it before processing menu choices", async 
     expect.stringMatching(/^incoming:/)
   );
   expect(UpdateTicket).not.toHaveBeenCalled();
+});
+
+it("keeps 1 and 2 in the active intake instead of applying a Quark decision", async () => {
+  (ShowTicket as jest.Mock).mockResolvedValue({
+    id: 1,
+    status: "pending",
+    userId: null,
+    queueId: null,
+    intakeStatus: "AWAITING_MENU"
+  });
+  (HandleQuark as jest.Mock).mockResolvedValue(true);
+  (Intake as jest.Mock).mockResolvedValue({
+    handled: true,
+    showQueueMenu: false
+  });
+
+  await HandleInboundAutomation({ ...input, body: "1" });
+
+  expect(HandleQuark).not.toHaveBeenCalled();
+  expect(Intake).toHaveBeenCalledWith(
+    expect.anything(),
+    "1",
+    expect.any(String)
+  );
 });
 
 it("starts patient intake even when the channel has no linked queue", async () => {

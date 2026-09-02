@@ -1,10 +1,9 @@
 import { dateParts, zonedDate } from "./clinicTime";
 
 const ALLOWED_OUTBOUND_EVENT_TYPES = new Set([
-  "CREATED",
   "REMINDER",
   "MANUAL_REMINDER",
-  "RESCHEDULED"
+  "CANCELLED"
 ]);
 
 export const quarkNotificationCanBeSent = (eventType: string): boolean =>

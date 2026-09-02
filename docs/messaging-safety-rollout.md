@@ -43,18 +43,25 @@ Essa configuração elimina a etapa manual dentro do sistema, mas não cria por 
 
 Relatórios internos continuam sujeitos às barreiras da fila. Verificar o cadastro do gestor não substitui a autorização; a finalidade de relatórios internos deve ser documentada antes de ativá-los. O comando de autorização de consultas não deve ser usado como autorização genérica para outras finalidades.
 
-## Quark: confirmação sem ambiguidade
+## Quark: confirmação e cancelamento simplificados
 
-Cada aviso contém uma referência vinculada à consulta, à sua versão e ao destinatário. Exemplo fictício:
+Quando há uma única consulta futura pendente para o número principal, os novos
+avisos pedem somente `CONFIRMAR` ou `CANCELAR`, sem referência ou código.
+`SIM`/`NÃO`, `1`/`2` e referências antigas continuam reconhecidos apenas para
+compatibilidade com avisos anteriores. Apenas respostas completas e isoladas
+são aceitas; frases como “não quero cancelar” não modificam a agenda.
 
-```text
-CONFIRMAR AB12CD34
-CANCELAR AB12CD34
-```
+Quando o mesmo número possui mais de uma consulta pendente, o bot apresenta uma
+lista com paciente, data e horário. Nesse caso, a resposta precisa indicar a
+posição, por exemplo `CONFIRMAR 2` ou `CANCELAR 2`. Os números `1` e `2`
+continuam pertencendo ao menu quando o paciente está no meio da triagem. A
+lista oferecida fica vinculada às consultas por 30 minutos, sem depender de uma
+nova ordenação da agenda.
 
-Confirmar exige o comando com a referência atual. `SIM`, `NÃO`, `1` e `2` não modificam a agenda. Frases como “não quero cancelar” não são interpretadas como cancelamento.
-
-`CANCELAR AB12CD34` abre uma confirmação de até 10 minutos. Somente `CONFIRMO CANCELAMENTO AB12CD34`, no contexto correspondente, conclui a solicitação. Alteração de horário, destinatário, paciente ou situação exige nova conferência. A lista nunca usa a posição de uma consulta como identidade.
+Antes de qualquer escrita, o servidor confere novamente destinatário, paciente,
+horário, situação e versão da consulta no Quark. Alterações ocorridas depois do
+aviso bloqueiam a decisão e encaminham o caso para revisão. Comandos antigos com
+referência continuam aceitos apenas para compatibilidade com avisos já enviados.
 
 As leituras do Quark podem ser repetidas em falhas transitórias. Escritas não são repetidas automaticamente: se um PATCH falhar de forma ambígua, o sistema consulta o estado remoto. Se não puder comprovar o resultado, bloqueia nova alteração e apresenta **Conferir no Quark**. Esse botão consulta, não repete o PATCH; só libera o registro quando o estado remoto corresponde ao resultado esperado. Divergências exigem análise operacional, sem apagar o histórico de tentativas.
 

@@ -31,9 +31,20 @@ export const HandleInboundAutomation = async (input: Input): Promise<void> => {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     try {
       await withLease(`bot-session:${input.ticketId}`, async () => {
-        const event = await readState(eventId, { status: "UNKNOWN" });
-        if (event.status !== "PENDING") return;
-        await writeState(eventId, { status: "PROCESSING" });
+        const event = await readState<{
+          status: string;
+          startedAt?: string;
+        }>(eventId, { status: "UNKNOWN" });
+        const processingStartedAt = Date.parse(event.startedAt || "");
+        const abandonedProcessing =
+          event.status === "PROCESSING" &&
+          (!Number.isFinite(processingStartedAt) ||
+            Date.now() - processingStartedAt >= 10 * 60 * 1000);
+        if (event.status !== "PENDING" && !abandonedProcessing) return;
+        await writeState(eventId, {
+          status: "PROCESSING",
+          startedAt: new Date().toISOString()
+        });
         await writeState(`bot-current-event:${input.ticketId}`, eventId);
         const ticket = await ShowTicketService(input.ticketId);
         const reply = (body: string, suffix: string, bot = true) =>
@@ -75,17 +86,21 @@ export const HandleInboundAutomation = async (input: Input): Promise<void> => {
               false
             ).catch(() => undefined);
           } else if (!ticket.userId && ticket.status !== "closed") {
-            const botPaused = await readState(
-              `bot-pause:${ticket.id}`,
-              false
-            );
+            const botPaused = await readState(`bot-pause:${ticket.id}`, false);
             const human =
               /^(atendente|humano|ajuda|falar com atendente)$/i.test(
                 input.body.trim()
               );
             const appointmentReply = parseConfirmationReply(input.body);
+            const numericReplyBelongsToIntake =
+              /^[12]$/.test(input.body.trim()) &&
+              Boolean(ticket.intakeStatus) &&
+              !["COMPLETED", "BOOKED", "PAUSED_HUMAN"].includes(
+                ticket.intakeStatus || ""
+              );
             const handled =
               !human &&
+              !numericReplyBelongsToIntake &&
               (!botPaused || !!appointmentReply) &&
               (await HandleQuarkConfirmationReply({
                 ...input,

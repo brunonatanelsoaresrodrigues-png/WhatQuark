@@ -1,6 +1,8 @@
 import {
+  coverageInformationMessage,
   greetingForTime,
-  initialMenuMessage
+  initialMenuMessage,
+  professionalOptionsMessage
 } from "../../../services/PatientIntakeServices/messages";
 
 describe("Patient intake greeting", () => {
@@ -31,8 +33,28 @@ describe("Patient intake greeting", () => {
 
     expect(body).toContain("Bom dia, Maria!");
     expect(body).toContain("1️⃣ Marcar uma consulta");
-    expect(body).toContain("6️⃣ Falar com um atendente");
-    expect(body).toContain("7️⃣ Ativar avisos de consulta neste número");
+    expect(body).toContain("2️⃣ Confirmar ou remarcar uma consulta");
+    expect(body).not.toContain("Consultar horários disponíveis");
+    expect(body).toContain("5️⃣ Falar com um atendente");
+    expect(body).toContain("6️⃣ Ativar avisos de consulta neste número");
     expect(body).toContain("você autoriza lembretes e avisos");
+  });
+
+  it("lists only named professionals", () => {
+    const body = professionalOptionsMessage(["Dra. Maria", "Dr. João"]);
+
+    expect(body).toContain("1️⃣ Dra. Maria");
+    expect(body).toContain("2️⃣ Dr. João");
+    expect(body).not.toContain("Primeiro profissional disponível");
+  });
+
+  it("shows the supplied private prices and sends scheduling to an attendant", () => {
+    const body = coverageInformationMessage("PRIVATE");
+
+    expect(body).toContain("Psiquiatria — R$ 350,00");
+    expect(body).toContain("Anamnese — R$ 100,00");
+    expect(body).toContain("Sessões — R$ 80,00 cada");
+    expect(body).toContain("Laudo — particular — R$ 450,00");
+    expect(body).toContain("falar com um atendente para agendar");
   });
 });

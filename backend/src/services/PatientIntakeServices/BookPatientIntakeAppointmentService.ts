@@ -116,10 +116,18 @@ const selectInsuranceId = (
   return numericId(match?.id);
 };
 
-const requestKey = (ticketId: number, slot: IntakeSlotOption): string =>
+const requestKey = (
+  ticketId: number,
+  slot: IntakeSlotOption,
+  previousAppointmentId?: string
+): string =>
   crypto
     .createHash("sha256")
-    .update(`${ticketId}|${slot.agendaId}|${slot.date}|${slot.time}`)
+    .update(
+      `${ticketId}|${previousAppointmentId || "NEW"}|${slot.agendaId}|${
+        slot.date
+      }|${slot.time}`
+    )
     .digest("hex");
 
 const recoverCreatedAppointment = async (
@@ -159,7 +167,11 @@ const BookPatientIntakeAppointmentService = async (
     return { status: "FAILED", errorCode: "INCOMPLETE_INTAKE_CONTEXT" };
   }
 
-  const key = requestKey(ticket.id, slot);
+  const key = requestKey(
+    ticket.id,
+    slot,
+    context.selectedAppointment?.appointmentId
+  );
   const [attempt, created] = await PatientIntakeBooking.findOrCreate({
     where: { requestKey: key },
     defaults: {

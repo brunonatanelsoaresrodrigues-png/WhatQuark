@@ -47,7 +47,7 @@ export const getQuarkConfig = (): QuarkConfig => {
   const whatsappIdValue = Number(process.env.QUARK_WHATSAPP_ID);
   const reminderSource =
     process.env.QUARK_REMINDER_HOURS === undefined
-      ? "24"
+      ? "24,2"
       : process.env.QUARK_REMINDER_HOURS;
   const reminderHours = reminderSource
     .split(",")

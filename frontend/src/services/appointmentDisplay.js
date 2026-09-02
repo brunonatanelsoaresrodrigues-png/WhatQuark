@@ -70,3 +70,20 @@ const statusLabels = {
 
 export const appointmentStatusLabel = status =>
   statusLabels[status] || status || "Situação não informada";
+
+export const appointmentConfirmationDisabledReason = (
+  appointment,
+  now = Date.now()
+) => {
+  if (appointment?.status === "CONFIRMADO") {
+    return "A consulta já está confirmada.";
+  }
+  if (appointment?.status !== "AGENDADO") {
+    return "A consulta não está agendada.";
+  }
+  const scheduledAt = new Date(appointment?.scheduledAt).getTime();
+  if (!Number.isFinite(scheduledAt) || scheduledAt <= Number(now)) {
+    return "O horário da consulta já passou.";
+  }
+  return "";
+};

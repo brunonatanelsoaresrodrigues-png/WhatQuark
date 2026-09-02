@@ -1,15 +1,20 @@
+import { Op } from "sequelize";
 import AppError from "../../errors/AppError";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import {
   AppointmentPhone,
   AppointmentSnapshot,
   appointmentCanBeConfirmed,
-  appointmentReference,
   quarkPhoneKey
 } from "./appointmentUtils";
 import { getQuarkConfig } from "./config";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
-import { manualReminderAppointmentMessage } from "./messageTemplates";
+import {
+  appointmentNoticeOptOut,
+  confirmationReplyInstructions,
+  manualReminderAppointmentMessage
+} from "./messageTemplates";
 import { createQuarkNotificationOnce } from "./notificationLedger";
 import { QuarkAppointmentDto } from "./types";
 
@@ -35,6 +40,7 @@ interface StoredSnapshot {
   profissionalNome?: string | null;
   procedimentoId?: number | string | null;
   procedimentoNome?: string | null;
+  procedimentoValor?: number | string | null;
   cpf?: string | null;
 }
 
@@ -96,9 +102,11 @@ export const appointmentSnapshotFrom = (
     procedimento: stored.procedimentoNome
       ? {
           id: stored.procedimentoId || undefined,
-          nome: stored.procedimentoNome
+          nome: stored.procedimentoNome,
+          valor: stored.procedimentoValor ?? undefined
         }
       : undefined,
+    valorProcedimento: stored.procedimentoValor ?? undefined,
     statusMarcacao: record.status,
     cpf: stored.cpf || undefined
   };
@@ -167,6 +175,28 @@ const EnqueueManualQuarkReminderService = async ({
           : "ERR_CONSENT_REQUIRED",
         409
       );
+    const existingAutomatic = await QuarkAppointmentNotification.findOne({
+      where: {
+        appointmentId: record.appointmentId,
+        recipientPhone: record.phone,
+        eventType: "REMINDER",
+        status: {
+          [Op.in]: [
+            "PENDING",
+            "PROCESSING",
+            "FAILED_RETRY",
+            "SENT",
+            "UNKNOWN"
+          ]
+        },
+        payload: { [Op.like]: `%${record.scheduleFingerprint}%` }
+      }
+    });
+    if (existingAutomatic)
+      throw new AppError(
+        "Um lembrete automático já foi enviado ou está na fila para esta consulta.",
+        409
+      );
     for (const recipient of snapshot.phones
       .filter(p => p.phone === record.phone)
       .slice(0, 1)) {
@@ -180,15 +210,7 @@ const EnqueueManualQuarkReminderService = async ({
           body: `${manualReminderAppointmentMessage(
             snapshot,
             config.clinicAddress
-          )}\n\nPara confirmar: CONFIRMAR ${appointmentReference(
-            record.appointmentId,
-            record.scheduleFingerprint,
-            recipient.phone
-          )}\nPara solicitar cancelamento: CANCELAR ${appointmentReference(
-            record.appointmentId,
-            record.scheduleFingerprint,
-            recipient.phone
-          )}\n\nPara deixar de receber avisos, responda PARAR.`,
+          )}\n\n${confirmationReplyInstructions}\n\n${appointmentNoticeOptOut}`,
           scheduleFingerprint: record.scheduleFingerprint,
           requestsConfirmation: true,
           validUntil: record.scheduledAt.toISOString()

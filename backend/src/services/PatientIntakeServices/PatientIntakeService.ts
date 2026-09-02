@@ -19,13 +19,21 @@ import {
   saveIntakeContext
 } from "./PatientIntakeContextService";
 import {
-  findFirstIntakeAvailability,
   isPatientIntakeAvailabilityEnabled,
   isPatientIntakeBookingEnabled,
   listIntakeAvailabilityDates,
   listIntakeProfessionals
 } from "./QuarkAvailabilityService";
+import { ApplyQuarkDecision } from "../QuarkClinicServices/ApplyQuarkDecision";
+import ListPatientIntakeAppointmentsService from "./ListPatientIntakeAppointmentsService";
 import {
+  APPOINTMENT_CANCELLATION_FAILURE_MESSAGE,
+  APPOINTMENT_CONFIRMATION_FAILURE_MESSAGE,
+  APPOINTMENT_LOOKUP_FAILURE_MESSAGE,
+  appointmentActionMessage,
+  appointmentCancelledMessage,
+  appointmentConfirmedMessage,
+  appointmentOptionsMessage,
   availabilityDatesMessage,
   availabilityTimesMessage,
   BIRTH_DATE_PROMPT,
@@ -33,17 +41,25 @@ import {
   bookingSummaryMessage,
   BOOKING_FAILURE_MESSAGE,
   BOOKING_PROCESSING_MESSAGE,
+  cancellationActionMessage,
+  COVERAGE_INFO_PROMPT,
+  coverageInformationMessage,
   CPF_PROMPT,
   DIRECT_HANDOFF_MESSAGE,
+  EXISTING_APPOINTMENT_BIRTH_DATE_PROMPT,
   HANDOFF_MESSAGE,
   INSURANCE_PROMPT,
   NAME_PROMPT,
   NO_AVAILABILITY_MESSAGE,
+  NO_UPCOMING_APPOINTMENTS_MESSAGE,
   PAYMENT_PROMPT,
   PROFESSIONAL_NAME_PROMPT,
   PROFESSIONAL_PREFERENCE_PROMPT,
   professionalOptionsMessage,
   QUARK_AVAILABILITY_FAILURE_MESSAGE,
+  RESCHEDULE_HANDOFF_MESSAGE,
+  RESCHEDULE_REVIEW_MESSAGE,
+  rescheduleSuccessMessage,
   SLOT_NO_LONGER_AVAILABLE_MESSAGE,
   SPECIALTY_PROMPT,
   initialMenuMessage,
@@ -55,6 +71,11 @@ export type IntakeStatus =
   | "AWAITING_CPF"
   | "AWAITING_NAME"
   | "AWAITING_BIRTH_DATE"
+  | "AWAITING_EXISTING_BIRTH_DATE"
+  | "AWAITING_APPOINTMENT_SELECTION"
+  | "AWAITING_APPOINTMENT_ACTION"
+  | "AWAITING_COVERAGE_INFO"
+  | "AWAITING_INFO_SCHEDULING"
   | "AWAITING_SPECIALTY"
   | "AWAITING_PROFESSIONAL_PREFERENCE"
   | "AWAITING_PROFESSIONAL_NAME"
@@ -82,11 +103,18 @@ export interface PatientIntakeResult {
   showQueueMenu: boolean;
 }
 
+const CURRENT_MENU_VERSION = 2;
+
 const conversationStatuses = new Set<IntakeStatus>([
   "AWAITING_MENU",
   "AWAITING_CPF",
   "AWAITING_NAME",
   "AWAITING_BIRTH_DATE",
+  "AWAITING_EXISTING_BIRTH_DATE",
+  "AWAITING_APPOINTMENT_SELECTION",
+  "AWAITING_APPOINTMENT_ACTION",
+  "AWAITING_COVERAGE_INFO",
+  "AWAITING_INFO_SCHEDULING",
   "AWAITING_SPECIALTY",
   "AWAITING_PROFESSIONAL_PREFERENCE",
   "AWAITING_PROFESSIONAL_NAME",
@@ -241,11 +269,65 @@ const nextAfterName = async (
   context: PatientIntakeContext
 ): Promise<PatientIntakeResult> => {
   await persistContactCpf(ticket, context.cpf);
-  if (
-    ticket.intakeReason === "CONFIRM_OR_RESCHEDULE" ||
-    ticket.intakeReason === "CANCEL"
-  ) {
-    return completeIntake(ticket);
+  if (ticket.intakeReason === "CONFIRM_OR_RESCHEDULE") {
+    await saveIntakeContext(ticket, context, {
+      intakeStatus: "AWAITING_EXISTING_BIRTH_DATE"
+    });
+    await sendBotMessage(
+      ticket,
+      withIntakeNavigation(EXISTING_APPOINTMENT_BIRTH_DATE_PROMPT)
+    );
+    return { handled: true, showQueueMenu: false };
+  }
+  if (ticket.intakeReason === "CANCEL") {
+    try {
+      const lookup = await ListPatientIntakeAppointmentsService(
+        context.cpf || "",
+        undefined,
+        ticket.contact?.number || "",
+        context.patientName
+      );
+      if (lookup.status !== "FOUND") {
+        return completeIntake(ticket, NO_UPCOMING_APPOINTMENTS_MESSAGE, {
+          source: lookup.status
+        });
+      }
+      context = {
+        ...context,
+        patientName: lookup.patientName,
+        appointmentOptions: lookup.appointments,
+        selectedAppointment:
+          lookup.appointments.length === 1 ? lookup.appointments[0] : undefined,
+        appointmentAction: undefined
+      };
+      if (context.selectedAppointment) {
+        await saveIntakeContext(ticket, context, {
+          intakeStatus: "AWAITING_APPOINTMENT_ACTION"
+        });
+        await sendBotMessage(
+          ticket,
+          cancellationActionMessage(context.selectedAppointment)
+        );
+        return { handled: true, showQueueMenu: false };
+      }
+      await saveIntakeContext(ticket, context, {
+        intakeStatus: "AWAITING_APPOINTMENT_SELECTION"
+      });
+      await sendBotMessage(
+        ticket,
+        appointmentOptionsMessage(lookup.appointments)
+      );
+      return { handled: true, showQueueMenu: false };
+    } catch (error) {
+      logger.error({
+        info: "Could not list appointments for cancellation intake",
+        ticketId: ticket.id,
+        err: error
+      });
+      return completeIntake(ticket, APPOINTMENT_LOOKUP_FAILURE_MESSAGE, {
+        source: "QUARK_CANCELLATION_LOOKUP_ERROR"
+      });
+    }
   }
   if (ticket.intakeReason === "INSURANCE_OR_PRICE") {
     await saveIntakeContext(ticket, context, {
@@ -263,29 +345,40 @@ const nextAfterName = async (
 
 const startReason = async (
   ticket: Ticket,
-  choice: number
+  choice: number,
+  menuVersion: number | undefined
 ): Promise<PatientIntakeResult> => {
-  const reasons: Record<number, IntakeReason> = {
-    1: "SCHEDULE",
-    2: "AVAILABILITY",
-    3: "CONFIRM_OR_RESCHEDULE",
-    4: "CANCEL",
-    5: "INSURANCE_OR_PRICE",
-    6: "HUMAN",
-    7: "NOTICE_CONSENT"
-  };
+  const reasons: Record<number, IntakeReason> =
+    menuVersion === CURRENT_MENU_VERSION
+      ? {
+          1: "SCHEDULE",
+          2: "CONFIRM_OR_RESCHEDULE",
+          3: "CANCEL",
+          4: "INSURANCE_OR_PRICE",
+          5: "HUMAN",
+          6: "NOTICE_CONSENT"
+        }
+      : {
+          1: "SCHEDULE",
+          2: "AVAILABILITY",
+          3: "CONFIRM_OR_RESCHEDULE",
+          4: "CANCEL",
+          5: "INSURANCE_OR_PRICE",
+          6: "HUMAN",
+          7: "NOTICE_CONSENT"
+        };
   const reason = reasons[choice];
   if (reason === "NOTICE_CONSENT") {
     await setPreference(
       ticket.contact.number,
       "GRANTED",
-      "Paciente selecionou a opção 7 do menu de atendimento no WhatsApp",
+      `Paciente selecionou a opção ${choice} do menu de atendimento no WhatsApp`,
       null,
       "Solicitante pelo WhatsApp"
     );
     await saveIntakeContext(
       ticket,
-      {},
+      { menuVersion: CURRENT_MENU_VERSION },
       {
         intakeStatus: "AWAITING_MENU",
         intakeReason: null
@@ -312,9 +405,21 @@ const startReason = async (
     });
     return { handled: true, showQueueMenu: true };
   }
+  if (reason === "INSURANCE_OR_PRICE") {
+    await saveIntakeContext(
+      ticket,
+      { menuVersion: CURRENT_MENU_VERSION },
+      {
+        intakeReason: reason,
+        intakeStatus: "AWAITING_COVERAGE_INFO"
+      }
+    );
+    await sendBotMessage(ticket, withIntakeNavigation(COVERAGE_INFO_PROMPT));
+    return { handled: true, showQueueMenu: false };
+  }
   await saveIntakeContext(
     ticket,
-    {},
+    { menuVersion: CURRENT_MENU_VERSION },
     {
       intakeReason: reason,
       intakeStatus: "AWAITING_CPF"
@@ -354,7 +459,8 @@ const summaryPrompt = (context: PatientIntakeContext): string =>
     date: context.selectedSlot?.date || "Data",
     time: context.selectedSlot?.time || "Horário",
     payment: paymentLabel(context),
-    automaticBooking: isPatientIntakeBookingEnabled()
+    automaticBooking: isPatientIntakeBookingEnabled(),
+    reschedule: context.appointmentAction === "RESCHEDULE"
   });
 
 const sendPromptForStatus = async (
@@ -376,6 +482,44 @@ const sendPromptForStatus = async (
   }
   if (status === "AWAITING_BIRTH_DATE") {
     await sendBotMessage(ticket, withIntakeNavigation(BIRTH_DATE_PROMPT));
+    return;
+  }
+  if (status === "AWAITING_EXISTING_BIRTH_DATE") {
+    await sendBotMessage(
+      ticket,
+      withIntakeNavigation(EXISTING_APPOINTMENT_BIRTH_DATE_PROMPT)
+    );
+    return;
+  }
+  if (status === "AWAITING_APPOINTMENT_SELECTION") {
+    await sendBotMessage(
+      ticket,
+      appointmentOptionsMessage(context.appointmentOptions || [])
+    );
+    return;
+  }
+  if (status === "AWAITING_APPOINTMENT_ACTION") {
+    if (context.selectedAppointment) {
+      await sendBotMessage(
+        ticket,
+        ticket.intakeReason === "CANCEL"
+          ? cancellationActionMessage(context.selectedAppointment)
+          : appointmentActionMessage(context.selectedAppointment)
+      );
+    }
+    return;
+  }
+  if (status === "AWAITING_COVERAGE_INFO") {
+    await sendBotMessage(ticket, withIntakeNavigation(COVERAGE_INFO_PROMPT));
+    return;
+  }
+  if (status === "AWAITING_INFO_SCHEDULING") {
+    if (context.coverageInfo) {
+      await sendBotMessage(
+        ticket,
+        coverageInformationMessage(context.coverageInfo)
+      );
+    }
     return;
   }
   if (status === "AWAITING_SPECIALTY") {
@@ -444,18 +588,63 @@ const trimmedContextFor = (
     delete next.selectedSlot;
     delete next.timePage;
   };
-  if (status === "AWAITING_CPF") return {};
+  if (status === "AWAITING_CPF") {
+    return { menuVersion: next.menuVersion || CURRENT_MENU_VERSION };
+  }
   if (status === "AWAITING_NAME") {
-    return { cpf: next.cpf };
+    return { menuVersion: next.menuVersion, cpf: next.cpf };
   }
   if (status === "AWAITING_BIRTH_DATE") {
-    return { cpf: next.cpf, patientName: next.patientName };
+    return {
+      menuVersion: next.menuVersion,
+      cpf: next.cpf,
+      patientName: next.patientName
+    };
+  }
+  if (status === "AWAITING_EXISTING_BIRTH_DATE") {
+    return {
+      menuVersion: next.menuVersion,
+      cpf: next.cpf,
+      patientName: next.patientName
+    };
+  }
+  if (status === "AWAITING_APPOINTMENT_SELECTION") {
+    return {
+      menuVersion: next.menuVersion,
+      cpf: next.cpf,
+      patientName: next.patientName,
+      birthDate: next.birthDate,
+      appointmentOptions: next.appointmentOptions
+    };
+  }
+  if (status === "AWAITING_APPOINTMENT_ACTION") {
+    return {
+      menuVersion: next.menuVersion,
+      cpf: next.cpf,
+      patientName: next.patientName,
+      birthDate: next.birthDate,
+      appointmentOptions: next.appointmentOptions,
+      selectedAppointment: next.selectedAppointment
+    };
+  }
+  if (status === "AWAITING_COVERAGE_INFO") {
+    return { menuVersion: next.menuVersion };
+  }
+  if (status === "AWAITING_INFO_SCHEDULING") {
+    return {
+      menuVersion: next.menuVersion,
+      coverageInfo: next.coverageInfo
+    };
   }
   if (status === "AWAITING_SPECIALTY") {
     return {
+      menuVersion: next.menuVersion,
       cpf: next.cpf,
       patientName: next.patientName,
-      birthDate: next.birthDate
+      birthDate: next.birthDate,
+      appointmentOptions: next.appointmentOptions,
+      selectedAppointment: next.selectedAppointment,
+      appointmentAction: next.appointmentAction
     };
   }
   if (status === "AWAITING_PAYMENT") {
@@ -500,7 +689,22 @@ const previousStatus = (
   if (status === "AWAITING_CPF") return "AWAITING_MENU";
   if (status === "AWAITING_NAME") return "AWAITING_CPF";
   if (status === "AWAITING_BIRTH_DATE") return "AWAITING_NAME";
-  if (status === "AWAITING_SPECIALTY") return "AWAITING_BIRTH_DATE";
+  if (status === "AWAITING_EXISTING_BIRTH_DATE") return "AWAITING_CPF";
+  if (status === "AWAITING_APPOINTMENT_SELECTION") {
+    return context.birthDate ? "AWAITING_EXISTING_BIRTH_DATE" : "AWAITING_NAME";
+  }
+  if (status === "AWAITING_APPOINTMENT_ACTION") {
+    return "AWAITING_APPOINTMENT_SELECTION";
+  }
+  if (status === "AWAITING_COVERAGE_INFO") return "AWAITING_MENU";
+  if (status === "AWAITING_INFO_SCHEDULING") {
+    return "AWAITING_COVERAGE_INFO";
+  }
+  if (status === "AWAITING_SPECIALTY") {
+    return context.appointmentAction === "RESCHEDULE"
+      ? "AWAITING_APPOINTMENT_ACTION"
+      : "AWAITING_BIRTH_DATE";
+  }
   if (status === "AWAITING_PAYMENT") {
     return ticketReasonNeedsSpecialty(context)
       ? "AWAITING_SPECIALTY"
@@ -538,13 +742,15 @@ const handleBack = async (
   if (target === "AWAITING_MENU") {
     await saveIntakeContext(
       ticket,
-      {},
+      { menuVersion: CURRENT_MENU_VERSION },
       {
         intakeStatus: target,
         intakeReason: null
       }
     );
-    await sendPromptForStatus(ticket, target, {});
+    await sendPromptForStatus(ticket, target, {
+      menuVersion: CURRENT_MENU_VERSION
+    });
     return { handled: true, showQueueMenu: false };
   }
   const nextContext = trimmedContextFor(target, context);
@@ -558,7 +764,7 @@ const handleMenuCommand = async (
 ): Promise<PatientIntakeResult> => {
   await saveIntakeContext(
     ticket,
-    {},
+    { menuVersion: CURRENT_MENU_VERSION },
     {
       intakeStatus: "AWAITING_MENU",
       intakeReason: null
@@ -574,11 +780,11 @@ const showProfessionals = async (
 ): Promise<PatientIntakeResult> => {
   if (!isPatientIntakeAvailabilityEnabled() || !context.specialty) {
     await saveIntakeContext(ticket, context, {
-      intakeStatus: "AWAITING_PROFESSIONAL_PREFERENCE"
+      intakeStatus: "AWAITING_PROFESSIONAL_NAME"
     });
     await sendBotMessage(
       ticket,
-      withIntakeNavigation(PROFESSIONAL_PREFERENCE_PROMPT)
+      withIntakeNavigation(PROFESSIONAL_NAME_PROMPT)
     );
     return { handled: true, showQueueMenu: false };
   }
@@ -694,6 +900,46 @@ const finishBooking = async (
       source: "QUARK_BOOKING_ERROR"
     });
   }
+  if (
+    context.appointmentAction === "RESCHEDULE" &&
+    context.selectedAppointment
+  ) {
+    try {
+      await ApplyQuarkDecision({
+        appointmentId: context.selectedAppointment.appointmentId,
+        phone: ticket.contact?.number || "",
+        choice: 2,
+        fingerprint: context.selectedAppointment.scheduleFingerprint
+      });
+    } catch (error) {
+      logger.error({
+        info: "New appointment was created but the previous one was not cancelled",
+        ticketId: ticket.id,
+        previousAppointmentId: context.selectedAppointment.appointmentId,
+        newAppointmentId: result.appointmentId,
+        err: error
+      });
+      return completeIntake(ticket, RESCHEDULE_REVIEW_MESSAGE, {
+        source: "QUARK_RESCHEDULE_REVIEW_REQUIRED",
+        previousAppointmentId: context.selectedAppointment.appointmentId,
+        newAppointmentId: result.appointmentId
+      });
+    }
+    return completeIntake(
+      ticket,
+      rescheduleSuccessMessage({
+        patientName: context.patientName || "Paciente",
+        professional: context.selectedProfessional?.name || "Profissional",
+        date: context.selectedSlot?.date || "",
+        time: context.selectedSlot?.time || ""
+      }),
+      {
+        source: "QUARK_RESCHEDULE",
+        previousAppointmentId: context.selectedAppointment.appointmentId,
+        newAppointmentId: result.appointmentId
+      }
+    );
+  }
   return completeIntake(
     ticket,
     bookingSuccessMessage({
@@ -727,7 +973,7 @@ const runPatientIntake = async (
     );
     await saveIntakeContext(
       ticket,
-      {},
+      { menuVersion: CURRENT_MENU_VERSION },
       {
         intakeStatus: "AWAITING_MENU",
         intakeReason: null,
@@ -755,7 +1001,7 @@ const runPatientIntake = async (
   ) {
     await saveIntakeContext(
       ticket,
-      {},
+      { menuVersion: CURRENT_MENU_VERSION },
       {
         intakeStatus: "AWAITING_MENU",
         intakeReason: null
@@ -774,15 +1020,21 @@ const runPatientIntake = async (
   if (normalizedBody === "0") return handleBack(ticket, status, context);
 
   if (status === "AWAITING_MENU") {
-    const choice = numberedChoice(body, 7);
+    const currentMenu = context.menuVersion === CURRENT_MENU_VERSION;
+    const choice = numberedChoice(body, currentMenu ? 6 : 7);
     if (!choice) {
+      await saveIntakeContext(
+        ticket,
+        { menuVersion: CURRENT_MENU_VERSION },
+        { intakeStatus: "AWAITING_MENU", intakeReason: null }
+      );
       await sendBotMessage(
         ticket,
         `Não conseguimos identificar a opção.\n\n${initialMenuMessage()}`
       );
       return { handled: true, showQueueMenu: false };
     }
-    return startReason(ticket, choice);
+    return startReason(ticket, choice, context.menuVersion);
   }
 
   if (status === "AWAITING_CPF") {
@@ -796,8 +1048,18 @@ const runPatientIntake = async (
       return { handled: true, showQueueMenu: false };
     }
     context = { ...context, cpf: body.replace(/\D/g, "") };
-    await saveIntakeContext(ticket, context, { intakeStatus: "AWAITING_NAME" });
     await persistContactCpf(ticket, context.cpf);
+    if (ticket.intakeReason === "CONFIRM_OR_RESCHEDULE") {
+      await saveIntakeContext(ticket, context, {
+        intakeStatus: "AWAITING_EXISTING_BIRTH_DATE"
+      });
+      await sendBotMessage(
+        ticket,
+        withIntakeNavigation(EXISTING_APPOINTMENT_BIRTH_DATE_PROMPT)
+      );
+      return { handled: true, showQueueMenu: false };
+    }
+    await saveIntakeContext(ticket, context, { intakeStatus: "AWAITING_NAME" });
     await sendBotMessage(ticket, withIntakeNavigation(NAME_PROMPT));
     return { handled: true, showQueueMenu: false };
   }
@@ -834,6 +1096,224 @@ const runPatientIntake = async (
     return { handled: true, showQueueMenu: false };
   }
 
+  if (status === "AWAITING_EXISTING_BIRTH_DATE") {
+    if (!isValidBirthDate(body)) {
+      await sendBotMessage(
+        ticket,
+        `A data informada parece inválida. Use o formato DD/MM/AAAA.\n\n${withIntakeNavigation(
+          EXISTING_APPOINTMENT_BIRTH_DATE_PROMPT
+        )}`
+      );
+      return { handled: true, showQueueMenu: false };
+    }
+    try {
+      const lookup = await ListPatientIntakeAppointmentsService(
+        context.cpf || "",
+        body.trim(),
+        ticket.contact?.number || ""
+      );
+      if (lookup.status !== "FOUND") {
+        return completeIntake(ticket, NO_UPCOMING_APPOINTMENTS_MESSAGE, {
+          source: lookup.status
+        });
+      }
+      context = {
+        ...context,
+        birthDate: body.trim(),
+        patientName: lookup.patientName,
+        appointmentOptions: lookup.appointments,
+        selectedAppointment: undefined,
+        appointmentAction: undefined
+      };
+      await saveIntakeContext(ticket, context, {
+        intakeStatus: "AWAITING_APPOINTMENT_SELECTION"
+      });
+      await sendBotMessage(
+        ticket,
+        appointmentOptionsMessage(lookup.appointments)
+      );
+      return { handled: true, showQueueMenu: false };
+    } catch (error) {
+      logger.error({
+        info: "Could not list appointments for patient intake",
+        ticketId: ticket.id,
+        err: error
+      });
+      return completeIntake(ticket, APPOINTMENT_LOOKUP_FAILURE_MESSAGE, {
+        source: "QUARK_APPOINTMENT_LOOKUP_ERROR"
+      });
+    }
+  }
+
+  if (status === "AWAITING_APPOINTMENT_SELECTION") {
+    const appointments = context.appointmentOptions || [];
+    const choice = numberedChoice(body, appointments.length);
+    if (!choice) {
+      await sendBotMessage(
+        ticket,
+        `Escolha uma consulta válida.\n\n${appointmentOptionsMessage(
+          appointments
+        )}`
+      );
+      return { handled: true, showQueueMenu: false };
+    }
+    const selectedAppointment = appointments[choice - 1];
+    context = {
+      ...context,
+      selectedAppointment,
+      appointmentAction: undefined
+    };
+    await saveIntakeContext(ticket, context, {
+      intakeStatus: "AWAITING_APPOINTMENT_ACTION"
+    });
+    await sendBotMessage(
+      ticket,
+      ticket.intakeReason === "CANCEL"
+        ? cancellationActionMessage(selectedAppointment)
+        : appointmentActionMessage(selectedAppointment)
+    );
+    return { handled: true, showQueueMenu: false };
+  }
+
+  if (status === "AWAITING_APPOINTMENT_ACTION") {
+    const choice = numberedChoice(body, 2);
+    const appointment = context.selectedAppointment;
+    if (!choice || !appointment) {
+      if (appointment) {
+        await sendBotMessage(
+          ticket,
+          ticket.intakeReason === "CANCEL"
+            ? cancellationActionMessage(appointment)
+            : appointmentActionMessage(appointment)
+        );
+      }
+      return { handled: true, showQueueMenu: false };
+    }
+    if (ticket.intakeReason === "CANCEL") {
+      if (choice === 2) {
+        return completeIntake(ticket, RESCHEDULE_HANDOFF_MESSAGE, {
+          source: "QUARK_RESCHEDULE_HANDOFF",
+          appointmentId: appointment.appointmentId
+        });
+      }
+      try {
+        await ApplyQuarkDecision({
+          appointmentId: appointment.appointmentId,
+          phone: ticket.contact?.number || "",
+          choice: 2,
+          fingerprint: appointment.scheduleFingerprint
+        });
+        return completeIntake(
+          ticket,
+          appointmentCancelledMessage(appointment),
+          {
+            source: "QUARK_APPOINTMENT_CANCELLED",
+            appointmentId: appointment.appointmentId
+          }
+        );
+      } catch (error) {
+        logger.error({
+          info: "Could not cancel appointment from patient intake",
+          ticketId: ticket.id,
+          appointmentId: appointment.appointmentId,
+          err: error
+        });
+        return completeIntake(
+          ticket,
+          APPOINTMENT_CANCELLATION_FAILURE_MESSAGE,
+          {
+            source: "QUARK_APPOINTMENT_CANCELLATION_ERROR",
+            appointmentId: appointment.appointmentId
+          }
+        );
+      }
+    }
+    if (choice === 1) {
+      try {
+        await ApplyQuarkDecision({
+          appointmentId: appointment.appointmentId,
+          phone: ticket.contact?.number || "",
+          choice: 1,
+          fingerprint: appointment.scheduleFingerprint
+        });
+        return completeIntake(
+          ticket,
+          appointmentConfirmedMessage(appointment),
+          {
+            source: "QUARK_APPOINTMENT_CONFIRMED",
+            appointmentId: appointment.appointmentId
+          }
+        );
+      } catch (error) {
+        logger.error({
+          info: "Could not confirm appointment from patient intake",
+          ticketId: ticket.id,
+          appointmentId: appointment.appointmentId,
+          err: error
+        });
+        return completeIntake(
+          ticket,
+          APPOINTMENT_CONFIRMATION_FAILURE_MESSAGE,
+          {
+            source: "QUARK_APPOINTMENT_CONFIRMATION_ERROR",
+            appointmentId: appointment.appointmentId
+          }
+        );
+      }
+    }
+    context = {
+      ...trimmedContextFor("AWAITING_SPECIALTY", context),
+      selectedAppointment: appointment,
+      appointmentAction: "RESCHEDULE"
+    };
+    await saveIntakeContext(ticket, context, {
+      intakeStatus: "AWAITING_SPECIALTY"
+    });
+    await sendBotMessage(ticket, withIntakeNavigation(SPECIALTY_PROMPT));
+    return { handled: true, showQueueMenu: false };
+  }
+
+  if (status === "AWAITING_COVERAGE_INFO") {
+    const choice = numberedChoice(body, 2);
+    if (!choice) {
+      await sendBotMessage(
+        ticket,
+        `Escolha uma modalidade válida.\n\n${withIntakeNavigation(
+          COVERAGE_INFO_PROMPT
+        )}`
+      );
+      return { handled: true, showQueueMenu: false };
+    }
+    const coverageInfo = choice === 1 ? "HAPVIDA" : "PRIVATE";
+    context = {
+      ...context,
+      coverageInfo
+    };
+    await saveIntakeContext(ticket, context, {
+      intakeStatus: "AWAITING_INFO_SCHEDULING"
+    });
+    await sendBotMessage(ticket, coverageInformationMessage(coverageInfo));
+    return { handled: true, showQueueMenu: false };
+  }
+
+  if (status === "AWAITING_INFO_SCHEDULING") {
+    const choice = numberedChoice(body, 2);
+    if (!choice) {
+      if (context.coverageInfo) {
+        await sendBotMessage(
+          ticket,
+          coverageInformationMessage(context.coverageInfo)
+        );
+      }
+      return { handled: true, showQueueMenu: false };
+    }
+    if (choice === 2) return handleMenuCommand(ticket);
+    return completeIntake(ticket, DIRECT_HANDOFF_MESSAGE, {
+      source: "COVERAGE_INFO_SCHEDULING_HANDOFF",
+      coverage: context.coverageInfo
+    });
+  }
+
   if (status === "AWAITING_SPECIALTY") {
     const choice = numberedChoice(body, 3);
     if (!choice) {
@@ -849,10 +1329,17 @@ const runPatientIntake = async (
       3: "REPORT"
     };
     context = {
-      cpf: context.cpf,
-      patientName: context.patientName,
-      birthDate: context.birthDate,
-      specialty: specialties[choice]
+      ...context,
+      specialty: specialties[choice],
+      payment: undefined,
+      insurance: undefined,
+      professionalOptions: undefined,
+      selectedProfessional: undefined,
+      dateOptions: undefined,
+      selectedDate: undefined,
+      timeOptions: undefined,
+      selectedSlot: undefined,
+      timePage: 0
     };
     await saveIntakeContext(ticket, context, {
       intakeStatus: "AWAITING_PAYMENT"
@@ -902,6 +1389,12 @@ const runPatientIntake = async (
 
   if (status === "AWAITING_PROFESSIONAL_PREFERENCE") {
     const choice = numberedChoice(body, 2);
+    if (!choice && isValidName(body)) {
+      return completeIntake(ticket, HANDOFF_MESSAGE, {
+        source: "LEGACY_PROFESSIONAL_PREFERENCE",
+        professionalName: body.trim()
+      });
+    }
     if (!choice) {
       await sendBotMessage(
         ticket,
@@ -936,33 +1429,13 @@ const runPatientIntake = async (
       }
       return completeIntake(ticket);
     }
-    const choice = numberedChoice(body, professionals.length + 1);
+    const choice = numberedChoice(body, professionals.length);
     if (!choice) {
       await sendBotMessage(
         ticket,
         `Escolha uma opção válida.\n\n${professionalPrompt(context)}`
       );
       return { handled: true, showQueueMenu: false };
-    }
-    if (choice === professionals.length + 1) {
-      try {
-        const first = await findFirstIntakeAvailability(professionals);
-        if (!first) {
-          await sendBotMessage(
-            ticket,
-            `${NO_AVAILABILITY_MESSAGE}\n\n${professionalPrompt(context)}`
-          );
-          return { handled: true, showQueueMenu: false };
-        }
-        return showDates(ticket, context, first.professional, first.dates);
-      } catch (error) {
-        logger.error({
-          info: "Could not find first Quark availability",
-          ticketId: ticket.id,
-          err: error
-        });
-        return completeIntake(ticket, QUARK_AVAILABILITY_FAILURE_MESSAGE);
-      }
     }
     return showDates(ticket, context, professionals[choice - 1]);
   }
@@ -1029,15 +1502,9 @@ const runPatientIntake = async (
       return handleBack(ticket, status, context);
     }
     if (!isPatientIntakeBookingEnabled()) {
-      return completeIntake(
-        ticket,
-        `Perfeito! Registrei sua preferência por *${
-          context.selectedProfessional?.name || "profissional"
-        }*, no dia *${context.selectedSlot?.date}*, às *${
-          context.selectedSlot?.time
-        }*.\n\nNossa equipe dará continuidade à reserva no QuarkClinic. 💚`,
-        { source: "QUARK_SLOT_SELECTED" }
-      );
+      return completeIntake(ticket, BOOKING_FAILURE_MESSAGE, {
+        source: "QUARK_BOOKING_DISABLED"
+      });
     }
     await saveIntakeContext(ticket, context, {
       intakeStatus: "BOOKING_PROCESSING"

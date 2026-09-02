@@ -130,7 +130,7 @@ export const confirmAppointment = async (
   req: Request,
   res: Response
 ): Promise<Response> => {
-  ensureAdmin(req);
+  await ensureViewAccess(req);
   const result = await ConfirmQuarkAppointmentFromDashboardService({
     appointmentId: req.params.appointmentId,
     actorUserId: Number(req.user.id)

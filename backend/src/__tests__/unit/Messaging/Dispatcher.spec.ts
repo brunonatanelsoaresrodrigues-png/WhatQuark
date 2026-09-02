@@ -3,14 +3,17 @@ import OutboundMessage from "../../../models/OutboundMessage";
 import Whatsapp from "../../../models/Whatsapp";
 import Ticket from "../../../models/Ticket";
 import Contact from "../../../models/Contact";
+import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import { assertExecution } from "../../../services/MessagingServices/policy";
 import { getPreference } from "../../../services/MessagingServices/preferences";
 import { readState } from "../../../services/MessagingServices/state";
 import {
   consentErrorForSend,
   enqueueOutbound,
+  outboundPriorityFor,
   processOutbound,
   stopDispatcher,
+  usesGenericRecipientPacing,
   validateSend
 } from "../../../services/MessagingServices/dispatcher";
 jest.mock("../../../models/OutboundMessage", () => ({
@@ -33,6 +36,10 @@ jest.mock("../../../models/Ticket", () => ({
   default: { findByPk: jest.fn() }
 }));
 jest.mock("../../../models/Contact", () => ({
+  __esModule: true,
+  default: { findByPk: jest.fn() }
+}));
+jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
   default: { findByPk: jest.fn() }
 }));
@@ -67,6 +74,7 @@ beforeEach(() => {
   process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
   (getPreference as jest.Mock).mockResolvedValue({ consent: "GRANTED" });
   (Whatsapp.findByPk as jest.Mock).mockResolvedValue({ status: "CONNECTED" });
+  (QuarkAppointmentNotification.findByPk as jest.Mock).mockResolvedValue(null);
   (readState as jest.Mock).mockImplementation((key, fallback) =>
     Promise.resolve(
       key.startsWith("inbound-time")
@@ -136,9 +144,35 @@ it("never bypasses an appointment notice opt-out", () => {
   ).toBe("ERR_RECIPIENT_OPTED_OUT");
 });
 
+it("does not let generic recipient limits postpone appointment notices", () => {
+  expect(
+    usesGenericRecipientPacing({
+      proactive: true,
+      appointmentNotice: true,
+      appointmentId: "42"
+    })
+  ).toBe(false);
+  expect(usesGenericRecipientPacing({ proactive: true })).toBe(true);
+});
+
+it("prioritizes appointment notices below human replies and above bot traffic", () => {
+  expect(outboundPriorityFor({ origin: "HUMAN" })).toBe(10);
+  expect(
+    outboundPriorityFor({
+      proactive: true,
+      appointmentNotice: true,
+      appointmentId: "42"
+    })
+  ).toBe(6);
+  expect(outboundPriorityFor({})).toBe(5);
+  expect(outboundPriorityFor({ proactive: true })).toBe(1);
+});
+
 it("bypasses patient consent only for an authorized internal report", () => {
   const policy = { proactive: true, internalReport: true };
-  expect(consentErrorForSend(preference("UNKNOWN"), policy, false, true)).toBeNull();
+  expect(
+    consentErrorForSend(preference("UNKNOWN"), policy, false, true)
+  ).toBeNull();
   expect(consentErrorForSend(preference("UNKNOWN"), policy, false, false)).toBe(
     "ERR_CONSENT_REQUIRED"
   );
@@ -170,11 +204,26 @@ it("does not resend after a post-send storage failure", async () => {
   await processOutbound(transport);
   expect(transport.sendMessage).toHaveBeenCalledTimes(1);
 });
-it("shares the channel hourly cap across message origins", async () => {
+it("applies the channel hourly cap to automated messages", async () => {
   (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
   await processOutbound(transport);
+  const quotaWhere = (OutboundMessage.count as jest.Mock).mock.calls[0][0]
+    .where;
+  expect(quotaWhere.priority).toBeDefined();
   expect(transport.sendMessage).not.toHaveBeenCalled();
   expect(row.status).toBe("PENDING");
+});
+it("never applies the automated hourly cap to attendant messages", async () => {
+  row.payload = JSON.stringify({
+    to: "5511999990000@c.us",
+    body: "human reply",
+    options: { policy: { origin: "HUMAN", sentByUserId: 7 } }
+  });
+  (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
+  await processOutbound(transport);
+  expect(OutboundMessage.count).not.toHaveBeenCalled();
+  expect(transport.sendMessage).toHaveBeenCalledTimes(1);
+  expect(row.status).toBe("SENT");
 });
 it("expires delayed notices before considering quota", async () => {
   row.payload = JSON.stringify({
@@ -193,6 +242,28 @@ it("checks opt-out again immediately before delivery", async () => {
   (getPreference as jest.Mock).mockResolvedValue({ consent: "REVOKED" });
   await processOutbound(transport);
   expect(row.errorCode).toBe("ERR_RECIPIENT_OPTED_OUT");
+  expect(transport.sendMessage).not.toHaveBeenCalled();
+});
+it("blocks an old immediate confirmation already waiting in the central queue", async () => {
+  process.env.WHATSAPP_PROVIDER = "whaileys";
+  row.payload = JSON.stringify({
+    to: "5511999990000@c.us",
+    body: "Confirme uma consulta futura",
+    options: {
+      policy: {
+        appointmentNotice: true,
+        idempotencyKey: "quark-notice:94869"
+      }
+    }
+  });
+  (QuarkAppointmentNotification.findByPk as jest.Mock).mockResolvedValue({
+    eventType: "CREATED"
+  });
+
+  await processOutbound(transport);
+
+  expect(row.status).toBe("BLOCKED");
+  expect(row.errorCode).toBe("ERR_NOTICE_OUTSIDE_REMINDER_WINDOW");
   expect(transport.sendMessage).not.toHaveBeenCalled();
 });
 it("requires a template outside the service window", async () => {

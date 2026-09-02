@@ -4,6 +4,7 @@ import sequelize from "../../database";
 import QuarkAppointment from "../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../models/QuarkAppointmentRecipient";
+import QuarkAppointmentResponse from "../../models/QuarkAppointmentResponse";
 import QuarkSyncState from "../../models/QuarkSyncState";
 import { logger } from "../../utils/logger";
 import { assertNotShuttingDown } from "../../utils/shutdownState";
@@ -12,8 +13,7 @@ import {
   appointmentCanBeConfirmed,
   appointmentIsCancelled,
   buildAppointmentSnapshot,
-  quarkPhoneKey,
-  appointmentReference
+  quarkPhoneKey
 } from "./appointmentUtils";
 import { QuarkConfig } from "./config";
 import {
@@ -23,8 +23,8 @@ import {
 import { createQuarkNotificationOnce } from "./notificationLedger";
 import {
   cancelledAppointmentMessage,
-  changedAppointmentMessage,
-  newAppointmentMessage,
+  confirmationReplyInstructions,
+  appointmentNoticeOptOut,
   reminderAppointmentMessage
 } from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
@@ -41,6 +41,7 @@ import { dueReminder } from "./reminderTiming";
 // import after deployment.
 const FINGERPRINT_VERSION = 5;
 const SYNC_STATE_KEY = "appointments";
+const OPERATION_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const syncWorkerId = `${hostname()}-${process.pid}`.slice(0, 64);
 const formatApiDate = (date: Date) => {
   const p = dateParts(date);
@@ -72,6 +73,13 @@ const valuesForPersistence = (
     profissionalNome: snapshot.raw.profissional?.nome || null,
     procedimentoId: snapshot.raw.procedimentoId || null,
     procedimentoNome: snapshot.raw.procedimento?.nome || null,
+    procedimentoValor:
+      snapshot.raw.procedimento?.valor ??
+      snapshot.raw.valorProcedimento ??
+      snapshot.raw.procedimento?.preco ??
+      snapshot.raw.precoProcedimento ??
+      snapshot.raw.procedimento?.valorParticular ??
+      null,
     statusMarcacao: snapshot.status,
     cpf: snapshot.cpf,
     phones: snapshot.phones
@@ -96,22 +104,30 @@ const queueNotice = async (
     snapshot.phones.find(item => item.isPrimary) || snapshot.phones[0];
   if (!recipient) return false;
   const preference = await getPreference(recipient.phone);
-  const ref = appointmentReference(
-    snapshot.appointmentId,
-    snapshot.scheduleFingerprint,
-    recipient.phone
-  );
   const asks = appointmentCanBeConfirmed(snapshot.status);
   const completeBody = `${body}${
-    asks
-      ? `\n\nPara confirmar: CONFIRMAR ${ref}\nPara solicitar cancelamento: CANCELAR ${ref}`
-      : ""
-  }\n\nPara deixar de receber avisos, responda PARAR.`;
+    asks ? `\n\n${confirmationReplyInstructions}` : ""
+  }\n\n${appointmentNoticeOptOut}`;
   const notificationKey = `${key}:to:${quarkPhoneKey(recipient.phone)}`;
   const notificationStatus =
     suppressed || !canReceiveAppointmentNotices(preference)
       ? "SUPPRESSED"
       : "PENDING";
+  if (notificationStatus === "PENDING" && eventType === "REMINDER") {
+    const manualReminder = await QuarkAppointmentNotification.findOne({
+      where: {
+        appointmentId: snapshot.appointmentId,
+        recipientPhone: recipient.phone,
+        eventType: "MANUAL_REMINDER",
+        status: {
+          [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY", "SENT", "UNKNOWN"]
+        },
+        payload: { [Op.like]: `%${snapshot.scheduleFingerprint}%` }
+      },
+      transaction
+    });
+    if (manualReminder) return false;
+  }
   const created = await createQuarkNotificationOnce(
     snapshot.appointmentId,
     notificationKey,
@@ -144,7 +160,7 @@ const queueNotice = async (
           appointmentId: snapshot.appointmentId,
           recipientPhone: recipient.phone,
           id: { [Op.ne]: existing.id },
-          eventType: { [Op.ne]: "CANCELLED" },
+          eventType: { [Op.in]: ["REMINDER", "MANUAL_REMINDER"] },
           status: {
             [Op.in]: [
               "PENDING",
@@ -173,6 +189,99 @@ const queueNotice = async (
   }
   return created;
 };
+
+interface QuarkOperationState {
+  status: string;
+  desired?: "CONFIRMADO" | "CANCELADO";
+  auditId?: number;
+  startedAt?: string;
+  updatedAt?: string;
+}
+
+const reconcileStaleOperation = async (
+  config: QuarkConfig,
+  snapshot: AppointmentSnapshot,
+  operation: QuarkOperationState
+): Promise<{
+  snapshot: AppointmentSnapshot;
+  operation: QuarkOperationState;
+}> => {
+  if (!["UNKNOWN", "PROCESSING"].includes(operation.status))
+    return { snapshot, operation };
+  const audit = operation.auditId
+    ? await QuarkAppointmentResponse.findByPk(operation.auditId)
+    : null;
+  const timestamp = Date.parse(
+    operation.updatedAt ||
+      operation.startedAt ||
+      audit?.receivedAt?.toISOString() ||
+      ""
+  );
+  if (
+    !Number.isFinite(timestamp) ||
+    Date.now() - timestamp < OPERATION_RECONCILIATION_DELAY_MS
+  )
+    return { snapshot, operation };
+  if (!operation.desired) return { snapshot, operation };
+
+  let authoritative: AppointmentSnapshot;
+  try {
+    authoritative = buildAppointmentSnapshot(
+      await getQuarkAppointment(config, snapshot.appointmentId),
+      config
+    );
+  } catch (error) {
+    logger.warn({
+      info: "Stale Quark operation could not be reconciled",
+      appointmentId: snapshot.appointmentId,
+      err: error
+    });
+    return { snapshot, operation };
+  }
+
+  const applied = authoritative.status === operation.desired;
+  const next: QuarkOperationState = {
+    status: applied ? "APPLIED" : "FAILED",
+    desired: operation.desired,
+    auditId: operation.auditId,
+    updatedAt: new Date().toISOString()
+  };
+  await writeState(`quark-operation:${snapshot.appointmentId}`, next);
+  if (audit)
+    await audit.update(
+      applied
+        ? {
+            status: "SUCCESS",
+            newQuarkStatus: operation.desired,
+            appliedAt: new Date(),
+            errorCode: null
+          }
+        : {
+            status: "FAILED",
+            newQuarkStatus: authoritative.status,
+            errorCode: "QUARK_OPERATION_NOT_APPLIED"
+          }
+    );
+  if (applied)
+    await QuarkAppointmentNotification.update(
+      { status: "SUPPRESSED", lastError: "Appointment decision reconciled" },
+      {
+        where: {
+          appointmentId: snapshot.appointmentId,
+          status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
+        }
+      }
+    );
+  logger.warn({
+    info: "Stale Quark operation reconciled from authoritative status",
+    appointmentId: snapshot.appointmentId,
+    desired: operation.desired,
+    remoteStatus: authoritative.status,
+    applied
+  });
+  return { snapshot: authoritative, operation: next };
+};
+
 const processSnapshot = async (
   config: QuarkConfig,
   incoming: AppointmentSnapshot,
@@ -184,10 +293,15 @@ const processSnapshot = async (
     const record = await QuarkAppointment.findOne({
       where: { appointmentId: snapshot.appointmentId }
     });
-    const operation = await readState(
+    let operation = await readState<QuarkOperationState>(
       `quark-operation:${snapshot.appointmentId}`,
       { status: "READY" }
     );
+    ({ snapshot, operation } = await reconcileStaleOperation(
+      config,
+      snapshot,
+      operation
+    ));
     if (["UNKNOWN", "PROCESSING"].includes(operation.status)) return;
     // The sweep may have started before a patient's decision. Do not restore that stale snapshot.
     if (
@@ -256,7 +370,6 @@ const processSnapshot = async (
           source: "QUARK_EXTERNAL",
           transaction
         });
-      let notified = false;
       if (!baseline && cancelled) {
         await queueNotice(
           snapshot,
@@ -265,25 +378,6 @@ const processSnapshot = async (
           cancelledAppointmentMessage(snapshot),
           transaction
         );
-        notified = true;
-      } else if (
-        !baseline &&
-        (appointmentCanBeConfirmed(snapshot.status) ||
-          (scheduleChanged && snapshot.status === "CONFIRMADO")) &&
-        (!record || changed)
-      ) {
-        await queueNotice(
-          snapshot,
-          !record
-            ? "created"
-            : `changed:${snapshot.snapshotFingerprint.slice(0, 24)}`,
-          !record ? "CREATED" : scheduleChanged ? "RESCHEDULED" : "UPDATED",
-          !record
-            ? newAppointmentMessage(snapshot)
-            : changedAppointmentMessage(snapshot),
-          transaction
-        );
-        notified = true;
       }
       // A baseline must not reserve the deterministic reminder key. The next
       // active sweep must still be able to create and send that reminder.
@@ -298,11 +392,11 @@ const processSnapshot = async (
           reminderAppointmentMessage(
             snapshot,
             reminder.hours,
-            "",
+            config.clinicAddress,
             reminder.mondayAdvance
           ),
           transaction,
-          notified,
+          false,
           reminder.sendOnlyOnWeekday
         );
       await QuarkAppointmentRecipient.update(
@@ -368,6 +462,52 @@ const fetchSnapshots = async (
   }
   return Array.from(values.values());
 };
+
+const reconcileMissingKnownAppointments = async (
+  config: QuarkConfig,
+  snapshots: AppointmentSnapshot[],
+  horizon: number
+): Promise<AppointmentSnapshot[]> => {
+  const fetchedIds = snapshots.map(snapshot => snapshot.appointmentId);
+  const today = clinicDay();
+  const knownMissing = await QuarkAppointment.findAll({
+    attributes: ["appointmentId"],
+    where: {
+      scheduledAt: {
+        [Op.gte]: today,
+        [Op.lt]: clinicDay(today, horizon)
+      },
+      status: { [Op.in]: ["AGENDADO", "CONFIRMADO"] },
+      ...(fetchedIds.length
+        ? { appointmentId: { [Op.notIn]: fetchedIds } }
+        : {})
+    },
+    order: [["lastSeenAt", "ASC"]],
+    limit: 50
+  });
+  if (!knownMissing.length) return snapshots;
+
+  const reconciled = [...snapshots];
+  for (const record of knownMissing) {
+    assertNotShuttingDown();
+    try {
+      reconciled.push(
+        buildAppointmentSnapshot(
+          await getQuarkAppointment(config, record.appointmentId),
+          config
+        )
+      );
+    } catch (error) {
+      logger.warn({
+        info: "Known Quark appointment missing from sweep could not be reconciled",
+        appointmentId: record.appointmentId,
+        err: error
+      });
+    }
+  }
+  return reconciled;
+};
+
 export const SyncQuarkAppointmentsService = async (
   config: QuarkConfig
 ): Promise<void> => {
@@ -411,6 +551,11 @@ export const SyncQuarkAppointmentsService = async (
       : Math.min(30, config.syncLookbackDays);
     const today = clinicDay();
     let snapshots = await fetchSnapshots(config, horizon, lookback);
+    snapshots = await reconcileMissingKnownAppointments(
+      config,
+      snapshots,
+      horizon
+    );
     for (const snapshot of snapshots)
       await processSnapshot(
         config,
@@ -419,6 +564,11 @@ export const SyncQuarkAppointmentsService = async (
       );
     if (baseline) {
       snapshots = await fetchSnapshots(config, horizon, lookback);
+      snapshots = await reconcileMissingKnownAppointments(
+        config,
+        snapshots,
+        horizon
+      );
       for (const snapshot of snapshots)
         await processSnapshot(config, snapshot, true);
     }

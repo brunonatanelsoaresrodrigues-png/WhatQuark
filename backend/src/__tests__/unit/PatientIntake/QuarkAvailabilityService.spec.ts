@@ -101,6 +101,25 @@ describe("QuarkAvailabilityService", () => {
     expect(listQuarkFreeSlots).toHaveBeenCalledTimes(2);
   });
 
+  it("uses the clinic calendar near the UTC day boundary", async () => {
+    (listQuarkFreeSlots as jest.Mock).mockResolvedValue([
+      {
+        horarios: [{ intervalo: "23:00 - 23:30", status: "LIVRE" }]
+      }
+    ]);
+    const [professional] = await listIntakeProfessionals("PSYCHIATRY");
+    const now = new Date("2026-08-24T01:00:00.000Z"); // 23/08 22:00 in São Paulo
+
+    const dates = await listIntakeAvailabilityDates(professional, 1, 1, now);
+
+    expect(listQuarkFreeSlots).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      "23-08-2026"
+    );
+    expect(dates[0]).toEqual(expect.objectContaining({ date: "23/08/2026" }));
+  });
+
   it("bypasses the short cache when revalidating a selected slot", async () => {
     const slot = {
       agendaId: "20",

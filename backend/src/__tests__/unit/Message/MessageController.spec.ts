@@ -28,6 +28,7 @@ jest.mock("../../../services/TicketServices/ShowTicketService", () =>
 jest.mock("../../../services/WbotServices/DeleteWhatsAppMessage", () =>
   jest.fn()
 );
+jest.mock("../../../services/WbotServices/EditWhatsAppMessage", () => jest.fn());
 jest.mock("../../../services/WbotServices/SendWhatsAppMedia", () => jest.fn());
 jest.mock("../../../services/WbotServices/SendWhatsAppMessage", () =>
   jest.fn()

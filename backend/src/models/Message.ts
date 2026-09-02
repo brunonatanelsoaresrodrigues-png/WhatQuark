@@ -72,6 +72,16 @@ class Message extends Model<Message> {
   @Column(DataType.DATE(6))
   updatedAt: Date;
 
+  @Column(DataType.DATE(6))
+  editedAt: Date | null;
+
+  @ForeignKey(() => User)
+  @Column(DataType.INTEGER)
+  editedByUserId: number | null;
+
+  @BelongsTo(() => User, "editedByUserId")
+  editedByUser: User;
+
   @ForeignKey(() => Message)
   @Column
   quotedMsgId: string;

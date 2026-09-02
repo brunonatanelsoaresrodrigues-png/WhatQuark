@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useReducer, useContext } from "react";
+import React, {
+  useState,
+  useEffect,
+  useReducer,
+  useContext,
+  useMemo
+} from "react";
 import openSocket from "../../services/socket-io";
 import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
@@ -11,6 +17,10 @@ import TicketsListSkeleton from "../TicketsListSkeleton";
 import useTickets from "../../hooks/useTickets";
 import { i18n } from "../../translate/i18n";
 import { AuthContext } from "../../context/Auth/AuthContext";
+import {
+  sortAtAfterUnreadUpdate,
+  sortTickets
+} from "../../services/ticketOrdering";
 const useStyles = makeStyles(theme => ({
   ticketsListWrapper: {
     position: "relative",
@@ -100,7 +110,10 @@ const reducer = (state, action) => {
     const ticket = action.payload;
     const ticketIndex = state.findIndex(t => t.id === ticket.id);
     if (ticketIndex !== -1) {
-      state[ticketIndex] = ticket;
+      state[ticketIndex] = {
+        ...ticket,
+        sortAt: state[ticketIndex].sortAt || ticket.sortAt
+      };
     } else {
       state.unshift(ticket);
     }
@@ -110,10 +123,14 @@ const reducer = (state, action) => {
     const ticket = action.payload;
     const ticketIndex = state.findIndex(t => t.id === ticket.id);
     if (ticketIndex !== -1) {
-      state[ticketIndex] = ticket;
+      const previous = state[ticketIndex];
+      state[ticketIndex] = {
+        ...ticket,
+        sortAt: sortAtAfterUnreadUpdate(previous, ticket)
+      };
       state.unshift(state.splice(ticketIndex, 1)[0]);
     } else {
-      state.unshift(ticket);
+      state.unshift({ ...ticket, sortAt: ticket.sortAt || ticket.updatedAt });
     }
     return [...state];
   }
@@ -157,6 +174,10 @@ const TicketsList = props => {
   const {
     user
   } = useContext(AuthContext);
+  const orderedTickets = useMemo(
+    () => sortTickets(ticketsList, status),
+    [ticketsList, status]
+  );
   useEffect(() => {
     dispatch({
       type: "RESET"
@@ -302,7 +323,7 @@ const TicketsList = props => {
                 {i18n.t("ticketsList.noTicketsMessage")}
               </p>
             </div> : <>
-              {ticketsList.map(ticket => <TicketListItem ticket={ticket} key={ticket.id} />)}
+              {orderedTickets.map(ticket => <TicketListItem ticket={ticket} key={ticket.id} />)}
             </>}
           {loading && <TicketsListSkeleton />}
         </List>

@@ -5,6 +5,10 @@ import {
   Typography,
   IconButton,
   Drawer,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Link,
   Button,
   Paper,
@@ -25,16 +29,19 @@ import {
   WhatsApp,
 } from "@material-ui/icons";
 import Skeleton from "@material-ui/lab/Skeleton";
+import { toast } from "react-toastify";
 import ContactModal from "../ContactModal";
 import ContactAvatar from "../ContactAvatar";
 import MarkdownWrapper from "../MarkdownWrapper";
 import {
   appointmentDateTimeLabel,
   appointmentDayLabel,
+  appointmentConfirmationDisabledReason,
   appointmentStatusLabel,
 } from "../../services/appointmentDisplay";
 import { formatQuarkPhone } from "../../services/quarkAgendaDisplay";
 import api from "../../services/api";
+import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import {
   buildQuarkAppointmentPath,
@@ -303,7 +310,15 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: 8,
+  },
+  appointmentActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 4,
   },
   quarkButton: {
     minWidth: 0,
@@ -311,6 +326,18 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 12,
     fontWeight: 600,
     textTransform: "none",
+  },
+  confirmButton: {
+    minWidth: 0,
+    padding: "3px 8px",
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "none",
+    "& .MuiButton-startIcon": {
+      marginRight: 4,
+      "& svg": { fontSize: 16 },
+    },
   },
   empty: {
     fontSize: 12,
@@ -340,6 +367,7 @@ const ContactDrawer = ({
   loading,
   ticket,
   context,
+  onContextRefresh,
 }) => {
   const classes = useStyles();
   const history = useHistory();
@@ -355,7 +383,16 @@ const ContactDrawer = ({
   const [cpfSyncState, setCpfSyncState] = useState("idle");
   const [cpfVisible, setCpfVisible] = useState(false);
   const [cpfCopied, setCpfCopied] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  const [confirmingAppointment, setConfirmingAppointment] = useState(null);
   const unresolvedWhatsAppIdentity = isUnresolvedWhatsAppIdentity(contact);
+  const canConfirmInQuark =
+    user?.profile === "admin" || Boolean(user?.canAccessQuarkClinic);
+
+  useEffect(() => {
+    setConfirmation(null);
+    setConfirmingAppointment(null);
+  }, [ticket?.id]);
 
   useEffect(() => {
     let active = true;
@@ -466,8 +503,28 @@ const ContactDrawer = ({
       setCpfSyncState("error");
     }
   };
-  const renderAppointment = (appointment) => (
-    <div key={appointment.appointmentId} className={classes.appointmentItem}>
+  const confirmAppointment = async appointment => {
+    setConfirmingAppointment(appointment.appointmentId);
+    try {
+      await api.post(
+        `/quark/dashboard/appointments/${encodeURIComponent(
+          appointment.appointmentId
+        )}/confirm`
+      );
+      toast.success("Consulta confirmada com sucesso no Quark.");
+      setConfirmation(null);
+      if (onContextRefresh) await onContextRefresh();
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setConfirmingAppointment(null);
+    }
+  };
+  const renderAppointment = (appointment, allowConfirmation = false) => {
+    const confirmationDisabledReason =
+      appointmentConfirmationDisabledReason(appointment);
+    return (
+      <div key={appointment.appointmentId} className={classes.appointmentItem}>
       <div className={classes.appointmentHeading}>
         <span>
           {appointmentDateTimeLabel(
@@ -491,36 +548,74 @@ const ContactDrawer = ({
         >
           {appointmentStatusLabel(appointment.status)} · {appointment.reference}
         </Typography>
-        <Button
-          className={classes.quarkButton}
-          color="primary"
-          size="small"
-          onClick={() =>
-            history.push(
-              buildQuarkAppointmentPath(appointment.appointmentId, ticket?.id)
-            )
-          }
-        >
-          Ver no Quark
-        </Button>
+        <div className={classes.appointmentActions}>
+          <Button
+            className={classes.quarkButton}
+            color="primary"
+            size="small"
+            onClick={() =>
+              history.push(
+                buildQuarkAppointmentPath(appointment.appointmentId, ticket?.id)
+              )
+            }
+          >
+            Ver no Quark
+          </Button>
+          {allowConfirmation && canConfirmInQuark && (
+            <Tooltip
+              title={
+                confirmationDisabledReason ||
+                "Confirmar esta consulta diretamente no Quark"
+              }
+            >
+              <span>
+                <Button
+                  className={classes.confirmButton}
+                  color="primary"
+                  size="small"
+                  variant="contained"
+                  startIcon={
+                    confirmingAppointment === appointment.appointmentId ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
+                      <CheckCircleOutline />
+                    )
+                  }
+                  disabled={
+                    Boolean(confirmationDisabledReason) ||
+                    confirmingAppointment !== null
+                  }
+                  onClick={() => setConfirmation(appointment)}
+                >
+                  Confirmar
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+        </div>
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
   return (
-    <Drawer
-      className={docked && open ? classes.docked : undefined}
-      variant={docked ? "persistent" : "temporary"}
-      onClose={handleDrawerClose}
-      anchor="right"
-      open={open}
-      classes={{
-        paper: `${classes.drawerPaper} ${docked ? classes.dockedPaper : ""}`,
-      }}
-      PaperProps={{
-        component: "aside",
-        "aria-label": "Detalhes do contato",
-      }}
-    >
+    <>
+      {(!docked || open) && (
+        <Drawer
+          className={docked && open ? classes.docked : undefined}
+          variant={docked ? "persistent" : "temporary"}
+          onClose={handleDrawerClose}
+          anchor="right"
+          open={open}
+          classes={{
+            paper: `${classes.drawerPaper} ${
+              docked ? classes.dockedPaper : ""
+            }`,
+          }}
+          PaperProps={{
+            component: "aside",
+            "aria-label": "Detalhes do contato",
+          }}
+        >
       <div className={classes.header}>
         <Typography component="h2">Detalhes do contato</Typography>
         <IconButton
@@ -734,7 +829,9 @@ const ContactDrawer = ({
               <Paper variant="outlined" className={classes.card}>
                 <Typography component="h3">Próximas consultas</Typography>
                 {context.appointments?.length ? (
-                  context.appointments.map(renderAppointment)
+                  context.appointments.map(appointment =>
+                    renderAppointment(appointment, true)
+                  )
                 ) : (
                   <Typography className={classes.empty}>
                     Nenhuma consulta futura vinculada a este número.
@@ -766,7 +863,48 @@ const ContactDrawer = ({
           </>
         )}
       </div>
-    </Drawer>
+        </Drawer>
+      )}
+      <Dialog
+        open={Boolean(confirmation)}
+        onClose={() => !confirmingAppointment && setConfirmation(null)}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="contact-drawer-confirm-title"
+      >
+        <DialogTitle id="contact-drawer-confirm-title">
+          Confirmar consulta no Quark?
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography paragraph>
+            {appointmentDateTimeLabel(
+              confirmation?.scheduledAt,
+              context?.clinicTimezone
+            )}
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Esta ação altera a agenda. O estado da consulta será conferido
+            novamente antes de confirmar.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            disabled={Boolean(confirmingAppointment)}
+            onClick={() => setConfirmation(null)}
+          >
+            Voltar
+          </Button>
+          <Button
+            color="primary"
+            variant="contained"
+            disabled={Boolean(confirmingAppointment)}
+            onClick={() => confirmAppointment(confirmation)}
+          >
+            {confirmingAppointment ? "Confirmando…" : "Confirmar consulta"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 export default ContactDrawer;

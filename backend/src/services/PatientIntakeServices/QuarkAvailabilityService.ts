@@ -17,6 +17,12 @@ import {
   IntakeSlotOption,
   IntakeSpecialty
 } from "./PatientIntakeContextService";
+import {
+  clinicDay,
+  clinicTimezone,
+  dateParts,
+  zonedDate
+} from "../QuarkClinicServices/clinicTime";
 
 interface Catalog {
   professionals: QuarkProfessionalDto[];
@@ -151,23 +157,36 @@ export const listIntakeProfessionals = async (
 };
 
 const pad = (value: number): string => String(value).padStart(2, "0");
-const apiDate = (date: Date): string =>
-  `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
-const displayDate = (date: Date): string =>
-  `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+const apiDate = (date: Date): string => {
+  const value = dateParts(date);
+  return `${pad(value.day)}-${pad(value.month)}-${value.year}`;
+};
+const displayDate = (date: Date): string => {
+  const value = dateParts(date);
+  return `${pad(value.day)}/${pad(value.month)}/${value.year}`;
+};
 const dateFromDisplay = (value: string): Date | undefined => {
   const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!match) return undefined;
-  const date = new Date(
-    Number(match[3]),
-    Number(match[2]) - 1,
-    Number(match[1])
+  return (
+    zonedDate(Number(match[3]), Number(match[2]), Number(match[1])) || undefined
   );
-  return Number.isNaN(date.getTime()) ? undefined : date;
 };
 
+const weekdayFor = (date: Date): number => {
+  const value = dateParts(date);
+  return new Date(Date.UTC(value.year, value.month - 1, value.day)).getUTCDay();
+};
 const weekdayToken = (date: Date): string =>
-  ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"][date.getDay()];
+  ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"][weekdayFor(date)];
+
+const scheduledTime = (date: Date, time: string): Date | undefined => {
+  const value = dateParts(date);
+  const [hour, minute] = time.split(":").map(Number);
+  return (
+    zonedDate(value.year, value.month, value.day, hour, minute) || undefined
+  );
+};
 
 const agendaAcceptsDate = (agenda: QuarkAgendaDto, date: Date): boolean =>
   !Array.isArray(agenda.diasSemana) ||
@@ -219,11 +238,12 @@ const fetchSlots = async (
 const labelForDate = (date: Date): string => {
   const weekday = new Intl.DateTimeFormat("pt-BR", {
     weekday: "long",
-    timeZone: "America/Sao_Paulo"
+    timeZone: clinicTimezone()
   }).format(date);
+  const value = dateParts(date);
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${pad(
-    date.getDate()
-  )}/${pad(date.getMonth() + 1)}`;
+    value.day
+  )}/${pad(value.month)}`;
 };
 
 const uniqueSlots = (slots: IntakeSlotOption[]): IntakeSlotOption[] => {
@@ -239,7 +259,8 @@ const uniqueSlots = (slots: IntakeSlotOption[]): IntakeSlotOption[] => {
 export const listIntakeAvailabilityDates = async (
   professional: IntakeProfessionalOption,
   horizonDays = 30,
-  limit = 5
+  limit = 5,
+  now = new Date(Date.now())
 ): Promise<IntakeDateOption[]> => {
   const { agendas } = await getCatalog();
   const selectedAgendas = agendas.filter(
@@ -248,15 +269,13 @@ export const listIntakeAvailabilityDates = async (
       professional.agendaIds.includes(String(agenda.id))
   );
   const dates: IntakeDateOption[] = [];
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = clinicDay(now);
   for (
     let offset = 0;
     offset < horizonDays && dates.length < limit;
     offset += 1
   ) {
-    const date = new Date(start);
-    date.setDate(start.getDate() + offset);
+    const date = clinicDay(start, offset);
     const eligible = selectedAgendas.filter(agenda =>
       agendaAcceptsDate(agenda, date)
     );
@@ -275,47 +294,16 @@ export const listIntakeAvailabilityDates = async (
       )
     ).filter(slot => {
       if (offset > 0) return true;
-      const [hour, minute] = slot.time.split(":").map(Number);
-      const scheduled = new Date(date);
-      scheduled.setHours(hour, minute, 0, 0);
-      return scheduled.getTime() > Date.now() + 15 * 60 * 1000;
+      const scheduled = scheduledTime(date, slot.time);
+      return Boolean(
+        scheduled && scheduled.getTime() > now.getTime() + 15 * 60 * 1000
+      );
     });
     if (slots.length > 0) {
       dates.push({ date: displayDate(date), label: labelForDate(date), slots });
     }
   }
   return dates;
-};
-
-export const findFirstIntakeAvailability = async (
-  professionals: IntakeProfessionalOption[],
-  horizonDays = 30
-): Promise<{
-  professional: IntakeProfessionalOption;
-  dates: IntakeDateOption[];
-} | null> => {
-  const options = await Promise.all(
-    professionals.map(async professional => ({
-      professional,
-      dates: await listIntakeAvailabilityDates(professional, horizonDays, 1)
-    }))
-  );
-  const available = options.filter(option => option.dates.length > 0);
-  available.sort((first, second) => {
-    const firstDate =
-      dateFromDisplay(first.dates[0].date)?.getTime() || Infinity;
-    const secondDate =
-      dateFromDisplay(second.dates[0].date)?.getTime() || Infinity;
-    if (firstDate !== secondDate) return firstDate - secondDate;
-    return first.dates[0].slots[0].time.localeCompare(
-      second.dates[0].slots[0].time
-    );
-  });
-  if (!available[0]) return null;
-  return {
-    professional: available[0].professional,
-    dates: await listIntakeAvailabilityDates(available[0].professional)
-  };
 };
 
 export const revalidateIntakeSlot = async (

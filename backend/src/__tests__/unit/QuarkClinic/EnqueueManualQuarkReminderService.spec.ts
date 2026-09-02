@@ -1,4 +1,5 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import { getQuarkConfig } from "../../../services/QuarkClinicServices/config";
 import { emitQuarkDashboardUpdate } from "../../../services/QuarkClinicServices/dashboardEvents";
 import EnqueueManualQuarkReminderService from "../../../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
@@ -16,6 +17,10 @@ jest.mock("../../../services/MessagingServices/preferences", () => ({
   getPreference: jest.fn().mockResolvedValue({ consent: "GRANTED" })
 }));
 jest.mock("../../../models/QuarkAppointment", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn() }
+}));
+jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
   default: { findOne: jest.fn() }
 }));
@@ -44,7 +49,8 @@ const appointment = {
     horaAgendamento: "16:00:00",
     clinicaNome: "ESSENCIAL SAÚDE",
     profissionalNome: "PROFISSIONAL COMPLETO",
-    procedimentoNome: "Consulta"
+    procedimentoNome: "Consulta Psiquiatria",
+    procedimentoValor: "350,00"
   })
 };
 
@@ -57,6 +63,7 @@ describe("EnqueueManualQuarkReminderService", () => {
       clinicAddress: "Avenida Ulisses Bezerra, 2227"
     });
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(appointment);
+    (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue(null);
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
     (getPreference as jest.Mock).mockResolvedValue({ consent: "GRANTED" });
   });
@@ -77,7 +84,9 @@ describe("EnqueueManualQuarkReminderService", () => {
         patientName: "PACIENTE COMPLETO",
         requestsConfirmation: true,
         validUntil: appointment.scheduledAt.toISOString(),
-        body: expect.stringContaining("Para confirmar: CONFIRMAR")
+        body: expect.stringMatching(
+          /Caro\(a\) Paciente PACIENTE COMPLETO[\s\S]*profissional PROFISSIONAL COMPLETO[\s\S]*Consulta Psiquiatria[\s\S]*R\$ 350,00[\s\S]*CONFIRMAR\* — para confirmar[\s\S]*CANCELAR\* — para cancelar/
+        )
       })
     );
     expect(emitQuarkDashboardUpdate).toHaveBeenCalledWith(
@@ -132,6 +141,25 @@ describe("EnqueueManualQuarkReminderService", () => {
         message: "Um lembrete manual já foi solicitado hoje para esta consulta."
       })
     );
+  });
+
+  it("does not queue a manual duplicate after an automatic reminder", async () => {
+    (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue({
+      id: 42,
+      eventType: "REMINDER",
+      status: "SENT"
+    });
+
+    await expect(
+      EnqueueManualQuarkReminderService({ appointmentId: "quark-42" })
+    ).rejects.toEqual(
+      expect.objectContaining({
+        statusCode: 409,
+        message:
+          "Um lembrete automático já foi enviado ou está na fila para esta consulta."
+      })
+    );
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 
   it("does not queue reminders for non-scheduled appointments", async () => {

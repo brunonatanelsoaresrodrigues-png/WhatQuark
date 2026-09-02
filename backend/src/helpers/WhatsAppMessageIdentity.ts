@@ -79,4 +79,3 @@ export const resolveWhatsAppMessageIdentity = (
 
   return { resolvedJid, phoneJid, lid };
 };
-

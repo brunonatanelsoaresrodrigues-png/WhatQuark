@@ -453,6 +453,20 @@ const deleteMessage = async (
   await message.delete(true);
 };
 
+const editMessage = async (
+  sessionId: number,
+  chatId: string,
+  messageId: string,
+  body: string
+): Promise<void> => {
+  const wbot = getWbot(sessionId);
+  const serializedMsgId = getSerializedMessageId(chatId, true, messageId);
+  const message = await wbot.getMessageById(serializedMsgId);
+  const edited = await (message as any).edit(body, { linkPreview: false });
+
+  if (!edited) throw new AppError("ERR_MESSAGE_EDIT_NOT_ALLOWED", 409);
+};
+
 const init = async (whatsapp: Whatsapp): Promise<void> => {
   try {
     await removeSession(whatsapp.id);
@@ -646,6 +660,7 @@ export const WhatsappWebJsProvider: WhatsappProvider = {
   sendMessage,
   sendMedia,
   deleteMessage,
+  editMessage,
   checkNumber,
   getProfilePicUrl,
   getContacts,

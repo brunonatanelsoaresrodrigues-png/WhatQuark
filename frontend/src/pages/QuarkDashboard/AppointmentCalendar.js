@@ -105,6 +105,19 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.text.secondary,
     whiteSpace: "nowrap"
   },
+  daySummary: {
+    display: "flex",
+    minWidth: 0,
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 2
+  },
+  confirmedCount: {
+    fontSize: 11,
+    lineHeight: 1.2,
+    color: theme.statusTokens.success.fg,
+    whiteSpace: "nowrap"
+  },
   statusBar: {
     display: "flex",
     height: 4,
@@ -225,9 +238,12 @@ export default function AppointmentCalendar({
           );
           const count = byDay.get(key)?.total || 0;
           const stats = byDay.get(key) || {};
+          const confirmed = Number(stats.confirmed || 0);
           const label = `${i + 1} de ${month.toLocaleDateString("pt-BR", {
             month: "long"
-          })}: ${count} consultas`;
+          })}: ${count} consulta${count === 1 ? "" : "s"}, ${confirmed} confirmada${
+            confirmed === 1 ? "" : "s"
+          }`;
           return (
             <ButtonBase
               key={key}
@@ -242,8 +258,17 @@ export default function AppointmentCalendar({
             >
               <span className={classes.dayTop}>
                 <span className={classes.dayNumber}>{i + 1}</span>
-                <span className={classes.count}>
-                  {count ? `${count} consulta${count === 1 ? "" : "s"}` : "—"}
+                <span className={classes.daySummary}>
+                  <span className={classes.count}>
+                    {count
+                      ? `${count} consulta${count === 1 ? "" : "s"}`
+                      : "—"}
+                  </span>
+                  {count > 0 && (
+                    <span className={classes.confirmedCount}>
+                      {confirmed} confirmada{confirmed === 1 ? "" : "s"}
+                    </span>
+                  )}
                 </span>
               </span>
               <span className={classes.statusBar} aria-hidden="true">

@@ -23,7 +23,20 @@ export interface IntakeDateOption {
   slots: IntakeSlotOption[];
 }
 
+export interface IntakeAppointmentOption {
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  professionalName: string;
+  date: string;
+  time: string;
+  status: "AGENDADO" | "CONFIRMADO";
+  scheduleFingerprint: string;
+}
+
 export interface PatientIntakeContext {
+  menuVersion?: number;
+  coverageInfo?: "HAPVIDA" | "PRIVATE";
   cpf?: string;
   patientName?: string;
   birthDate?: string;
@@ -37,6 +50,9 @@ export interface PatientIntakeContext {
   timeOptions?: IntakeSlotOption[];
   selectedSlot?: IntakeSlotOption;
   timePage?: number;
+  appointmentOptions?: IntakeAppointmentOption[];
+  selectedAppointment?: IntakeAppointmentOption;
+  appointmentAction?: "CONFIRM" | "RESCHEDULE";
 }
 
 const ttlMilliseconds = (): number => {

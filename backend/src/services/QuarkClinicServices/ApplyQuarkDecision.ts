@@ -47,10 +47,14 @@ export const ApplyQuarkDecision = async ({
           phone
         )
     );
+    const localStatusAllowed =
+      choice === 1
+        ? record?.status === "AGENDADO" || record?.status === "CONFIRMADO"
+        : record?.status === "AGENDADO" || record?.status === "CONFIRMADO";
     if (
       !record ||
       !recipientMatches ||
-      record.status !== "AGENDADO" ||
+      !localStatusAllowed ||
       !record.scheduledAt ||
       record.scheduledAt.getTime() <= Date.now() ||
       (fingerprint && record.scheduleFingerprint !== fingerprint)
@@ -63,7 +67,7 @@ export const ApplyQuarkDecision = async ({
     if (
       remote.phone !== record.phone ||
       remote.patientId !== record.patientId ||
-      remote.status !== "AGENDADO" ||
+      remote.status !== record.status ||
       remote.scheduleFingerprint !== record.scheduleFingerprint
     )
       throw new AppError("ERR_APPOINTMENT_CHANGED", 409);
@@ -93,7 +97,8 @@ export const ApplyQuarkDecision = async ({
       status: "PROCESSING",
       desired,
       auditId: audit.id,
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     });
     await record.update({ awaitingConfirmation: false });
     try {
@@ -107,7 +112,8 @@ export const ApplyQuarkDecision = async ({
       await writeState(stateKey, {
         status: unknown ? "UNKNOWN" : "FAILED",
         desired,
-        auditId: audit.id
+        auditId: audit.id,
+        updatedAt: new Date().toISOString()
       });
       await audit.update({
         status: unknown ? "UNKNOWN" : "FAILED",
@@ -152,7 +158,8 @@ export const ApplyQuarkDecision = async ({
     await writeState(stateKey, {
       status: "APPLIED",
       desired,
-      auditId: audit.id
+      auditId: audit.id,
+      updatedAt: new Date().toISOString()
     });
     emitQuarkDashboardUpdate("response", audit.id);
   });

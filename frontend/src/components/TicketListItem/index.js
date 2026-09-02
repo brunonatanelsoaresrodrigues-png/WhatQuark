@@ -149,7 +149,7 @@ export default function TicketListItem({
       setLoading(false);
     }
   };
-  const date = new Date(ticket.updatedAt);
+  const date = new Date(ticket.sortAt || ticket.updatedAt);
   const selected = Number(ticketId) === ticket.id;
   const contactName = contactDisplayName(ticket.contact);
   const rowStates = [

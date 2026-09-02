@@ -1,12 +1,19 @@
-import { readState } from "../../../services/MessagingServices/state";
+import {
+  readState,
+  writeState
+} from "../../../services/MessagingServices/state";
 import { getPreference } from "../../../services/MessagingServices/preferences";
 import QuarkAppointment from "../../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
 import QuarkAppointmentRecipient from "../../../models/QuarkAppointmentRecipient";
+import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
 import QuarkSyncState from "../../../models/QuarkSyncState";
 import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/appointmentUtils";
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
-import { listQuarkAppointments } from "../../../services/QuarkClinicServices/QuarkClinicClient";
+import {
+  getQuarkAppointment,
+  listQuarkAppointments
+} from "../../../services/QuarkClinicServices/QuarkClinicClient";
 import { createQuarkNotificationOnce } from "../../../services/QuarkClinicServices/notificationLedger";
 import { SyncQuarkAppointmentsService } from "../../../services/QuarkClinicServices/SyncQuarkAppointmentsService";
 
@@ -22,7 +29,12 @@ jest.mock("../../../models/QuarkAppointment", () => ({
 
 jest.mock("../../../models/QuarkAppointmentNotification", () => ({
   __esModule: true,
-  default: { findOne: jest.fn() }
+  default: { findOne: jest.fn(), update: jest.fn() }
+}));
+
+jest.mock("../../../models/QuarkAppointmentResponse", () => ({
+  __esModule: true,
+  default: { findByPk: jest.fn() }
 }));
 
 jest.mock("../../../models/QuarkAppointmentRecipient", () => ({
@@ -43,6 +55,7 @@ jest.mock("../../../models/QuarkSyncState", () => ({
 }));
 
 jest.mock("../../../services/QuarkClinicServices/QuarkClinicClient", () => ({
+  getQuarkAppointment: jest.fn(),
   listQuarkAppointments: jest.fn()
 }));
 jest.mock(
@@ -57,9 +70,7 @@ jest.mock("../../../services/QuarkClinicServices/notificationLedger", () => ({
 jest.mock("../../../database", () => ({
   __esModule: true,
   default: {
-    transaction: jest.fn((fn: Function) =>
-      fn({ LOCK: { UPDATE: "UPDATE" } })
-    )
+    transaction: jest.fn((fn: Function) => fn({ LOCK: { UPDATE: "UPDATE" } }))
   }
 }));
 jest.mock("../../../services/MessagingServices/state", () => ({
@@ -143,6 +154,7 @@ describe("SyncQuarkAppointmentsService", () => {
     );
     (getPreference as jest.Mock).mockResolvedValue({ consent: "GRANTED" });
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(true);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([]);
     (QuarkAppointmentRecipient.update as jest.Mock).mockResolvedValue([0]);
     (QuarkAppointmentRecipient.findOrCreate as jest.Mock).mockResolvedValue([
       { update: jest.fn().mockResolvedValue(undefined) },
@@ -241,7 +253,7 @@ describe("SyncQuarkAppointmentsService", () => {
       expect.objectContaining({
         phone: "5511999990000",
         body: expect.stringMatching(
-          /Lembrete de consulta[\s\S]*CONFIRMAR [A-F0-9]+[\s\S]*CANCELAR [A-F0-9]+[\s\S]*PARAR/
+          /Caro\(a\) Paciente[\s\S]*Avenida de Teste, 123[\s\S]*CONFIRMAR\* — para confirmar[\s\S]*CANCELAR\* — para cancelar[\s\S]*PARAR/
         ),
         requestsConfirmation: true,
         scheduleFingerprint: snapshot.scheduleFingerprint
@@ -249,6 +261,48 @@ describe("SyncQuarkAppointmentsService", () => {
       "PENDING",
       expect.anything()
     );
+  });
+
+  it("does not duplicate a current manual reminder with an automatic reminder", async () => {
+    mockSyncState("ACTIVE");
+    const target = new Date(Date.now() + 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: config.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(target);
+    const value = (type: string) =>
+      parts.find(part => part.type === type)?.value || "00";
+    const dto = {
+      ...appointment(),
+      dataAgendamento: `${value("day")}-${value("month")}-${value("year")}`,
+      horaAgendamento: `${value("hour")}:${value("minute")}:00`
+    };
+    const snapshot = buildAppointmentSnapshot(dto, config);
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...snapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn()
+    });
+    (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue({
+      id: 94999,
+      eventType: "MANUAL_REMINDER",
+      status: "PENDING"
+    });
+
+    await SyncQuarkAppointmentsService({
+      ...config,
+      reminderHours: [2]
+    });
+
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 
   it("revives a baseline-suppressed reminder when no current notice exists", async () => {
@@ -287,6 +341,7 @@ describe("SyncQuarkAppointmentsService", () => {
     });
     (createQuarkNotificationOnce as jest.Mock).mockResolvedValue(false);
     (QuarkAppointmentNotification.findOne as jest.Mock)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(existingNotice)
       .mockResolvedValueOnce(null);
 
@@ -305,7 +360,7 @@ describe("SyncQuarkAppointmentsService", () => {
     );
   });
 
-  it("creates one reschedule outbox when an appointment from the baseline changes", async () => {
+  it("records a future reschedule without sending before a reminder window", async () => {
     mockSyncState("ACTIVE");
     const currentDto = appointment();
     const currentSnapshot = buildAppointmentSnapshot(currentDto, config);
@@ -329,16 +384,96 @@ describe("SyncQuarkAppointmentsService", () => {
     await SyncQuarkAppointmentsService(config);
 
     expect(listQuarkAppointments).toHaveBeenCalledTimes(1);
-    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
+    expect(record.update).toHaveBeenCalledTimes(1);
+  });
+  it("queues an external cancellation for the primary recipient", async () => {
+    mockSyncState("ACTIVE");
+    const scheduledDto = appointment();
+    const scheduledSnapshot = buildAppointmentSnapshot(scheduledDto, config);
+    const cancelledDto = {
+      ...scheduledDto,
+      statusMarcacao: "CANCELADO"
+    };
+    const cancelledSnapshot = buildAppointmentSnapshot(cancelledDto, config);
+    const record = {
+      ...scheduledSnapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      awaitingConfirmation: true,
+      confirmationRequestedAt: new Date(),
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([cancelledDto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+
+    await SyncQuarkAppointmentsService(config);
+
     expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
       "42",
-      expect.stringMatching(/^changed:.*:to:[a-f0-9]{16}$/),
-      "RESCHEDULED",
-      expect.objectContaining({ phone: "5511999990000" }),
+      expect.stringMatching(/^cancelled:.*:to:[a-f0-9]{16}$/),
+      "CANCELLED",
+      expect.objectContaining({
+        phone: "5511999990000",
+        body: expect.stringMatching(/foi cancelada[\s\S]*PARAR/),
+        requestsConfirmation: false,
+        validUntil: cancelledSnapshot.scheduledAt?.toISOString(),
+        scheduleFingerprint: cancelledSnapshot.scheduleFingerprint
+      }),
       "PENDING",
       expect.anything()
     );
-    expect(record.update).toHaveBeenCalledTimes(1);
+    expect(record.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "CANCELADO",
+        awaitingConfirmation: false,
+        confirmationRequestedAt: null
+      }),
+      expect.anything()
+    );
+  });
+  it("directly reconciles a known appointment moved beyond the short sweep", async () => {
+    mockSyncState("ACTIVE");
+    const oldDto = appointment();
+    const oldSnapshot = buildAppointmentSnapshot(oldDto, config);
+    const record = {
+      ...oldSnapshot,
+      status: "CONFIRMADO",
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastSeenAt: new Date(0),
+      lastChangedAt: new Date(),
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    const moved = new Date();
+    moved.setDate(moved.getDate() + 40);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const remoteDto = {
+      ...oldDto,
+      dataAgendamento: `${pad(moved.getDate())}-${pad(
+        moved.getMonth() + 1
+      )}-${moved.getFullYear()}`,
+      horaAgendamento: "15:00:00",
+      statusMarcacao: "AGENDADO"
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([]);
+    (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([record]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+    (getQuarkAppointment as jest.Mock).mockResolvedValue(remoteDto);
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(getQuarkAppointment).toHaveBeenCalledWith(config, "42");
+    expect(record.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "AGENDADO",
+        awaitingConfirmation: false,
+        confirmationRequestedAt: null
+      }),
+      expect.anything()
+    );
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
   it("preserves awaiting confirmation on an unchanged polling snapshot", async () => {
     mockSyncState("ACTIVE");
@@ -376,35 +511,102 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(record.update).not.toHaveBeenCalled();
     expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
-  it("queues an operational notice without manual opt-in for only the primary recipient", async () => {
+  it("reconciles an old uncertain mutation from a direct authoritative read", async () => {
+    mockSyncState("ACTIVE");
+    const scheduledDto = appointment();
+    const confirmedDto = {
+      ...scheduledDto,
+      statusMarcacao: "CONFIRMADO"
+    };
+    const record = {
+      ...buildAppointmentSnapshot(scheduledDto, config),
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn()
+    };
+    const audit = { receivedAt: new Date(0), update: jest.fn() };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([scheduledDto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+    (QuarkAppointmentResponse.findByPk as jest.Mock).mockResolvedValue(audit);
+    (getQuarkAppointment as jest.Mock).mockResolvedValue(confirmedDto);
+    (readState as jest.Mock).mockImplementation((key: string, fallback: any) =>
+      Promise.resolve(
+        key.startsWith("quark-operation:")
+          ? {
+              status: "UNKNOWN",
+              desired: "CONFIRMADO",
+              auditId: 11,
+              updatedAt: new Date(0).toISOString()
+            }
+          : fallback
+      )
+    );
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(getQuarkAppointment).toHaveBeenCalledWith(config, "42");
+    expect(writeState).toHaveBeenCalledWith(
+      "quark-operation:42",
+      expect.objectContaining({ status: "APPLIED", desired: "CONFIRMADO" })
+    );
+    expect(audit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "SUCCESS",
+        newQuarkStatus: "CONFIRMADO"
+      })
+    );
+    expect(QuarkAppointmentNotification.update).toHaveBeenCalled();
+    expect(record.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "CONFIRMADO" }),
+      expect.anything()
+    );
+  });
+  it("does not notify immediately when a future appointment is discovered", async () => {
     mockSyncState("ACTIVE");
     const dto = { ...appointment(), telefoneOutroComDDI: "5511999992222" };
     (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
     (getPreference as jest.Mock).mockResolvedValue({ consent: "UNKNOWN" });
     await SyncQuarkAppointmentsService(config);
-    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(1);
-    expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
-      "42",
-      expect.any(String),
-      "CREATED",
-      expect.objectContaining({ phone: "5511999990000" }),
-      "PENDING",
-      expect.anything()
-    );
+    expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
-  it("suppresses notices after the patient opts out", async () => {
+  it("suppresses a due reminder after the patient opts out", async () => {
     mockSyncState("ACTIVE");
-    (listQuarkAppointments as jest.Mock).mockResolvedValue([appointment()]);
-    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(null);
+    const target = new Date(Date.now() + 60 * 60 * 1000);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: config.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(target);
+    const value = (type: string) =>
+      parts.find(part => part.type === type)?.value || "00";
+    const dto = {
+      ...appointment(),
+      dataAgendamento: `${value("day")}-${value("month")}-${value("year")}`,
+      horaAgendamento: `${value("hour")}:${value("minute")}:00`
+    };
+    const snapshot = buildAppointmentSnapshot(dto, config);
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([dto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
+      ...snapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn()
+    });
     (getPreference as jest.Mock).mockResolvedValue({ consent: "REVOKED" });
 
-    await SyncQuarkAppointmentsService(config);
+    await SyncQuarkAppointmentsService({ ...config, reminderHours: [2] });
 
     expect(createQuarkNotificationOnce).toHaveBeenCalledWith(
       "42",
-      expect.any(String),
-      "CREATED",
+      expect.stringMatching(/^reminder:2:/),
+      "REMINDER",
       expect.anything(),
       "SUPPRESSED",
       expect.anything()

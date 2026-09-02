@@ -235,7 +235,14 @@ export const buildAppointmentSnapshot = (
     profissionalId: appointment.profissionalId || "",
     profissionalNome: appointment.profissional?.nome || "",
     procedimentoId: appointment.procedimentoId || "",
-    procedimentoNome: appointment.procedimento?.nome || ""
+    procedimentoNome: appointment.procedimento?.nome || "",
+    procedimentoValor:
+      appointment.procedimento?.valor ??
+      appointment.valorProcedimento ??
+      appointment.procedimento?.preco ??
+      appointment.precoProcedimento ??
+      appointment.procedimento?.valorParticular ??
+      ""
   };
 
   return {
@@ -297,8 +304,14 @@ export const parseConfirmationReply = (
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toUpperCase();
-  if (normalized === "SIM") return { choice: 1 };
-  if (normalized === "NAO") return { choice: 2 };
+  if (["CONFIRMAR", "SIM", "1"].includes(normalized)) return { choice: 1 };
+  if (["CANCELAR", "NAO", "2"].includes(normalized)) return { choice: 2 };
+  const numberedCommand = normalized.match(/^(CONFIRMAR|CANCELAR) ([1-9])$/);
+  if (numberedCommand)
+    return {
+      choice: numberedCommand[1] === "CONFIRMAR" ? 1 : 2,
+      appointmentOption: Number(numberedCommand[2])
+    };
   const command = normalized.match(
     /^(CONFIRMAR|CANCELAR|CONFIRMO CANCELAMENTO) ([A-F0-9]{8})$/
   );

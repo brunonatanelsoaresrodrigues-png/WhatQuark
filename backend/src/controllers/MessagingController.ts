@@ -1,5 +1,9 @@
 import { appointmentSnapshotFrom } from "../services/QuarkClinicServices/EnqueueManualQuarkReminderService";
-import { manualReminderAppointmentMessage } from "../services/QuarkClinicServices/messageTemplates";
+import {
+  appointmentNoticeOptOut,
+  confirmationReplyInstructions,
+  manualReminderAppointmentMessage
+} from "../services/QuarkClinicServices/messageTemplates";
 import { Request, Response } from "express";
 import { Op } from "sequelize";
 import AppError from "../errors/AppError";
@@ -20,10 +24,7 @@ import {
   withLease
 } from "../services/MessagingServices/state";
 import { getTicketInactivityConfig } from "../services/TicketInactivityServices/config";
-import {
-  appointmentReference,
-  buildAppointmentSnapshot
-} from "../services/QuarkClinicServices/appointmentUtils";
+import { buildAppointmentSnapshot } from "../services/QuarkClinicServices/appointmentUtils";
 import { getQuarkConfig } from "../services/QuarkClinicServices/config";
 import { getQuarkAppointment } from "../services/QuarkClinicServices/QuarkClinicClient";
 import QuarkAppointmentResponse from "../models/QuarkAppointmentResponse";
@@ -178,14 +179,10 @@ export const reminderPreview = async (req: Request, res: Response) => {
   });
   if (!record || !record.phone)
     throw new AppError("ERR_APPOINTMENT_CHANGED", 409);
-  const ref = appointmentReference(
-    record.appointmentId,
-    record.scheduleFingerprint,
-    record.phone
-  );
   const body = `${manualReminderAppointmentMessage(
-    appointmentSnapshotFrom(record)
-  )}\n\nPara confirmar: CONFIRMAR ${ref}\nPara solicitar cancelamento: CANCELAR ${ref}\n\nPara deixar de receber avisos, responda PARAR.`;
+    appointmentSnapshotFrom(record),
+    getQuarkConfig().clinicAddress
+  )}\n\n${confirmationReplyInstructions}\n\n${appointmentNoticeOptOut}`;
   return res.json({
     phone: record.phone,
     fingerprint: record.scheduleFingerprint,

@@ -63,7 +63,6 @@ beforeEach(() => {
   });
 });
 it.each([
-  "1",
   "2 pessoas",
   "Não quero cancelar",
   "Não sei o endereço",
@@ -72,15 +71,30 @@ it.each([
   expect(await call(body)).toBe(false);
   expect(ApplyQuarkDecision).not.toHaveBeenCalled();
 });
-it("asks for a reference even for a bare SIM with a single appointment", async () => {
-  expect(await call("SIM")).toBe(true);
-  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
-  expect(Send).toHaveBeenCalledWith(
-    expect.objectContaining({
-      body: expect.stringContaining(`CONFIRMAR ${reference}`)
-    })
-  );
-});
+it.each(["CONFIRMAR", "SIM", "1"])(
+  "confirms a single pending appointment with the simple answer %s",
+  async body => {
+    expect(await call(body)).toBe(true);
+    expect(ApplyQuarkDecision).toHaveBeenCalledWith({
+      appointmentId: "42",
+      phone,
+      choice: 1,
+      fingerprint: record.scheduleFingerprint
+    });
+  }
+);
+it.each(["CANCELAR", "NÃO", "2"])(
+  "cancels a single pending appointment with the simple answer %s",
+  async body => {
+    expect(await call(body)).toBe(true);
+    expect(ApplyQuarkDecision).toHaveBeenCalledWith({
+      appointmentId: "42",
+      phone,
+      choice: 2,
+      fingerprint: record.scheduleFingerprint
+    });
+  }
+);
 it("confirms only an explicit current reference", async () => {
   await call(`CONFIRMAR ${reference}`);
   expect(ApplyQuarkDecision).toHaveBeenCalledWith({
@@ -118,26 +132,29 @@ it("accepts a reference generated for the Brazilian ninth-digit variant", async 
     expect.objectContaining({ appointmentId: "42", phone: legacyPhone })
   );
 });
-it("requires two steps before cancelling", async () => {
-  await call(`CANCELAR ${reference}`);
+it("asks for an appointment number when more than one is pending", async () => {
+  const second = {
+    ...record,
+    appointmentId: "43",
+    scheduleFingerprint: "b".repeat(64),
+    scheduledAt: new Date("2099-08-22T19:00:00Z")
+  };
+  (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([record, second]);
+
+  await call("CONFIRMAR");
+
   expect(ApplyQuarkDecision).not.toHaveBeenCalled();
-  await call(`CONFIRMO CANCELAMENTO ${reference}`);
-  expect(ApplyQuarkDecision).toHaveBeenCalledWith(
-    expect.objectContaining({ choice: 2, appointmentId: "42" })
+  expect(Send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      body: expect.stringMatching(/1 — .*\n2 — .*CONFIRMAR 1 ou CANCELAR 1/s)
+    })
   );
-});
-it("does not accept a cancellation without a valid pending confirmation", async () => {
-  await call(`CONFIRMO CANCELAMENTO ${reference}`);
-  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
-});
-it("rejects expired cancellation confirmation", async () => {
-  state.set(`quark-cancel:1:${phone}`, {
-    appointmentId: "42",
-    fingerprint: record.scheduleFingerprint,
-    expiresAt: Date.now() - 1
-  });
-  await call(`CONFIRMO CANCELAMENTO ${reference}`);
-  expect(ApplyQuarkDecision).not.toHaveBeenCalled();
+
+  (QuarkAppointment.findAll as jest.Mock).mockResolvedValue([second, record]);
+  await call("CONFIRMAR 2");
+  expect(ApplyQuarkDecision).toHaveBeenCalledWith(
+    expect.objectContaining({ appointmentId: "43", choice: 1 })
+  );
 });
 it("does not interfere with an assigned human conversation", async () => {
   expect(

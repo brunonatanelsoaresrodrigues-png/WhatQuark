@@ -4,14 +4,14 @@ import {
 } from "../../../services/QuarkClinicServices/notificationPolicy";
 
 describe("QuarkClinic outbound notification policy", () => {
-  it.each(["CREATED", "REMINDER", "MANUAL_REMINDER", "RESCHEDULED"])(
+  it.each(["REMINDER", "MANUAL_REMINDER", "CANCELLED"])(
     "allows the intentional %s flow",
     eventType => {
       expect(quarkNotificationCanBeSent(eventType)).toBe(true);
     }
   );
 
-  it.each(["UPDATED", "CANCELLED"])(
+  it.each(["CREATED", "UPDATED", "RESCHEDULED"])(
     "blocks automatic %s messages outside reminder windows",
     eventType => {
       expect(quarkNotificationCanBeSent(eventType)).toBe(false);

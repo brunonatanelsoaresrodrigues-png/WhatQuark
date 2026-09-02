@@ -18,7 +18,9 @@ import {
   quarkPhoneVariants
 } from "../QuarkClinicServices/appointmentUtils";
 import QuarkAppointment from "../../models/QuarkAppointment";
+import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import AppError from "../../errors/AppError";
+import { quarkNotificationCanBeSent } from "../QuarkClinicServices/notificationPolicy";
 import {
   ProviderMediaInput,
   ProviderMessage,
@@ -81,6 +83,16 @@ const positive = (value: string | undefined, fallback: number) =>
   Number(value) > 0 ? Number(value) : fallback;
 const codeOf = (error: unknown) =>
   error instanceof Error ? error.message : "ERR_SEND_UNKNOWN";
+export const usesGenericRecipientPacing = (policy: SendPolicy): boolean =>
+  policy.proactive === true &&
+  !(policy.appointmentNotice === true && !!policy.appointmentId);
+export const outboundPriorityFor = (policy: SendPolicy): number => {
+  if (policy.origin === "HUMAN") return 10;
+  // Time-bound appointment notices must not sit behind ordinary bot traffic.
+  // Human replies keep the highest priority.
+  if (policy.appointmentNotice === true && !!policy.appointmentId) return 6;
+  return policy.proactive ? 1 : 5;
+};
 const cleanupMediaPath = async (payload: Payload): Promise<void> => {
   if (!payload.options.policy?.cleanupMediaPath || !payload.media?.path) return;
   const root = path.resolve(uploadConfig.directory);
@@ -129,6 +141,19 @@ export const validateSend = async (
     throw new AppError("ERR_CHANNEL_DISCONNECTED", 409);
   if (!/^\d{8,15}$/.test(phone))
     throw new AppError("ERR_INVALID_RECIPIENT", 400);
+  const notificationId = policy.appointmentNotice
+    ? policy.idempotencyKey?.match(/^quark-notice:(\d+)$/)?.[1]
+    : undefined;
+  if (notificationId) {
+    const notification = await QuarkAppointmentNotification.findByPk(
+      Number(notificationId)
+    );
+    if (
+      !notification ||
+      !quarkNotificationCanBeSent(notification.eventType)
+    )
+      throw new AppError("ERR_NOTICE_OUTSIDE_REMINDER_WINDOW", 409);
+  }
   if (
     policy.expiresAt &&
     (!Number.isFinite(Date.parse(policy.expiresAt)) ||
@@ -340,12 +365,22 @@ const runOutbound = async (transport: Transport): Promise<void> => {
             });
             return;
           }
-          const recent = {
+          const recentAutomated = {
             whatsappId: row.whatsappId,
-            attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) }
+            attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) },
+            // Human messages have priority 10. They neither consume nor are
+            // constrained by the hourly automation quota.
+            priority: { [Op.lt]: 10 }
           };
           const limit = positive(process.env.MESSAGING_MAX_PER_HOUR, 100);
-          if ((await OutboundMessage.count({ where: recent })) >= limit) {
+          // The hourly ceiling protects the channel from automated traffic.
+          // A message typed by an attendant must never be held behind that
+          // automation quota; channel/recipient leases and the minimum gap
+          // still serialize human sends safely.
+          if (
+            policy.origin !== "HUMAN" &&
+            (await OutboundMessage.count({ where: recentAutomated })) >= limit
+          ) {
             await row.update({ dueAt: new Date(Date.now() + 60000) });
             return;
           }
@@ -363,7 +398,10 @@ const runOutbound = async (transport: Transport): Promise<void> => {
             Date.now() - latest.attemptedAt.getTime() < gap
           )
             return;
-          if (policy.proactive) {
+          // Appointment reminders are already deduplicated per appointment and
+          // have a hard expiry. Applying the generic recipient/day limits can
+          // postpone them beyond the appointment, effectively discarding them.
+          if (usesGenericRecipientPacing(policy)) {
             const previous = await OutboundMessage.findAll({
               where: {
                 recipient: row.recipient,
@@ -543,7 +581,7 @@ export const enqueueOutbound = async (
         kind: typeof body === "string" ? "text" : "media",
         payload: JSON.stringify(payload),
         status: "PENDING",
-        priority: policy.origin === "HUMAN" ? 10 : policy.proactive ? 1 : 5,
+        priority: outboundPriorityFor(policy),
         dueAt: new Date()
       }
     });

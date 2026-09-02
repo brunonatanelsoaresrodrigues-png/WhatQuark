@@ -20,7 +20,14 @@ export interface QuarkAppointmentDto {
   profissionalId?: number | string;
   profissional?: QuarkNamedEntity;
   procedimentoId?: number | string;
-  procedimento?: QuarkNamedEntity & { orientacoes?: string };
+  procedimento?: QuarkNamedEntity & {
+    orientacoes?: string;
+    valor?: number | string;
+    preco?: number | string;
+    valorParticular?: number | string;
+  };
+  valorProcedimento?: number | string;
+  precoProcedimento?: number | string;
   especialidadeId?: number | string;
   especialidade?: QuarkNamedEntity;
   [key: string]: unknown;

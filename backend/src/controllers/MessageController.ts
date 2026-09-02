@@ -10,6 +10,7 @@ import Message from "../models/Message";
 import ListMessagesService from "../services/MessageServices/ListMessagesService";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import DeleteWhatsAppMessage from "../services/WbotServices/DeleteWhatsAppMessage";
+import EditWhatsAppMessage from "../services/WbotServices/EditWhatsAppMessage";
 import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
 import PausePatientIntakeService from "../services/PatientIntakeServices/PausePatientIntakeService";
@@ -172,4 +173,28 @@ export const remove = async (
   });
 
   return res.send();
+};
+
+export const edit = async (req: Request, res: Response): Promise<Response> => {
+  const { messageId } = req.params;
+  const existing = await Message.findByPk(messageId);
+  if (!existing) throw new AppError("ERR_NO_MESSAGE_FOUND", 404);
+
+  const ticket = await AssertTicketAccess(
+    existing.ticketId,
+    req.user.id,
+    true
+  );
+  const message = await EditWhatsAppMessage(
+    messageId,
+    req.body?.body,
+    Number(req.user.id)
+  );
+
+  await emitTicketEvent(ticket, "appMessage", {
+    action: "update",
+    message
+  });
+
+  return res.json(message);
 };

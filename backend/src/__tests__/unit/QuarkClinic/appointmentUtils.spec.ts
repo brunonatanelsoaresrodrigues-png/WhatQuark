@@ -73,9 +73,7 @@ describe("QuarkClinic appointment helpers", () => {
   });
 
   it("does not add a ninth digit to a Brazilian landline", () => {
-    expect(quarkPhoneVariants("+55 (85) 3241-3638")).toEqual([
-      "558532413638"
-    ]);
+    expect(quarkPhoneVariants("+55 (85) 3241-3638")).toEqual(["558532413638"]);
   });
 
   it("returns the main and alternate Quark phones without duplicates", () => {
@@ -123,11 +121,9 @@ describe("QuarkClinic appointment helpers", () => {
     expect(parsed?.toISOString()).toBe("2026-08-20T17:35:00.000Z");
   });
   it.each([
-    "1",
     "2 - cancelar",
     "2 pessoas",
     "12",
-    "confirmar",
     "Sim, preciso remarcar",
     "Não quero cancelar",
     "Não sei o endereço",
@@ -136,9 +132,21 @@ describe("QuarkClinic appointment helpers", () => {
   ])("does not turn ambiguous text %s into an action", body => {
     expect(parseConfirmationReply(body)).toBeNull();
   });
-  it("parses explicit reference commands and exact legacy answers", () => {
+  it("parses simple words, numbers, numbered appointments and legacy references", () => {
+    expect(parseConfirmationReply("CONFIRMAR")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("1")).toEqual({ choice: 1 });
+    expect(parseConfirmationReply("CANCELAR")).toEqual({ choice: 2 });
+    expect(parseConfirmationReply("2")).toEqual({ choice: 2 });
     expect(parseConfirmationReply("SIM")).toEqual({ choice: 1 });
     expect(parseConfirmationReply("NÃO")).toEqual({ choice: 2 });
+    expect(parseConfirmationReply("CONFIRMAR 2")).toEqual({
+      choice: 1,
+      appointmentOption: 2
+    });
+    expect(parseConfirmationReply("CANCELAR 3")).toEqual({
+      choice: 2,
+      appointmentOption: 3
+    });
     expect(parseConfirmationReply("CONFIRMAR AB12CD34")).toMatchObject({
       choice: 1,
       appointmentReference: "AB12CD34"
@@ -174,5 +182,27 @@ describe("QuarkClinic appointment helpers", () => {
 
     expect(moved.scheduleFingerprint).not.toBe(original.scheduleFingerprint);
     expect(moved.phone).toBe("5511987654321");
+  });
+
+  it("changes the fingerprint when the booked procedure price changes", () => {
+    const original = buildAppointmentSnapshot(
+      {
+        id: 42,
+        nomePaciente: "Maria da Silva",
+        dataAgendamento: "20-08-2026",
+        horaAgendamento: "09:00:00",
+        procedimento: { nome: "Consulta Psiquiatria", valor: 350 }
+      },
+      config
+    );
+    const updated = buildAppointmentSnapshot(
+      {
+        ...original.raw,
+        procedimento: { nome: "Consulta Psiquiatria", valor: 400 }
+      },
+      config
+    );
+
+    expect(updated.scheduleFingerprint).not.toBe(original.scheduleFingerprint);
   });
 });
