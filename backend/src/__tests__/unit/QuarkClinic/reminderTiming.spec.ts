@@ -4,7 +4,7 @@ import { dueReminder } from "../../../services/QuarkClinicServices/reminderTimin
 
 const config = {
   defaultCountryCode: "55",
-  reminderHours: [2, 24],
+  reminderHours: [2, 24, 48],
   timezone: "America/Sao_Paulo"
 } as QuarkConfig;
 
@@ -22,15 +22,24 @@ const appointment = (date: string, time = "10:00:00") =>
   );
 
 describe("QuarkClinic reminder timing", () => {
-  it("advances the Monday 24-hour reminder to the previous Friday", () => {
+  it("sends one Monday main reminder on the previous Friday", () => {
     const monday = appointment("24-08-2026");
     const fridayAtEight = new Date("2026-08-21T11:00:00.000Z");
 
     expect(dueReminder(config, monday, fridayAtEight)).toEqual({
-      hours: 24,
+      hours: 48,
       mondayAdvance: true,
       sendOnlyOnWeekday: 5
     });
+  });
+
+  it("keeps the legacy Friday advance when only 24 hours is configured", () => {
+    const monday = appointment("24-08-2026");
+    const fridayAtEight = new Date("2026-08-21T11:00:00.000Z");
+
+    expect(
+      dueReminder({ ...config, reminderHours: [2, 24] }, monday, fridayAtEight)
+    ).toEqual({ hours: 24, mondayAdvance: true, sendOnlyOnWeekday: 5 });
   });
 
   it("does not create the Monday 24-hour reminder on Sunday", () => {
@@ -56,6 +65,19 @@ describe("QuarkClinic reminder timing", () => {
 
     expect(dueReminder(config, tuesday, mondayAtTen)).toEqual({
       hours: 24,
+      mondayAdvance: false
+    });
+  });
+
+  it("reminds confirmed appointments without asking them to confirm again", () => {
+    const confirmed = {
+      ...appointment("25-08-2026"),
+      status: "CONFIRMADO"
+    };
+    const sundayAtTen = new Date("2026-08-23T13:00:00.000Z");
+
+    expect(dueReminder(config, confirmed, sundayAtTen)).toEqual({
+      hours: 48,
       mondayAdvance: false
     });
   });

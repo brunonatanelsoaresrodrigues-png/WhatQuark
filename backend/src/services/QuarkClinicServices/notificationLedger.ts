@@ -17,7 +17,8 @@ export const createQuarkNotificationOnce = async (
   eventType: string,
   payload: QuarkOutboxPayload,
   status: "PENDING" | "SUPPRESSED" = "PENDING",
-  transaction?: Transaction
+  transaction?: Transaction,
+  nextAttemptAt = new Date()
 ): Promise<boolean> => {
   try {
     const [, created] = await QuarkAppointmentNotification.findOrCreate({
@@ -31,7 +32,7 @@ export const createQuarkNotificationOnce = async (
         payload: JSON.stringify(payload),
         status,
         attempts: 0,
-        nextAttemptAt: new Date(),
+        nextAttemptAt,
         priorityAt: payload.validUntil ? new Date(payload.validUntil) : null,
         processingStartedAt: null,
         workerId: null,

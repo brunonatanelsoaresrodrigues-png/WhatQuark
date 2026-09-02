@@ -23,6 +23,8 @@ export interface QuarkConfig {
   syncHorizonDays: number;
   requestTimeoutMs: number;
   maxMessagesPerHour: number;
+  maxRecoveryMessagesPerHour: number;
+  recipientCooldownMinutes: number;
   quietHoursStart: string;
   quietHoursEnd: string;
   maxRetryAttempts: number;
@@ -47,7 +49,7 @@ export const getQuarkConfig = (): QuarkConfig => {
   const whatsappIdValue = Number(process.env.QUARK_WHATSAPP_ID);
   const reminderSource =
     process.env.QUARK_REMINDER_HOURS === undefined
-      ? "24,2"
+      ? "48,24,2"
       : process.env.QUARK_REMINDER_HOURS;
   const reminderHours = reminderSource
     .split(",")
@@ -128,6 +130,13 @@ export const getQuarkConfig = (): QuarkConfig => {
     ),
     maxMessagesPerHour: Math.floor(
       positiveNumber(process.env.QUARK_MAX_MESSAGES_PER_HOUR, 30)
+    ),
+    maxRecoveryMessagesPerHour: Math.floor(
+      positiveNumber(process.env.QUARK_MAX_RECOVERY_MESSAGES_PER_HOUR, 5)
+    ),
+    recipientCooldownMinutes: positiveNumber(
+      process.env.QUARK_RECIPIENT_COOLDOWN_MINUTES,
+      15
     ),
     quietHoursStart,
     quietHoursEnd,

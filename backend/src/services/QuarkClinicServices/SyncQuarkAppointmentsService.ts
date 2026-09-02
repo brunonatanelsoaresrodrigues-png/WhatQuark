@@ -12,6 +12,7 @@ import {
   AppointmentSnapshot,
   appointmentCanBeConfirmed,
   appointmentIsCancelled,
+  appointmentIsNoShow,
   buildAppointmentSnapshot,
   quarkPhoneKey
 } from "./appointmentUtils";
@@ -24,6 +25,8 @@ import { createQuarkNotificationOnce } from "./notificationLedger";
 import {
   cancelledAppointmentMessage,
   confirmationReplyInstructions,
+  noShowFollowUpMessage,
+  noShowRecoveryMessage,
   appointmentNoticeOptOut,
   reminderAppointmentMessage
 } from "./messageTemplates";
@@ -36,6 +39,10 @@ import {
   getPreference
 } from "../MessagingServices/preferences";
 import { dueReminder } from "./reminderTiming";
+import {
+  nextBusinessFollowUpAt,
+  noShowInitialAttemptAt
+} from "./recoveryTiming";
 // Version 5 adds the historical appointment baseline. Bumping the version
 // makes existing installations perform a safe, notification-free two-pass
 // import after deployment.
@@ -98,13 +105,16 @@ const queueNotice = async (
   body: string,
   transaction: Transaction,
   suppressed = false,
-  sendOnlyOnWeekday?: number
+  sendOnlyOnWeekday?: number,
+  requestsConfirmation?: boolean,
+  nextAttemptAt = new Date()
 ): Promise<boolean> => {
   const recipient =
     snapshot.phones.find(item => item.isPrimary) || snapshot.phones[0];
   if (!recipient) return false;
   const preference = await getPreference(recipient.phone);
-  const asks = appointmentCanBeConfirmed(snapshot.status);
+  const asks =
+    requestsConfirmation ?? appointmentCanBeConfirmed(snapshot.status);
   const completeBody = `${body}${
     asks ? `\n\n${confirmationReplyInstructions}` : ""
   }\n\n${appointmentNoticeOptOut}`;
@@ -137,12 +147,15 @@ const queueNotice = async (
       patientName: snapshot.patientName,
       body: completeBody,
       requestsConfirmation: asks,
-      validUntil: snapshot.scheduledAt?.toISOString() || null,
+      validUntil: ["NO_SHOW_RECOVERY", "NO_SHOW_FOLLOW_UP"].includes(eventType)
+        ? null
+        : snapshot.scheduledAt?.toISOString() || null,
       scheduleFingerprint: snapshot.scheduleFingerprint,
       sendOnlyOnWeekday
     },
     notificationStatus,
-    transaction
+    transaction,
+    nextAttemptAt
   );
   if (
     !created &&
@@ -322,6 +335,13 @@ const processSnapshot = async (
       !!record &&
       !appointmentIsCancelled(record.status) &&
       appointmentIsCancelled(snapshot.status);
+    const noShow =
+      !!record &&
+      !appointmentIsNoShow(record.status) &&
+      appointmentIsNoShow(snapshot.status);
+    const notifyCancellation =
+      cancelled && (!baseline || !!record?.baselineImported);
+    const notifyNoShow = noShow && (!baseline || !!record?.baselineImported);
     const reminder = dueReminder(config, snapshot);
     await sequelize.transaction(async transaction => {
       const fields = valuesForPersistence(
@@ -355,13 +375,19 @@ const processSnapshot = async (
           { transaction }
         );
       if (
-        !baseline &&
-        (!record || changed || cancelled || oldStatus !== snapshot.status)
+        (!baseline || notifyCancellation || notifyNoShow) &&
+        (!record ||
+          changed ||
+          cancelled ||
+          noShow ||
+          oldStatus !== snapshot.status)
       )
         await RecordQuarkAppointmentEventService({
           snapshot,
           eventType: cancelled
             ? "CANCELLED"
+            : noShow
+            ? "NO_SHOW"
             : !record
             ? "CREATED"
             : scheduleChanged
@@ -370,13 +396,57 @@ const processSnapshot = async (
           source: "QUARK_EXTERNAL",
           transaction
         });
-      if (!baseline && cancelled) {
+      if (cancelled || noShow) {
+        await QuarkAppointmentNotification.update(
+          {
+            status: "SUPPRESSED",
+            processingStartedAt: null,
+            workerId: null,
+            lastError: cancelled
+              ? "Appointment cancelled"
+              : "Appointment marked as no-show"
+          },
+          {
+            where: {
+              appointmentId: snapshot.appointmentId,
+              eventType: { [Op.in]: ["REMINDER", "MANUAL_REMINDER"] },
+              status: { [Op.in]: ["PENDING", "FAILED_RETRY"] }
+            },
+            transaction
+          }
+        );
+      }
+      if (notifyCancellation) {
         await queueNotice(
           snapshot,
           `cancelled:${snapshot.snapshotFingerprint.slice(0, 24)}`,
           "CANCELLED",
           cancelledAppointmentMessage(snapshot),
           transaction
+        );
+      }
+      if (notifyNoShow) {
+        await queueNotice(
+          snapshot,
+          `no-show:initial:${snapshot.snapshotFingerprint.slice(0, 24)}`,
+          "NO_SHOW_RECOVERY",
+          noShowRecoveryMessage(snapshot),
+          transaction,
+          false,
+          undefined,
+          false,
+          noShowInitialAttemptAt()
+        );
+        await queueNotice(
+          snapshot,
+          `no-show:follow-up:${snapshot.snapshotFingerprint.slice(0, 24)}`,
+          "NO_SHOW_FOLLOW_UP",
+          noShowFollowUpMessage(snapshot),
+          transaction,
+          false,
+          undefined,
+          false,
+          nextBusinessFollowUpAt(new Date(), config.timezone)
         );
       }
       // A baseline must not reserve the deterministic reminder key. The next
@@ -397,7 +467,8 @@ const processSnapshot = async (
           ),
           transaction,
           false,
-          reminder.sendOnlyOnWeekday
+          reminder.sendOnlyOnWeekday,
+          reminder.hours > 2 && appointmentCanBeConfirmed(snapshot.status)
         );
       await QuarkAppointmentRecipient.update(
         { active: false },

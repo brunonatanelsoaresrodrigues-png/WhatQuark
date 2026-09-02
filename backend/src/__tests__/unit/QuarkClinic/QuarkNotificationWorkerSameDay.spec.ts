@@ -1,5 +1,6 @@
 import QuarkAppointment from "../../../models/QuarkAppointment";
 import QuarkAppointmentNotification from "../../../models/QuarkAppointmentNotification";
+import Message from "../../../models/Message";
 import { assertExecution } from "../../../services/MessagingServices/policy";
 import { processNotification } from "../../../services/QuarkClinicServices/QuarkNotificationWorker";
 import SendQuarkWhatsAppMessage from "../../../services/QuarkClinicServices/SendQuarkWhatsAppMessage";
@@ -16,6 +17,10 @@ jest.mock("../../../models/QuarkAppointmentNotification", () => ({
 jest.mock("../../../models/QuarkAppointment", () => ({
   __esModule: true,
   default: { findOne: jest.fn(), update: jest.fn() }
+}));
+jest.mock("../../../models/Message", () => ({
+  __esModule: true,
+  default: { findOne: jest.fn() }
 }));
 jest.mock("../../../models/OutboundMessage", () => ({
   __esModule: true,
@@ -74,6 +79,7 @@ describe("Quark same-day reschedule delivery", () => {
       .mockReturnValue(new Date("2026-08-31T18:00:00.000Z").getTime());
     (assertExecution as jest.Mock).mockResolvedValue(undefined);
     (QuarkAppointmentNotification.findOne as jest.Mock).mockResolvedValue(null);
+    (Message.findOne as jest.Mock).mockResolvedValue(null);
     (QuarkAppointment.findOne as jest.Mock).mockResolvedValue({
       appointmentId: "492469752",
       phone: "5511999990000",
@@ -126,8 +132,7 @@ describe("Quark same-day reschedule delivery", () => {
     row.payload = JSON.stringify({
       phone: "5511999990000",
       patientName: "Paciente",
-      body:
-        "Lembrete de consulta.\n\nPara confirmar: CONFIRMAR B2DB68F5\nPara cancelar: CANCELAR B2DB68F5",
+      body: "Lembrete de consulta.\n\nPara confirmar: CONFIRMAR B2DB68F5\nPara cancelar: CANCELAR B2DB68F5",
       requestsConfirmation: true,
       validUntil: "2026-08-31T20:00:00.000Z",
       scheduleFingerprint: "future-reminder"
@@ -209,12 +214,164 @@ describe("Quark same-day reschedule delivery", () => {
         appointmentId: "492469752",
         scheduleFingerprint: "cancelled-appointment",
         allowCancelledAppointment: true,
-        expiresAt: "2026-08-31T20:00:00.000Z"
+        expiresAt: undefined
       })
     );
     expect(QuarkAppointment.update).not.toHaveBeenCalled();
     expect(row.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: "SENT", messageId: "provider-message" })
+    );
+  });
+
+  it("sends the first recovery only after an authoritative no-show", async () => {
+    const row = notification("NO_SHOW_RECOVERY");
+    row.payload = JSON.stringify({
+      phone: "5511999990000",
+      patientName: "Paciente",
+      body: "Notamos que não foi possível comparecer. Deseja reagendar?",
+      requestsConfirmation: false,
+      validUntil: null,
+      scheduleFingerprint: "no-show-appointment"
+    });
+    const current = {
+      appointmentId: "492469752",
+      phone: "5511999990000",
+      status: "FALTOU",
+      scheduledAt: new Date("2026-08-31T17:00:00.000Z"),
+      scheduleFingerprint: "no-show-appointment",
+      snapshot: JSON.stringify({ clinicaNome: "ESSENCIAL SAÚDE" })
+    };
+    (QuarkAppointment.findOne as jest.Mock)
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(null);
+
+    await processNotification(config, row);
+
+    expect(SendQuarkWhatsAppMessage).toHaveBeenCalledWith(
+      config,
+      "5511999990000",
+      "Paciente",
+      expect.stringContaining("Deseja reagendar"),
+      expect.objectContaining({
+        allowNoShowAppointment: true,
+        expiresAt: undefined,
+        appointmentId: "492469752"
+      })
+    );
+    expect(row.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "SENT" })
+    );
+  });
+
+  it("suppresses no-show recovery when the patient already has a future appointment", async () => {
+    const row = notification("NO_SHOW_RECOVERY");
+    row.payload = JSON.stringify({
+      phone: "5511999990000",
+      patientName: "Paciente",
+      body: "Deseja reagendar?",
+      requestsConfirmation: false,
+      validUntil: null,
+      scheduleFingerprint: "no-show-appointment"
+    });
+    const current = {
+      appointmentId: "492469752",
+      phone: "5511999990000",
+      status: "FALTOU",
+      scheduledAt: new Date("2026-08-31T17:00:00.000Z"),
+      scheduleFingerprint: "no-show-appointment",
+      snapshot: "{}"
+    };
+    (QuarkAppointment.findOne as jest.Mock)
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ appointmentId: "future" });
+
+    await processNotification(config, row);
+
+    expect(SendQuarkWhatsAppMessage).not.toHaveBeenCalled();
+    expect(row.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "SUPPRESSED",
+        lastError: "Patient already has another future appointment"
+      })
+    );
+  });
+
+  it("defers no-show recovery when its dedicated hourly limit is reached", async () => {
+    const row = notification("NO_SHOW_RECOVERY");
+    row.payload = JSON.stringify({
+      phone: "5511999990000",
+      patientName: "Paciente",
+      body: "Deseja reagendar?",
+      requestsConfirmation: false,
+      validUntil: null,
+      scheduleFingerprint: "no-show-appointment"
+    });
+    const current = {
+      appointmentId: "492469752",
+      phone: "5511999990000",
+      status: "FALTOU",
+      scheduledAt: new Date("2026-08-31T17:00:00.000Z"),
+      scheduleFingerprint: "no-show-appointment",
+      snapshot: "{}"
+    };
+    (QuarkAppointment.findOne as jest.Mock)
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(null);
+    (QuarkAppointmentNotification.count as jest.Mock).mockResolvedValue(5);
+
+    await processNotification(
+      { ...config, maxRecoveryMessagesPerHour: 5 },
+      row
+    );
+
+    expect(SendQuarkWhatsAppMessage).not.toHaveBeenCalled();
+    expect(row.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "PENDING",
+        nextAttemptAt: new Date("2026-08-31T18:15:00.000Z"),
+        lastError: "No-show recovery hourly limit reached"
+      })
+    );
+  });
+
+  it("does not send the next-day follow-up after the patient replies", async () => {
+    const row = notification("NO_SHOW_FOLLOW_UP");
+    row.payload = JSON.stringify({
+      phone: "5511999990000",
+      patientName: "Paciente",
+      body: "Ainda deseja remarcar?",
+      requestsConfirmation: false,
+      validUntil: null,
+      scheduleFingerprint: "no-show-appointment"
+    });
+    const current = {
+      appointmentId: "492469752",
+      phone: "5511999990000",
+      status: "FALTOU",
+      scheduledAt: new Date("2026-08-31T17:00:00.000Z"),
+      scheduleFingerprint: "no-show-appointment",
+      snapshot: "{}"
+    };
+    (QuarkAppointment.findOne as jest.Mock)
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(null);
+    (QuarkAppointmentNotification.findOne as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 94868,
+        ticketId: 7,
+        sentAt: new Date("2026-08-31T17:30:00.000Z")
+      });
+    (Message.findOne as jest.Mock).mockResolvedValue({ id: "patient-reply" });
+
+    await processNotification(config, row);
+
+    expect(SendQuarkWhatsAppMessage).not.toHaveBeenCalled();
+    expect(row.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "SUPPRESSED",
+        lastError: "Patient replied after the initial no-show recovery"
+      })
     );
   });
 

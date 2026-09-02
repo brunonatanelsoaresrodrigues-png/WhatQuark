@@ -2,8 +2,11 @@ import { buildAppointmentSnapshot } from "../../../services/QuarkClinicServices/
 import { QuarkConfig } from "../../../services/QuarkClinicServices/config";
 import {
   changedAppointmentMessage,
+  cancelledAppointmentMessage,
   manualReminderAppointmentMessage,
   newAppointmentMessage,
+  noShowFollowUpMessage,
+  noShowRecoveryMessage,
   removeLegacyConfirmationCodes,
   reminderAppointmentMessage
 } from "../../../services/QuarkClinicServices/messageTemplates";
@@ -37,9 +40,7 @@ describe("Appointment notices", () => {
   });
   it("identifies the Quark patient and professional in reminders", () => {
     const body = manualReminderAppointmentMessage(snapshot);
-    expect(body).toContain(
-      "Caro(a) Paciente CLAUDESON NASCIMENTO DA SILVA"
-    );
+    expect(body).toContain("Caro(a) Paciente CLAUDESON NASCIMENTO DA SILVA");
     expect(body).toContain("profissional ASDRUBAL PEREZ SOTO");
     expect(body).toContain("no dia 21/08/2026 às 16:00");
     expect(body).toContain("procedimento Consulta Psiquiatria");
@@ -74,8 +75,31 @@ describe("Appointment notices", () => {
     );
   });
   it("does not guess today or tomorrow for delayed reminders", () => {
-    expect(reminderAppointmentMessage(snapshot, 2)).toContain("21/08/2026");
-    expect(reminderAppointmentMessage(snapshot, 2)).not.toMatch(/hoje|amanhã/);
+    expect(reminderAppointmentMessage(snapshot, 24)).toContain("21/08/2026");
+    expect(reminderAppointmentMessage(snapshot, 24)).not.toMatch(/hoje|amanhã/);
+  });
+  it("uses a short logistics reminder two hours before the appointment", () => {
+    const body = reminderAppointmentMessage(snapshot, 2);
+    expect(body).toContain("Lembrete: sua consulta é hoje às 16:00");
+    expect(body).toContain("ordem de chegada");
+    expect(body).not.toContain("no valor de");
+  });
+  it("does not ask an already confirmed patient to confirm again", () => {
+    const body = reminderAppointmentMessage(
+      { ...snapshot, status: "CONFIRMADO" },
+      24
+    );
+    expect(body).toContain("está confirmada para 21/08/2026 às 16:00");
+    expect(body).toContain("ordem de chegada");
+  });
+  it("offers safe rescheduling after cancellations and confirmed no-shows", () => {
+    expect(cancelledAppointmentMessage(snapshot)).toContain(
+      "ajudará com o reagendamento"
+    );
+    expect(noShowRecoveryMessage(snapshot)).toContain(
+      "não foi possível comparecer"
+    );
+    expect(noShowFollowUpMessage(snapshot)).toContain("deseja remarcar");
   });
   it("uses same-day wording when the changed appointment time already passed", () => {
     const body = changedAppointmentMessage(

@@ -101,6 +101,8 @@ const config = {
   syncLookbackDays: 0,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
+  maxRecoveryMessagesPerHour: 5,
+  recipientCooldownMinutes: 15,
   quietHoursStart: "20:00",
   quietHoursEnd: "08:00",
   maxRetryAttempts: 5,
@@ -212,7 +214,7 @@ describe("SyncQuarkAppointmentsService", () => {
     expect(createQuarkNotificationOnce).not.toHaveBeenCalled();
   });
 
-  it("queues a due reminder on an unchanged active appointment", async () => {
+  it("queues a short two-hour reminder without asking for confirmation", async () => {
     mockSyncState("ACTIVE");
     const target = new Date(Date.now() + 60 * 60 * 1000);
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -253,14 +255,18 @@ describe("SyncQuarkAppointmentsService", () => {
       expect.objectContaining({
         phone: "5511999990000",
         body: expect.stringMatching(
-          /Caro\(a\) Paciente[\s\S]*Avenida de Teste, 123[\s\S]*CONFIRMAR\* — para confirmar[\s\S]*CANCELAR\* — para cancelar[\s\S]*PARAR/
+          /Lembrete: sua consulta é hoje[\s\S]*Avenida de Teste, 123[\s\S]*ordem de chegada[\s\S]*PARAR/
         ),
-        requestsConfirmation: true,
+        requestsConfirmation: false,
         scheduleFingerprint: snapshot.scheduleFingerprint
       }),
       "PENDING",
-      expect.anything()
+      expect.anything(),
+      expect.any(Date)
     );
+    const payload = (createQuarkNotificationOnce as jest.Mock).mock.calls[0][3];
+    expect(payload.body).not.toContain("CONFIRMAR");
+    expect(payload.body).not.toContain("CANCELAR");
   });
 
   it("does not duplicate a current manual reminder with an automatic reminder", async () => {
@@ -422,7 +428,8 @@ describe("SyncQuarkAppointmentsService", () => {
         scheduleFingerprint: cancelledSnapshot.scheduleFingerprint
       }),
       "PENDING",
-      expect.anything()
+      expect.anything(),
+      expect.any(Date)
     );
     expect(record.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -431,6 +438,62 @@ describe("SyncQuarkAppointmentsService", () => {
         confirmationRequestedAt: null
       }),
       expect.anything()
+    );
+  });
+  it("queues two idempotent recovery steps on a real no-show transition", async () => {
+    mockSyncState("ACTIVE");
+    const scheduledDto = appointment();
+    const scheduledSnapshot = buildAppointmentSnapshot(scheduledDto, config);
+    const noShowDto = { ...scheduledDto, statusMarcacao: "FALTOU" };
+    const noShowSnapshot = buildAppointmentSnapshot(noShowDto, config);
+    const record = {
+      ...scheduledSnapshot,
+      baselineImported: true,
+      firstSeenAt: new Date(),
+      lastChangedAt: new Date(),
+      update: jest.fn().mockResolvedValue(undefined)
+    };
+    (listQuarkAppointments as jest.Mock).mockResolvedValue([noShowDto]);
+    (QuarkAppointment.findOne as jest.Mock).mockResolvedValue(record);
+
+    await SyncQuarkAppointmentsService(config);
+
+    expect(createQuarkNotificationOnce).toHaveBeenCalledTimes(2);
+    expect(createQuarkNotificationOnce).toHaveBeenNthCalledWith(
+      1,
+      "42",
+      expect.stringMatching(/^no-show:initial:.*:to:[a-f0-9]{16}$/),
+      "NO_SHOW_RECOVERY",
+      expect.objectContaining({
+        body: expect.stringMatching(/não foi possível comparecer[\s\S]*PARAR/),
+        requestsConfirmation: false,
+        validUntil: null,
+        scheduleFingerprint: noShowSnapshot.scheduleFingerprint
+      }),
+      "PENDING",
+      expect.anything(),
+      expect.any(Date)
+    );
+    expect(createQuarkNotificationOnce).toHaveBeenNthCalledWith(
+      2,
+      "42",
+      expect.stringMatching(/^no-show:follow-up:.*:to:[a-f0-9]{16}$/),
+      "NO_SHOW_FOLLOW_UP",
+      expect.objectContaining({
+        body: expect.stringMatching(/deseja remarcar[\s\S]*PARAR/),
+        requestsConfirmation: false,
+        validUntil: null
+      }),
+      "PENDING",
+      expect.anything(),
+      expect.any(Date)
+    );
+    expect(QuarkAppointmentNotification.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "SUPPRESSED",
+        lastError: "Appointment marked as no-show"
+      }),
+      expect.objectContaining({ transaction: expect.anything() })
     );
   });
   it("directly reconciles a known appointment moved beyond the short sweep", async () => {
@@ -609,7 +672,8 @@ describe("SyncQuarkAppointmentsService", () => {
       "REMINDER",
       expect.anything(),
       "SUPPRESSED",
-      expect.anything()
+      expect.anything(),
+      expect.any(Date)
     );
   });
 
@@ -621,6 +685,7 @@ describe("SyncQuarkAppointmentsService", () => {
     const past = {
       ...appointment(),
       id: 84,
+      statusMarcacao: "FALTOU",
       dataAgendamento: `${pad(yesterday.getDate())}-${pad(
         yesterday.getMonth() + 1
       )}-${yesterday.getFullYear()}`

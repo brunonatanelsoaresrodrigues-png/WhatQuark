@@ -32,6 +32,8 @@ const config: QuarkConfig = {
   syncLookbackDays: 365,
   requestTimeoutMs: 15000,
   maxMessagesPerHour: 100,
+  maxRecoveryMessagesPerHour: 5,
+  recipientCooldownMinutes: 15,
   quietHoursStart: "20:00",
   quietHoursEnd: "08:00",
   maxRetryAttempts: 5,

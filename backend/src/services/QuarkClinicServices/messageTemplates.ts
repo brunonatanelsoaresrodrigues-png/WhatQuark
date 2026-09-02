@@ -82,7 +82,8 @@ const details = (appointment: AppointmentSnapshot) => {
 
 const reminderDetails = (
   appointment: AppointmentSnapshot,
-  configuredAddress = ""
+  configuredAddress = "",
+  hours = 24
 ) => {
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
   const patient = clean(appointment.patientName || "Paciente");
@@ -95,14 +96,28 @@ const reminderDetails = (
   );
   const price = procedurePrice(appointment);
   const address = clean(configuredAddress || knownClinicAddress(clinic));
+  const location = `${clinic}${
+    address ? `, localizada no endereço: ${address}` : ""
+  }`;
+  const arrivalOrder = "O atendimento é realizado por ordem de chegada.";
+
+  if (hours <= 2) {
+    return `Lembrete: sua consulta é hoje${
+      time ? ` às ${time}` : " em horário a confirmar"
+    }, com o(a) profissional ${professional}, na clínica ${location}.\n\n${arrivalOrder}`;
+  }
+
+  if (hours === 24 && appointment.status === "CONFIRMADO") {
+    return `Lembrete: sua consulta com o(a) profissional ${professional} está confirmada para ${date}${
+      time ? ` às ${time}` : " em horário a confirmar"
+    }, na clínica ${location}.\n\n${arrivalOrder}`;
+  }
 
   return `Caro(a) Paciente ${patient}, você possui um agendamento com o(a) profissional ${professional} no dia ${date}${
     time ? ` às ${time}` : " em horário a confirmar"
   } para o procedimento ${procedure}${
     price ? `, no valor de ${price}` : ""
-  }, na clínica ${clinic}${
-    address ? `, localizada no endereço: ${address}` : ""
-  }.\n\nO atendimento é realizado por ordem de chegada.`;
+  }, na clínica ${location}.\n\n${arrivalOrder}`;
 };
 export const newAppointmentMessage = (
   appointment: AppointmentSnapshot,
@@ -140,14 +155,28 @@ export const cancelledAppointmentMessage = (
   const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
   return `Sua consulta de ${date}${
     time ? ` às ${time}` : ""
-  } foi cancelada. Em caso de dúvida, fale com nossa equipe.`;
+  } foi cancelada. Se desejar marcar uma nova data, responda a esta mensagem e nossa equipe ajudará com o reagendamento.`;
+};
+export const noShowRecoveryMessage = (appointment: AppointmentSnapshot) => {
+  const { date, time } = formatAppointmentDateTime(appointment.scheduledAt);
+  const patient = clean(appointment.patientName || "Paciente");
+  const professional = clean(
+    appointment.raw.profissional?.nome || "profissional agendado"
+  );
+  return `Olá, ${patient}. Verificamos que não foi possível comparecer à consulta de ${date}${
+    time ? ` às ${time}` : ""
+  }, com ${professional}. Se desejar reagendar, responda a esta mensagem e ajudaremos com uma nova data.`;
+};
+export const noShowFollowUpMessage = (appointment: AppointmentSnapshot) => {
+  const patient = clean(appointment.patientName || "Paciente");
+  return `Olá, ${patient}. Passando para saber se deseja remarcar a consulta. Se precisar de uma nova data, responda a esta mensagem e nossa equipe ajudará.`;
 };
 export const reminderAppointmentMessage = (
   appointment: AppointmentSnapshot,
   _hours: number,
   address = "",
   _mondayAdvance = false
-) => reminderDetails(appointment, address);
+) => reminderDetails(appointment, address, _hours);
 export const manualReminderAppointmentMessage = (
   appointment: AppointmentSnapshot,
   address = ""

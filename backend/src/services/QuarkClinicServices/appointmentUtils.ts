@@ -122,12 +122,16 @@ export const quarkPhoneVariants = (
 
   // DDD (2) + celular antigo (8), começando em 6-9: adiciona o nono dígito.
   if (/^[1-9]{2}[6-9]\d{7}$/.test(national)) {
-    variants.add(`${defaultCountryCode}${national.slice(0, 2)}9${national.slice(2)}`);
+    variants.add(
+      `${defaultCountryCode}${national.slice(0, 2)}9${national.slice(2)}`
+    );
   }
 
   // DDD (2) + 9 + celular (8): também aceita o cadastro legado sem o 9.
   if (/^[1-9]{2}9[6-9]\d{7}$/.test(national)) {
-    variants.add(`${defaultCountryCode}${national.slice(0, 2)}${national.slice(3)}`);
+    variants.add(
+      `${defaultCountryCode}${national.slice(0, 2)}${national.slice(3)}`
+    );
   }
 
   return Array.from(variants);
@@ -281,6 +285,12 @@ export const appointmentIsCancelled = (status: string): boolean =>
 
 export const appointmentCanBeConfirmed = (status: string): boolean =>
   status === "AGENDADO";
+
+export const appointmentCanReceiveReminder = (status: string): boolean =>
+  ["AGENDADO", "CONFIRMADO"].includes(status);
+
+export const appointmentIsNoShow = (status: string): boolean =>
+  ["FALTOU", "NAO_COMPARECEU", "NÃO_COMPARECEU", "AUSENTE"].includes(status);
 
 export interface ConfirmationReply {
   choice: 1 | 2;

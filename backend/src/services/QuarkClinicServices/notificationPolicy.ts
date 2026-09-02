@@ -3,7 +3,9 @@ import { dateParts, zonedDate } from "./clinicTime";
 const ALLOWED_OUTBOUND_EVENT_TYPES = new Set([
   "REMINDER",
   "MANUAL_REMINDER",
-  "CANCELLED"
+  "CANCELLED",
+  "NO_SHOW_RECOVERY",
+  "NO_SHOW_FOLLOW_UP"
 ]);
 
 export const quarkNotificationCanBeSent = (eventType: string): boolean =>
@@ -15,8 +17,11 @@ export const appointmentStillMatchesNotification = (
   payloadValidUntil: string | null,
   eventType = "REMINDER"
 ): boolean => {
-  const allowedStatuses =
-    eventType === "RESCHEDULED" ? ["AGENDADO", "CONFIRMADO"] : ["AGENDADO"];
+  const allowedStatuses = eventType.startsWith("NO_SHOW_")
+    ? ["FALTOU", "NAO_COMPARECEU", "NÃO_COMPARECEU", "AUSENTE"]
+    : ["REMINDER", "MANUAL_REMINDER", "RESCHEDULED"].includes(eventType)
+    ? ["AGENDADO", "CONFIRMADO"]
+    : ["AGENDADO"];
   if (!status || !allowedStatuses.includes(status)) return false;
   if (!payloadValidUntil) return true;
 
@@ -53,6 +58,11 @@ export const quarkNotificationExpiresAt = (
   eventCreatedAt: Date,
   timezone: string
 ): string | null => {
+  if (
+    eventType === "CANCELLED" ||
+    ["NO_SHOW_RECOVERY", "NO_SHOW_FOLLOW_UP"].includes(eventType)
+  )
+    return null;
   if (!payloadValidUntil) return null;
   const scheduledAt = new Date(payloadValidUntil);
   if (!Number.isFinite(scheduledAt.getTime())) return payloadValidUntil;

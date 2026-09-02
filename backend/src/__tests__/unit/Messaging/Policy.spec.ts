@@ -158,6 +158,14 @@ it("allows the waiting status only for a same-day reschedule notice", () => {
     appointmentStatusesForPolicy({ allowConfirmedAppointment: true })
   ).not.toContain("AGUARDANDO_ATENDIMENTO");
 });
+it("allows no-show recovery only for authoritative no-show statuses", () => {
+  expect(
+    appointmentStatusesForPolicy({ allowNoShowAppointment: true })
+  ).toEqual(expect.arrayContaining(["FALTOU", "NAO_COMPARECEU", "AUSENTE"]));
+  expect(
+    appointmentStatusesForPolicy({ allowNoShowAppointment: true })
+  ).not.toContain("AGENDADO");
+});
 it("verifies the exact raw webhook body and rejects tampering", () => {
   const body = Buffer.from('{"hello":"test"}');
   const signature = `sha256=${createHmac("sha256", "test-secret")

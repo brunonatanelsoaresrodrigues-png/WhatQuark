@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import sequelize from "../../database";
 import QuarkAppointmentNotification from "../../models/QuarkAppointmentNotification";
 import OutboundMessage from "../../models/OutboundMessage";
+import Message from "../../models/Message";
 import Whatsapp from "../../models/Whatsapp";
 import { digest } from "../MessagingServices/state";
 import QuarkAppointment from "../../models/QuarkAppointment";
@@ -237,6 +238,54 @@ const hourlyLimitReached = async (config: QuarkConfig): Promise<boolean> => {
   return count >= config.maxMessagesPerHour;
 };
 
+const deferNoShowRecoveryIfLimited = async (
+  config: QuarkConfig,
+  notification: QuarkAppointmentNotification
+): Promise<boolean> => {
+  if (!notification.eventType.startsWith("NO_SHOW_")) return false;
+
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const sentThisHour = await QuarkAppointmentNotification.count({
+    where: {
+      eventType: { [Op.in]: ["NO_SHOW_RECOVERY", "NO_SHOW_FOLLOW_UP"] },
+      status: "SENT",
+      sentAt: { [Op.gte]: hourAgo }
+    }
+  });
+  if (sentThisHour >= (config.maxRecoveryMessagesPerHour || 5)) {
+    await notification.update({
+      status: "PENDING",
+      nextAttemptAt: new Date(Date.now() + 15 * 60 * 1000),
+      processingStartedAt: null,
+      workerId: null,
+      lastError: "No-show recovery hourly limit reached"
+    });
+    return true;
+  }
+
+  const cooldownMs = (config.recipientCooldownMinutes || 15) * 60 * 1000;
+  const recent = await QuarkAppointmentNotification.findOne({
+    where: {
+      id: { [Op.ne]: notification.id },
+      recipientPhone: notification.recipientPhone,
+      eventType: { [Op.in]: ["NO_SHOW_RECOVERY", "NO_SHOW_FOLLOW_UP"] },
+      status: "SENT",
+      sentAt: { [Op.gte]: new Date(Date.now() - cooldownMs) }
+    },
+    order: [["sentAt", "DESC"]]
+  });
+  if (!recent?.sentAt) return false;
+
+  await notification.update({
+    status: "PENDING",
+    nextAttemptAt: new Date(new Date(recent.sentAt).getTime() + cooldownMs),
+    processingStartedAt: null,
+    workerId: null,
+    lastError: "Recipient no-show recovery cooldown active"
+  });
+  return true;
+};
+
 const parsePayload = (notification: QuarkAppointmentNotification) => {
   const payload = JSON.parse(notification.payload) as QuarkOutboxPayload;
   if (
@@ -261,7 +310,10 @@ export const processNotification = async (
         id: { [Op.gt]: notification.id },
         status: {
           [Op.in]: ["PENDING", "PROCESSING", "FAILED_RETRY", "SENT"]
-        }
+        },
+        ...(notification.eventType === "NO_SHOW_RECOVERY"
+          ? { eventType: { [Op.ne]: "NO_SHOW_FOLLOW_UP" } }
+          : {})
       }
     });
     if (newerNotification) {
@@ -274,7 +326,9 @@ export const processNotification = async (
       return;
     }
 
-    if (["CREATED", "UPDATED", "RESCHEDULED"].includes(notification.eventType)) {
+    if (
+      ["CREATED", "UPDATED", "RESCHEDULED"].includes(notification.eventType)
+    ) {
       await notification.update({
         status: "SUPPRESSED",
         processingStartedAt: null,
@@ -327,6 +381,64 @@ export const processNotification = async (
     });
     if (!record || record.scheduleFingerprint !== payload.scheduleFingerprint)
       throw new Error("ERR_APPOINTMENT_CHANGED");
+    if (notification.eventType.startsWith("NO_SHOW_")) {
+      const futureAppointment = await QuarkAppointment.findOne({
+        where: {
+          appointmentId: { [Op.ne]: notification.appointmentId },
+          phone: record.phone,
+          scheduledAt: { [Op.gt]: new Date() },
+          status: { [Op.in]: ["AGENDADO", "CONFIRMADO"] }
+        }
+      });
+      if (futureAppointment) {
+        await notification.update({
+          status: "SUPPRESSED",
+          processingStartedAt: null,
+          workerId: null,
+          lastError: "Patient already has another future appointment"
+        });
+        return;
+      }
+    }
+    if (notification.eventType === "NO_SHOW_FOLLOW_UP") {
+      const initial = await QuarkAppointmentNotification.findOne({
+        where: {
+          appointmentId: notification.appointmentId,
+          recipientPhone: notification.recipientPhone,
+          eventType: "NO_SHOW_RECOVERY",
+          status: "SENT"
+        },
+        order: [["id", "DESC"]]
+      });
+      if (!initial?.ticketId || !initial.sentAt) {
+        await notification.update({
+          status: "SUPPRESSED",
+          processingStartedAt: null,
+          workerId: null,
+          lastError: "Initial no-show recovery was not delivered"
+        });
+        return;
+      }
+      const patientReply = await Message.findOne({
+        where: {
+          ticketId: initial.ticketId,
+          fromMe: false,
+          isDeleted: false,
+          createdAt: { [Op.gte]: initial.sentAt }
+        },
+        order: [["createdAt", "DESC"]]
+      });
+      if (patientReply) {
+        await notification.update({
+          status: "SUPPRESSED",
+          processingStartedAt: null,
+          workerId: null,
+          lastError: "Patient replied after the initial no-show recovery"
+        });
+        return;
+      }
+    }
+    if (await deferNoShowRecoveryIfLimited(config, notification)) return;
     const stored = JSON.parse(record.snapshot || "{}");
     const sameDayReschedule = isSameDayReschedule(
       notification.eventType,
@@ -337,7 +449,9 @@ export const processNotification = async (
     const templateName =
       notification.eventType === "CANCELLED"
         ? process.env.CLOUD_QUARK_CANCELLED_TEMPLATE
-        : process.env.CLOUD_QUARK_APPOINTMENT_TEMPLATE;
+        : ["REMINDER", "MANUAL_REMINDER"].includes(notification.eventType)
+        ? process.env.CLOUD_QUARK_APPOINTMENT_TEMPLATE
+        : undefined;
     const dates = formatAppointmentDateTime(record.scheduledAt);
     const parameters = [
       dates.date,
@@ -357,7 +471,12 @@ export const processNotification = async (
         scheduleFingerprint: payload.scheduleFingerprint,
         expiresAt: notificationExpiresAt || undefined,
         allowCancelledAppointment: notification.eventType === "CANCELLED",
-        allowConfirmedAppointment: notification.eventType === "RESCHEDULED",
+        allowNoShowAppointment: notification.eventType.startsWith("NO_SHOW_"),
+        allowConfirmedAppointment: [
+          "REMINDER",
+          "MANUAL_REMINDER",
+          "RESCHEDULED"
+        ].includes(notification.eventType),
         allowSameDayRescheduledAppointment: sameDayReschedule,
         allowAppointmentPhoneVariants: true,
         sendOnlyOnWeekday: payload.sendOnlyOnWeekday,

@@ -1,6 +1,6 @@
 import {
   AppointmentSnapshot,
-  appointmentCanBeConfirmed
+  appointmentCanReceiveReminder
 } from "./appointmentUtils";
 import { QuarkConfig } from "./config";
 
@@ -62,7 +62,10 @@ export const dueReminder = (
   snapshot: AppointmentSnapshot,
   now = new Date()
 ): DueReminder | undefined => {
-  if (!snapshot.scheduledAt || !appointmentCanBeConfirmed(snapshot.status)) {
+  if (
+    !snapshot.scheduledAt ||
+    !appointmentCanReceiveReminder(snapshot.status)
+  ) {
     return undefined;
   }
 
@@ -76,17 +79,28 @@ export const dueReminder = (
   );
   const currentWeekday = weekdayInTimezone(now, config.timezone);
 
+  if (appointmentWeekday === 1) {
+    const isPreviousFriday =
+      currentWeekday === 5 &&
+      calendarDaysBetween(now, snapshot.scheduledAt, config.timezone) === 3;
+    const fridayReminderHours = config.reminderHours.includes(48)
+      ? 48
+      : config.reminderHours.includes(24)
+      ? 24
+      : undefined;
+
+    if (isPreviousFriday && fridayReminderHours) {
+      return {
+        hours: fridayReminderHours,
+        mondayAdvance: true,
+        sendOnlyOnWeekday: 5
+      };
+    }
+  }
+
   for (const hours of config.reminderHours) {
-    if (hours === 24 && appointmentWeekday === 1) {
-      const isPreviousFriday =
-        currentWeekday === 5 &&
-        calendarDaysBetween(now, snapshot.scheduledAt, config.timezone) === 3;
-
-      if (isPreviousFriday) {
-        return { hours, mondayAdvance: true, sendOnlyOnWeekday: 5 };
-      }
-
-      // Consultas de segunda nunca geram o lembrete principal no domingo.
+    if ([24, 48].includes(hours) && appointmentWeekday === 1) {
+      // Consultas de segunda recebem um único lembrete principal na sexta.
       continue;
     }
 

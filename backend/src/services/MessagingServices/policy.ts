@@ -20,6 +20,7 @@ export interface SendPolicy {
   appointmentId?: string;
   scheduleFingerprint?: string;
   allowCancelledAppointment?: boolean;
+  allowNoShowAppointment?: boolean;
   allowConfirmedAppointment?: boolean;
   allowSameDayRescheduledAppointment?: boolean;
   allowAppointmentPhoneVariants?: boolean;
@@ -73,11 +74,11 @@ export const assertExecution = async (
       throw new AppError("ERR_TEST_RECIPIENT_NOT_ALLOWED", 409);
   }
 };
-export const appointmentStatusesForPolicy = (
-  policy: SendPolicy
-): string[] =>
+export const appointmentStatusesForPolicy = (policy: SendPolicy): string[] =>
   policy.allowCancelledAppointment
     ? ["CANCELADO", "CANCELADO_VIA_SMS", "EXCLUIDO"]
+    : policy.allowNoShowAppointment
+    ? ["FALTOU", "NAO_COMPARECEU", "NÃO_COMPARECEU", "AUSENTE"]
     : policy.allowSameDayRescheduledAppointment
     ? ["AGENDADO", "CONFIRMADO", "AGUARDANDO_ATENDIMENTO"]
     : policy.allowConfirmedAppointment
