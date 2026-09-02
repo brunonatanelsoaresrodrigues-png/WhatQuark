@@ -48,7 +48,8 @@ describe("Appointment notices", () => {
     expect(body).toContain(
       "Avenida Ulisses Bezerra, 2227 - Cidade dos Funcionários, FORTALEZA, 60822-490"
     );
-    expect(body).not.toMatch(/hoje|amanhã|ordem de chegada|NÃO para cancelar/);
+    expect(body).toContain("O atendimento é realizado por ordem de chegada.");
+    expect(body).not.toMatch(/hoje|amanhã|NÃO para cancelar/);
   });
   it("prefers a procedure price supplied by Quark", () => {
     const body = manualReminderAppointmentMessage({

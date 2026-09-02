@@ -235,7 +235,7 @@ export const finalizeClosure = async (
     return true;
   });
 
-const processTicket = async (
+export const processTicket = async (
   config: TicketInactivityConfig,
   claimedTicket: Ticket
 ): Promise<void> => {
@@ -278,16 +278,32 @@ const processTicket = async (
 
   let noticeMessageId: string | null = ticket.inactivityNoticeMessageId;
   if (!ticket.inactivityNoticeSentAt) {
-    const sentMessage = await SendWhatsAppMessage({
-      body: config.message,
-      ticket,
-      origin: "INACTIVITY",
-      policy: {
-        idempotencyKey: `inactivity:${ticket.id}:${new Date(
-          ticket.awaitingPatientSince
-        ).toISOString()}`
+    let sentMessage;
+    try {
+      sentMessage = await SendWhatsAppMessage({
+        body: config.message,
+        ticket,
+        origin: "INACTIVITY",
+        policy: {
+          idempotencyKey: `inactivity:${ticket.id}:${new Date(
+            ticket.awaitingPatientSince
+          ).toISOString()}`
+        }
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "ERR_MESSAGE_QUEUED") {
+        // The central outbound ledger accepted the notice but it has not
+        // finished yet. Release only the worker claim so the next cycle can
+        // reconcile the same idempotency key without duplicating the message.
+        await releaseClaim(ticket.id);
+        logger.info({
+          info: "Ticket inactivity notice queued for delivery",
+          ticketId: ticket.id
+        });
+        return;
       }
-    });
+      throw error;
+    }
     noticeMessageId = sentMessage.id;
     await Ticket.update(
       {

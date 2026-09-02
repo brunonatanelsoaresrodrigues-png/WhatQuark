@@ -3,8 +3,15 @@ import Message from "../../../models/Message";
 import Ticket from "../../../models/Ticket";
 import TicketInactivityEvent from "../../../models/TicketInactivityEvent";
 import { INACTIVITY_CLOSE_REASON } from "../../../services/TicketInactivityServices/config";
-import { finalizeClosure } from "../../../services/TicketInactivityServices/TicketInactivityWorker";
+import {
+  finalizeClosure,
+  processTicket
+} from "../../../services/TicketInactivityServices/TicketInactivityWorker";
 import RecordTicketEventService from "../../../services/TicketServices/RecordTicketEventService";
+import QuarkAppointmentResponse from "../../../models/QuarkAppointmentResponse";
+import Whatsapp from "../../../models/Whatsapp";
+import SendWhatsAppMessage from "../../../services/WbotServices/SendWhatsAppMessage";
+import ShowTicketService from "../../../services/TicketServices/ShowTicketService";
 
 jest.mock("../../../database", () => ({
   __esModule: true,
@@ -66,6 +73,42 @@ describe("TicketInactivityWorker finalization", () => {
       callback(transaction)
     );
     (TicketInactivityEvent.create as jest.Mock).mockResolvedValue({});
+  });
+
+  it("releases the claim while an accepted inactivity notice is queued", async () => {
+    const ticket = {
+      ...makeTicket(),
+      whatsappId: 1,
+      inactivityNoticeSentAt: null,
+      inactivityNoticeMessageId: null,
+      contact: { number: "5511999999999" }
+    };
+    (ShowTicketService as jest.Mock).mockResolvedValue(ticket);
+    (Message.findOne as jest.Mock).mockResolvedValue({
+      id: "clinic-message",
+      fromMe: true
+    });
+    (QuarkAppointmentResponse.findAll as jest.Mock).mockResolvedValue([]);
+    (Whatsapp.findByPk as jest.Mock).mockResolvedValue({ status: "CONNECTED" });
+    (SendWhatsAppMessage as jest.Mock).mockRejectedValue(
+      new Error("ERR_MESSAGE_QUEUED")
+    );
+    (Ticket.update as jest.Mock).mockResolvedValue([1]);
+
+    await expect(
+      processTicket(
+        {
+          message: "Encerramento por inatividade"
+        } as any,
+        ticket as any
+      )
+    ).resolves.toBeUndefined();
+
+    expect(Ticket.update).toHaveBeenCalledWith(
+      { inactivityClosingAt: null },
+      { where: { id: 20, status: "open" } }
+    );
+    expect(Ticket.findByPk).not.toHaveBeenCalled();
   });
 
   it("cancels the closure if an incoming message won the race", async () => {

@@ -102,7 +102,7 @@ const reminderDetails = (
     price ? `, no valor de ${price}` : ""
   }, na clínica ${clinic}${
     address ? `, localizada no endereço: ${address}` : ""
-  }.`;
+  }.\n\nO atendimento é realizado por ordem de chegada.`;
 };
 export const newAppointmentMessage = (
   appointment: AppointmentSnapshot,
