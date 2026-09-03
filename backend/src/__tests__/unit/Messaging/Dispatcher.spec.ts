@@ -10,6 +10,8 @@ import { readState } from "../../../services/MessagingServices/state";
 import {
   consentErrorForSend,
   enqueueOutbound,
+  isBackgroundAutomation,
+  outboundIntervalMsFor,
   outboundPriorityFor,
   processOutbound,
   stopDispatcher,
@@ -69,6 +71,11 @@ beforeEach(() => {
   jest.resetAllMocks();
   process.env.WHATSAPP_PROVIDER = "cloud";
   process.env.MESSAGING_MAX_PER_HOUR = "100";
+  process.env.MESSAGING_MAX_AUTOMATED_PER_DAY = "400";
+  process.env.MESSAGING_AUTOMATED_MIN_INTERVAL_SECONDS = "45";
+  process.env.MESSAGING_AUTOMATED_JITTER_SECONDS = "0";
+  process.env.MESSAGING_INTERACTIVE_MIN_INTERVAL_SECONDS = "4";
+  process.env.MESSAGING_INTERACTIVE_JITTER_SECONDS = "0";
   process.env.QUARK_QUIET_HOURS_START = "00:00";
   process.env.QUARK_QUIET_HOURS_END = "00:00";
   process.env.QUARK_APPOINTMENT_NOTICES_REQUIRE_OPT_IN = "false";
@@ -166,6 +173,15 @@ it("prioritizes appointment notices below human replies and above bot traffic", 
   ).toBe(6);
   expect(outboundPriorityFor({})).toBe(5);
   expect(outboundPriorityFor({ proactive: true })).toBe(1);
+  expect(outboundPriorityFor({ origin: "SURVEY" })).toBe(2);
+});
+
+it("paces background traffic more slowly than interactive replies", () => {
+  expect(isBackgroundAutomation({ origin: "SURVEY" })).toBe(true);
+  expect(isBackgroundAutomation({ origin: "INACTIVITY" })).toBe(true);
+  expect(isBackgroundAutomation({ origin: "BOT" })).toBe(false);
+  expect(outboundIntervalMsFor({ proactive: true }, "notice-1")).toBe(45000);
+  expect(outboundIntervalMsFor({ origin: "HUMAN" }, "reply-1")).toBe(4000);
 });
 
 it("bypasses patient consent only for an authorized internal report", () => {
@@ -205,6 +221,11 @@ it("does not resend after a post-send storage failure", async () => {
   expect(transport.sendMessage).toHaveBeenCalledTimes(1);
 });
 it("applies the channel hourly cap to automated messages", async () => {
+  row.payload = JSON.stringify({
+    to: "5511999990000@c.us",
+    body: "appointment reminder",
+    options: { policy: { proactive: true } }
+  });
   (OutboundMessage.count as jest.Mock).mockResolvedValue(100);
   await processOutbound(transport);
   const quotaWhere = (OutboundMessage.count as jest.Mock).mock.calls[0][0]
@@ -212,6 +233,20 @@ it("applies the channel hourly cap to automated messages", async () => {
   expect(quotaWhere.priority).toBeDefined();
   expect(transport.sendMessage).not.toHaveBeenCalled();
   expect(row.status).toBe("PENDING");
+});
+it("applies a daily ceiling to background automation", async () => {
+  row.payload = JSON.stringify({
+    to: "5511999990000@c.us",
+    body: "survey",
+    options: { policy: { origin: "SURVEY" } }
+  });
+  (OutboundMessage.count as jest.Mock)
+    .mockResolvedValueOnce(0)
+    .mockResolvedValueOnce(400);
+  await processOutbound(transport);
+  expect(transport.sendMessage).not.toHaveBeenCalled();
+  expect(row.status).toBe("PENDING");
+  expect(row.dueAt.getTime()).toBeGreaterThan(Date.now() + 3500000);
 });
 it("never applies the automated hourly cap to attendant messages", async () => {
   row.payload = JSON.stringify({

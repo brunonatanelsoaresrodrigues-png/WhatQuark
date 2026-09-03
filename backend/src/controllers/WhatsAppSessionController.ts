@@ -8,7 +8,7 @@ const store = async (req: Request, res: Response): Promise<Response> => {
   const { whatsappId } = req.params;
   const whatsapp = await ShowWhatsAppService(whatsappId);
 
-  StartWhatsAppSession(whatsapp);
+  await StartWhatsAppSession(whatsapp);
 
   return res.status(200).json({ message: "Starting session." });
 };
@@ -21,7 +21,7 @@ const update = async (req: Request, res: Response): Promise<Response> => {
     whatsappData: { session: "" }
   });
 
-  StartWhatsAppSession(whatsapp);
+  await StartWhatsAppSession(whatsapp);
 
   return res.status(200).json({ message: "Starting session." });
 };

@@ -81,8 +81,38 @@ const persistAccepted = async (
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const positive = (value: string | undefined, fallback: number) =>
   Number(value) > 0 ? Number(value) : fallback;
+const nonNegative = (value: string | undefined, fallback: number) =>
+  Number.isFinite(Number(value)) && Number(value) >= 0
+    ? Number(value)
+    : fallback;
 const codeOf = (error: unknown) =>
   error instanceof Error ? error.message : "ERR_SEND_UNKNOWN";
+const backgroundOrigins = new Set(["INACTIVITY", "SURVEY", "INTERNAL_REPORT"]);
+export const isBackgroundAutomation = (policy: SendPolicy): boolean =>
+  policy.proactive === true || backgroundOrigins.has(policy.origin || "");
+export const outboundIntervalMsFor = (
+  policy: SendPolicy,
+  seed: string
+): number => {
+  const background = isBackgroundAutomation(policy);
+  const legacyMinimum = positive(
+    process.env.MESSAGING_MIN_INTERVAL_SECONDS,
+    4
+  );
+  const minimum = background
+    ? positive(process.env.MESSAGING_AUTOMATED_MIN_INTERVAL_SECONDS, 45)
+    : positive(
+        process.env.MESSAGING_INTERACTIVE_MIN_INTERVAL_SECONDS,
+        legacyMinimum
+      );
+  const jitter = background
+    ? nonNegative(process.env.MESSAGING_AUTOMATED_JITTER_SECONDS, 45)
+    : nonNegative(process.env.MESSAGING_INTERACTIVE_JITTER_SECONDS, 4);
+  const offset = jitter
+    ? parseInt(digest(seed).slice(0, 8), 16) % (Math.floor(jitter) + 1)
+    : 0;
+  return (minimum + offset) * 1000;
+};
 export const usesGenericRecipientPacing = (policy: SendPolicy): boolean =>
   policy.proactive === true &&
   !(policy.appointmentNotice === true && !!policy.appointmentId);
@@ -91,7 +121,8 @@ export const outboundPriorityFor = (policy: SendPolicy): number => {
   // Time-bound appointment notices must not sit behind ordinary bot traffic.
   // Human replies keep the highest priority.
   if (policy.appointmentNotice === true && !!policy.appointmentId) return 6;
-  return policy.proactive ? 1 : 5;
+  if (isBackgroundAutomation(policy)) return policy.proactive ? 1 : 2;
+  return 5;
 };
 const cleanupMediaPath = async (payload: Payload): Promise<void> => {
   if (!payload.options.policy?.cleanupMediaPath || !payload.media?.path) return;
@@ -368,20 +399,40 @@ const runOutbound = async (transport: Transport): Promise<void> => {
           const recentAutomated = {
             whatsappId: row.whatsappId,
             attemptedAt: { [Op.gte]: new Date(Date.now() - 3600000) },
-            // Human messages have priority 10. They neither consume nor are
-            // constrained by the hourly automation quota.
-            priority: { [Op.lt]: 10 }
+            // Background sends use priorities 1, 2 and 6. Interactive bot
+            // replies and attendant messages remain responsive, but every
+            // transport call is still serialized by the channel lease.
+            priority: { [Op.in]: [1, 2, 6] }
           };
-          const limit = positive(process.env.MESSAGING_MAX_PER_HOUR, 100);
-          // The hourly ceiling protects the channel from automated traffic.
-          // A message typed by an attendant must never be held behind that
-          // automation quota; channel/recipient leases and the minimum gap
-          // still serialize human sends safely.
+          const background = isBackgroundAutomation(policy);
+          const limit = positive(process.env.MESSAGING_MAX_PER_HOUR, 30);
+          // Bulk-like background traffic is deliberately kept below the
+          // interactive lane. This prevents reminder, survey and inactivity
+          // backlogs from being released as a burst after a reconnect.
           if (
-            policy.origin !== "HUMAN" &&
+            background &&
             (await OutboundMessage.count({ where: recentAutomated })) >= limit
           ) {
             await row.update({ dueAt: new Date(Date.now() + 60000) });
+            return;
+          }
+          const dailyLimit = positive(
+            process.env.MESSAGING_MAX_AUTOMATED_PER_DAY,
+            400
+          );
+          if (
+            background &&
+            (await OutboundMessage.count({
+              where: {
+                whatsappId: row.whatsappId,
+                attemptedAt: {
+                  [Op.gte]: new Date(Date.now() - 24 * 3600000)
+                },
+                priority: { [Op.in]: [1, 2, 6] }
+              }
+            })) >= dailyLimit
+          ) {
+            await row.update({ dueAt: new Date(Date.now() + 3600000) });
             return;
           }
           const latest = await OutboundMessage.findOne({
@@ -391,13 +442,16 @@ const runOutbound = async (transport: Transport): Promise<void> => {
             },
             order: [["attemptedAt", "DESC"]]
           });
-          const gap =
-            positive(process.env.MESSAGING_MIN_INTERVAL_SECONDS, 2) * 1000;
+          const gap = outboundIntervalMsFor(policy, row.id);
           if (
             latest?.attemptedAt &&
             Date.now() - latest.attemptedAt.getTime() < gap
-          )
+          ) {
+            await row.update({
+              dueAt: new Date(latest.attemptedAt.getTime() + gap)
+            });
             return;
+          }
           // Appointment reminders are already deduplicated per appointment and
           // have a hard expiry. Applying the generic recipient/day limits can
           // postpone them beyond the appointment, effectively discarding them.
