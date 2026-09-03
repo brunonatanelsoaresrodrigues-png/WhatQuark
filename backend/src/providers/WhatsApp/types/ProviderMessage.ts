@@ -26,6 +26,7 @@ export interface ProviderMessage {
 
 export interface HistorySyncCursor {
   chatId: string;
+  alternateChatIds?: string[];
   oldestMessageId: string;
   oldestMessageFromMe: boolean;
   oldestMessageTimestampMs: number;

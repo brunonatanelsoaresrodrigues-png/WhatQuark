@@ -29,7 +29,7 @@ class WppKey extends Model<WppKey> {
   @Column(DataType.TEXT)
   keyId: string;
 
-  @Column(DataType.TEXT)
+  @Column(DataType.TEXT({ length: "long" }))
   value: string;
 
   @CreatedAt

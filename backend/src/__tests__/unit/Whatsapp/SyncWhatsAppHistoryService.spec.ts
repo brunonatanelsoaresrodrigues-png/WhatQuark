@@ -68,6 +68,7 @@ describe("SyncWhatsAppHistoryService", () => {
     expect(cursors).toEqual([
       {
         chatId: "123456@lid",
+        alternateChatIds: ["5511999999999@s.whatsapp.net"],
         oldestMessageId: "newest-a",
         oldestMessageFromMe: false,
         oldestMessageTimestampMs: new Date("2026-08-24T12:00:00.000Z").getTime()

@@ -88,6 +88,9 @@ const buildHistoryCursors = async (
 
     cursorsByChat.set(chatId, {
       chatId,
+      ...(!contact.isGroup && contact.lid && /^\d{8,15}$/.test(contact.number)
+        ? { alternateChatIds: [`${contact.number}@s.whatsapp.net`] }
+        : {}),
       oldestMessageId: message.id,
       oldestMessageFromMe: Boolean(message.fromMe),
       oldestMessageTimestampMs: createdAt

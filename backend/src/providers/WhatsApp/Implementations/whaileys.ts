@@ -38,6 +38,12 @@ import Message from "../../../models/Message";
 import { getIO } from "../../../libs/socket";
 import { logger } from "../../../utils/logger";
 import AppError from "../../../errors/AppError";
+import { isShuttingDown } from "../../../utils/shutdownState";
+import {
+  cancelHistoryRequest,
+  requestHistoryPage,
+  shouldSyncOnDemandHistory
+} from "./WhaileysHistorySync";
 import StoreWppSessionKeys from "../../../services/WppKeyServices/StoreWppSessionKeys";
 import GetWppSessionKeys from "../../../services/WppKeyServices/GetWppSessionKeys";
 import { getRedisClient } from "../../../libs/redisStore";
@@ -863,6 +869,7 @@ const removeSession = async (whatsappId: number): Promise<void> => {
 
   const wbot = sessions.get(whatsappId);
   if (wbot) {
+    cancelHistoryRequest(wbot);
     wbot.ev.removeAllListeners("connection.update");
     wbot.ev.removeAllListeners("creds.update");
     wbot.ev.removeAllListeners("messages.upsert");
@@ -957,7 +964,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         })
       )
     },
-    shouldSyncHistoryMessage: () => false,
+    shouldSyncHistoryMessage: shouldSyncOnDemandHistory,
     shouldIgnoreJid: jid => {
       if (typeof jid !== "string") return false;
       return (
@@ -1581,52 +1588,6 @@ const fetchChatMessages = async (
   }));
 };
 
-const requestHistoryPage = async (
-  wbot: Session,
-  cursor: HistorySyncCursor,
-  count: number
-): Promise<WAMessage[]> =>
-  new Promise<WAMessage[]>((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      wbot.ev.off("messages.pdo-response", onResponse);
-      clearTimeout(timeout);
-    };
-    const finish = (messages: WAMessage[]) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(messages);
-    };
-    const onResponse = ({ messages }: { messages: WAMessage[] }) => {
-      finish(messages || []);
-    };
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new AppError("ERR_HISTORY_SYNC_TIMEOUT", 504));
-    }, 15_000);
-
-    wbot.ev.on("messages.pdo-response", onResponse);
-    wbot
-      .fetchMessageHistory(
-        count,
-        {
-          remoteJid: cursor.chatId,
-          id: cursor.oldestMessageId,
-          fromMe: cursor.oldestMessageFromMe
-        },
-        cursor.oldestMessageTimestampMs
-      )
-      .catch(error => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(error);
-      });
-  });
-
 const syncHistory = async (
   sessionId: number,
   cursors: HistorySyncCursor[],
@@ -1654,6 +1615,9 @@ const syncHistory = async (
 
     try {
       for (let page = 0; page < maxPagesPerChat; page += 1) {
+        if (isShuttingDown() || sessions.get(sessionId) !== wbot)
+          throw new AppError("ERR_HISTORY_SYNC_DISCONNECTED", 409);
+        if (page > 0) await sleep(1000);
         // eslint-disable-next-line no-await-in-loop
         const messages = await requestHistoryPage(wbot, cursor, pageSize);
         if (messages.length === 0) {
@@ -1750,6 +1714,9 @@ const syncHistory = async (
           }
         }
 
+        // Publish partial imports even while a large chat is still paginating.
+        onProgress?.({ ...progress });
+
         const oldestMessage = messages.reduce((oldest, message) =>
           Number(message.messageTimestamp || 0) <
           Number(oldest.messageTimestamp || 0)
@@ -1763,6 +1730,10 @@ const syncHistory = async (
         }
 
         cursor = {
+          ...cursor,
+          alternateChatIds: Array.from(
+            new Set([cursor.chatId, ...(cursor.alternateChatIds || [])])
+          ),
           chatId: oldestMessage.key.remoteJid || cursor.chatId,
           oldestMessageId: oldestId,
           oldestMessageFromMe: Boolean(oldestMessage.key.fromMe),
@@ -1785,19 +1756,24 @@ const syncHistory = async (
         chatId: cursor.chatId,
         err: error
       });
-      if (consecutiveChatFailures >= 3) {
-        throw new AppError("ERR_HISTORY_SYNC_UNAVAILABLE", 503);
-      }
+      if (
+        isShuttingDown() ||
+        (error instanceof Error &&
+          error.message === "ERR_HISTORY_SYNC_DISCONNECTED")
+      )
+        throw error;
     }
 
     if (!chatFailed) consecutiveChatFailures = 0;
     if (!reachedEnd) progress.limitedChats += 1;
     progress.processedChats += 1;
-    onProgress?.(progress);
+    onProgress?.({ ...progress });
+    if (consecutiveChatFailures >= 3)
+      throw new AppError("ERR_HISTORY_SYNC_UNAVAILABLE", 503);
 
     // Mantém a sincronização leve para não disputar recursos com mensagens ao vivo.
     // eslint-disable-next-line no-await-in-loop
-    await sleep(250);
+    await sleep(1000);
   }
 
   return progress;

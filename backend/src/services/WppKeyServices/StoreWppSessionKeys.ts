@@ -3,6 +3,7 @@ import { BufferJSON } from "whaileys";
 import WppKey from "../../models/WppKey";
 import { setInRedis } from "../../libs/redisStore";
 import { logger } from "../../utils/logger";
+import AppError from "../../errors/AppError";
 
 interface StoreKeyRequest {
   connectionId: number;
@@ -19,7 +20,8 @@ const wait = (ms: number): Promise<void> =>
 const isDeadlock = (error: any): boolean =>
   [error?.code, error?.original?.code, error?.parent?.code].includes(
     "ER_LOCK_DEADLOCK"
-  ) || [error?.errno, error?.original?.errno, error?.parent?.errno].includes(1213);
+  ) ||
+  [error?.errno, error?.original?.errno, error?.parent?.errno].includes(1213);
 
 const StoreWppSessionKeys = async ({
   connectionId,
@@ -60,9 +62,15 @@ const StoreWppSessionKeys = async ({
         type,
         keyId: id,
         attempts: attempt,
-        err
+        // Database errors may contain the complete private Signal key in SQL
+        // parameters. Never serialize the original error or key value.
+        errorCode:
+          (err as any)?.original?.code ||
+          (err as any)?.parent?.code ||
+          (err as any)?.code ||
+          "UNKNOWN"
       });
-      return;
+      throw new AppError("ERR_WHATSAPP_KEY_STORAGE", 503);
     }
   }
 };
