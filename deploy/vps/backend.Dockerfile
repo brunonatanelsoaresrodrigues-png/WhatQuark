@@ -6,6 +6,8 @@ ARG SOURCE_REVISION=staging
 WORKDIR /usr/src/app
 COPY backend/package.json backend/package-lock.json backend/tsconfig.json backend/jest.config.js backend/.sequelizerc ./
 COPY backend/src ./src
+COPY backend/scripts ./scripts
+RUN node scripts/patch-whaileys-history.cjs
 RUN rm -rf /usr/src/app/dist
 COPY backend/dist ./dist
 RUN node --check dist/server.js

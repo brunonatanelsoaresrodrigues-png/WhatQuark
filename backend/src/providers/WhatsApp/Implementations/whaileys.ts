@@ -1759,7 +1759,8 @@ const syncHistory = async (
       if (
         isShuttingDown() ||
         (error instanceof Error &&
-          error.message === "ERR_HISTORY_SYNC_DISCONNECTED")
+          (error.message === "ERR_HISTORY_SYNC_DISCONNECTED" ||
+            error.message.startsWith("ERR_HISTORY_SYNC_REJECTED_")))
       )
         throw error;
     }

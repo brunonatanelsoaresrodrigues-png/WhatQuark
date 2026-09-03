@@ -155,3 +155,17 @@ it("cleans up when the provider rejects the request", async () => {
   );
   expect(socket.ev.listenerCount("messaging-history.set")).toBe(0);
 });
+
+it("stops on the matching server rejection rather than waiting and retrying more chats", async () => {
+  const socket = makeSocket();
+  const result = requestHistoryPage(socket as any, cursor, 50);
+  const assertion = expect(result).rejects.toThrow(
+    "ERR_HISTORY_SYNC_REJECTED_479"
+  );
+  await Promise.resolve();
+  socket.ev.emit("ack.error", { attrs: { id: "unrelated", error: "463" } });
+  socket.ev.emit("ack.error", { attrs: { id: "request-id", error: "479" } });
+  await assertion;
+  expect(socket.ev.listenerCount("messaging-history.set")).toBe(0);
+  expect(socket.ev.listenerCount("ack.error")).toBe(0);
+});

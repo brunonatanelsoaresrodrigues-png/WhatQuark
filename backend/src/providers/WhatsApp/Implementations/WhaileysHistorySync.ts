@@ -36,6 +36,8 @@ export const requestHistoryPage = async (
       return;
     }
     let settled = false;
+    let requestId: string | undefined;
+    const earlyAcks = new Map<string, string>();
     const chatIds = new Set(
       [cursor.chatId, ...(cursor.alternateChatIds || [])].map(jidNormalizedUser)
     );
@@ -45,6 +47,7 @@ export const requestHistoryPage = async (
       clearTimeout(timeout);
       socket.ev.off("messaging-history.set", onHistory);
       socket.ev.off("connection.update", onConnection);
+      socket.ev.off("ack.error", onAckError);
       pendingRequests.delete(socket);
     };
     const fail = (error: Error) => {
@@ -77,6 +80,21 @@ export const requestHistoryPage = async (
       if (connection === "close")
         fail(new AppError("ERR_HISTORY_SYNC_DISCONNECTED", 409));
     };
+    const rejected = (code: string) =>
+      fail(
+        new AppError(
+          `ERR_HISTORY_SYNC_REJECTED_${
+            /^\d{3}$/.test(code) ? code : "UNKNOWN"
+          }`,
+          503
+        )
+      );
+    const onAckError = ({ attrs }: BaileysEventMap["ack.error"]) => {
+      if (!attrs.id || !attrs.error) return;
+      if (requestId === attrs.id) rejected(attrs.error);
+      else if (!requestId && earlyAcks.size < 20)
+        earlyAcks.set(attrs.id, attrs.error);
+    };
     const timeout = setTimeout(
       () => fail(new AppError("ERR_HISTORY_SYNC_TIMEOUT", 504)),
       timeoutMs
@@ -84,6 +102,7 @@ export const requestHistoryPage = async (
     pendingRequests.set(socket, fail);
     socket.ev.on("messaging-history.set", onHistory);
     socket.ev.on("connection.update", onConnection);
+    socket.ev.on("ack.error", onAckError);
     Promise.resolve()
       .then(() =>
         settled
@@ -98,5 +117,12 @@ export const requestHistoryPage = async (
               cursor.oldestMessageTimestampMs
             )
       )
+      .then(id => {
+        if (settled || !id) return;
+        requestId = id;
+        const code = earlyAcks.get(id);
+        earlyAcks.clear();
+        if (code) rejected(code);
+      })
       .catch(fail);
   });
