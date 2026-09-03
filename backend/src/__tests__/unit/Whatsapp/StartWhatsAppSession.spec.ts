@@ -9,6 +9,7 @@ jest.mock("../../../libs/socket", () => ({ getIO: jest.fn() }));
 
 afterEach(() => {
   delete process.env.WHATSAPP_CONNECTIONS_ENABLED;
+  delete process.env.WHATSAPP_AUTO_START;
   jest.resetAllMocks();
 });
 
@@ -26,6 +27,7 @@ it("does not start or mutate a WhatsApp session while connections are paused", a
 
 it("starts normally when connections are enabled", async () => {
   process.env.WHATSAPP_CONNECTIONS_ENABLED = "true";
+  process.env.WHATSAPP_AUTO_START = "false";
   const emit = jest.fn();
   (getIO as jest.Mock).mockReturnValue({
     to: jest.fn(() => ({ emit }))

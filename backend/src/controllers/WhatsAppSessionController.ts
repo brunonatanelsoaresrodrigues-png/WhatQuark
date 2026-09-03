@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import { whatsappProvider } from "../providers/WhatsApp";
 import ShowWhatsAppService from "../services/WhatsappService/ShowWhatsAppService";
-import { StartWhatsAppSession } from "../services/WbotServices/StartWhatsAppSession";
+import {
+  assertWhatsAppConnectionsEnabled,
+  StartWhatsAppSession
+} from "../services/WbotServices/StartWhatsAppSession";
 import UpdateWhatsAppService from "../services/WhatsappService/UpdateWhatsAppService";
 
 const store = async (req: Request, res: Response): Promise<Response> => {
@@ -15,6 +18,7 @@ const store = async (req: Request, res: Response): Promise<Response> => {
 
 const update = async (req: Request, res: Response): Promise<Response> => {
   const { whatsappId } = req.params;
+  assertWhatsAppConnectionsEnabled();
 
   const { whatsapp } = await UpdateWhatsAppService({
     whatsappId,

@@ -2,7 +2,11 @@ import ListWhatsAppsService from "../WhatsappService/ListWhatsAppsService";
 import { StartWhatsAppSession } from "./StartWhatsAppSession";
 
 export const StartAllWhatsAppsSessions = async (): Promise<void> => {
-  if (process.env.WHATSAPP_CONNECTIONS_ENABLED === "false") return;
+  if (
+    process.env.WHATSAPP_CONNECTIONS_ENABLED === "false" ||
+    process.env.WHATSAPP_AUTO_START === "false"
+  )
+    return;
   const whatsapps = await ListWhatsAppsService();
   if (whatsapps.length > 0) {
     whatsapps
