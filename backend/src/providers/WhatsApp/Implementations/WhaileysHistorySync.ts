@@ -18,6 +18,11 @@ export const shouldSyncOnDemandHistory = (
 ): boolean =>
   notification.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND;
 
+export const shouldSyncHistoryMessage = (
+  notification: proto.Message.IHistorySyncNotification,
+  fullHistoryEnabled: boolean
+): boolean => shouldSyncOnDemandHistory(notification) || fullHistoryEnabled;
+
 export const cancelHistoryRequest = (socket: HistorySocket): void => {
   pendingRequests.get(socket)?.(
     new AppError("ERR_HISTORY_SYNC_DISCONNECTED", 409)

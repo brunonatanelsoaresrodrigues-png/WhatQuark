@@ -3,6 +3,7 @@ import { proto } from "whaileys";
 import {
   cancelHistoryRequest,
   requestHistoryPage,
+  shouldSyncHistoryMessage,
   shouldSyncOnDemandHistory
 } from "../../../providers/WhatsApp/Implementations/WhaileysHistorySync";
 
@@ -53,6 +54,20 @@ it("enables only requested ON_DEMAND history, not initial or full sync", () => {
     })
   ).toBe(false);
   expect(shouldSyncOnDemandHistory({})).toBe(false);
+});
+
+it("enables initial history only during an explicitly configured full sync", () => {
+  const recent = {
+    syncType: proto.HistorySync.HistorySyncType.RECENT
+  };
+  expect(shouldSyncHistoryMessage(recent, false)).toBe(false);
+  expect(shouldSyncHistoryMessage(recent, true)).toBe(true);
+  expect(
+    shouldSyncHistoryMessage(
+      { syncType: proto.HistorySync.HistorySyncType.ON_DEMAND },
+      false
+    )
+  ).toBe(true);
 });
 
 it("requests history in milliseconds and receives messaging-history.set", async () => {

@@ -42,7 +42,7 @@ import { isShuttingDown } from "../../../utils/shutdownState";
 import {
   cancelHistoryRequest,
   requestHistoryPage,
-  shouldSyncOnDemandHistory
+  shouldSyncHistoryMessage
 } from "./WhaileysHistorySync";
 import StoreWppSessionKeys from "../../../services/WppKeyServices/StoreWppSessionKeys";
 import GetWppSessionKeys from "../../../services/WppKeyServices/GetWppSessionKeys";
@@ -803,7 +803,8 @@ const getMessageData = async (
 const getHistoryMessageData = async (
   msg: WAMessage,
   wbot: Session,
-  contactCache: Map<string, ContactPayload>
+  contactCache: Map<string, ContactPayload>,
+  downloadMedia = true
 ): Promise<{
   messagePayload: MessagePayload;
   contactPayload: ContactPayload;
@@ -850,8 +851,109 @@ const getHistoryMessageData = async (
       unreadMessages: 0,
       groupContact
     },
-    mediaPayload: await convertToMediaPayload(msg, wbot)
+    mediaPayload: downloadMedia
+      ? await convertToMediaPayload(msg, wbot)
+      : undefined
   };
+};
+
+interface HistoryImportCounts {
+  importedMessages: number;
+  duplicateMessages: number;
+  failedMessages: number;
+}
+
+const importHistoryMessages = async (
+  messages: WAMessage[],
+  wbot: Session,
+  contactCache: Map<string, ContactPayload>,
+  downloadMedia = true
+): Promise<HistoryImportCounts> => {
+  const counts: HistoryImportCounts = {
+    importedMessages: 0,
+    duplicateMessages: 0,
+    failedMessages: 0
+  };
+  const sortedMessages = [...messages].sort(
+    (left, right) =>
+      Number(left.messageTimestamp || 0) - Number(right.messageTimestamp || 0)
+  );
+
+  for (const message of sortedMessages) {
+    if (!message.message || !message.key.id || !shouldHandleMessage(message)) {
+      continue;
+    }
+    try {
+      // Check before downloading media so repeated history chunks remain cheap.
+      // eslint-disable-next-line no-await-in-loop
+      const existingMessage = await Message.findByPk(message.key.id, {
+        attributes: ["id"]
+      });
+      if (existingMessage) {
+        const remoteJid = message.key.remoteJid || "";
+        const isGroup = isJidGroup(remoteJid);
+        const contactJid =
+          !message.key.fromMe && isGroup && message.key.participant
+            ? message.key.participant
+            : remoteJid;
+        const identity = resolveWhatsAppMessageIdentity(
+          contactJid,
+          message.key as unknown as Record<string, unknown>,
+          getExtendedContext(message) as unknown as
+            | Record<string, unknown>
+            | undefined,
+          Boolean(message.key.fromMe)
+        );
+        if (identity.phoneJid && identity.lid && !isGroup) {
+          const cacheKey = `${contactJid}|${identity.phoneJid}`;
+          let reconciledPayload = contactCache.get(cacheKey);
+          if (!reconciledPayload) {
+            // eslint-disable-next-line no-await-in-loop
+            reconciledPayload = await convertToContactPayload(
+              contactJid,
+              message,
+              wbot
+            );
+            contactCache.set(cacheKey, reconciledPayload);
+          }
+          // eslint-disable-next-line no-await-in-loop
+          await CreateOrUpdateContactService({
+            ...reconciledPayload,
+            emitEvent: true
+          });
+        }
+        counts.duplicateMessages += 1;
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const data = await getHistoryMessageData(
+        message,
+        wbot,
+        contactCache,
+        downloadMedia
+      );
+      // eslint-disable-next-line no-await-in-loop
+      const result = await handleMessage(
+        data.messagePayload,
+        data.contactPayload,
+        data.contextPayload,
+        data.mediaPayload,
+        { historySync: true }
+      );
+      if (result === "created") counts.importedMessages += 1;
+      if (result === "duplicate") counts.duplicateMessages += 1;
+    } catch (error) {
+      counts.failedMessages += 1;
+      logger.error({
+        info: "Could not import historical WhatsApp message",
+        sessionId: wbot.id,
+        messageId: message.key.id,
+        err: error
+      });
+    }
+  }
+
+  return counts;
 };
 
 const getWbot = (sessionId: number): Session => {
@@ -948,9 +1050,16 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     }
   }
 
+  const fullHistorySyncEnabled =
+    process.env.WHATSAPP_FULL_HISTORY_SYNC_ENABLED === "true";
+  const fullHistoryMediaEnabled =
+    process.env.WHATSAPP_FULL_HISTORY_MEDIA_ENABLED === "true";
+
   const connOptions: UserFacingSocketConfig = {
     logger: whaileyLogger,
-    browser: Browsers.ubuntu(process.env.WHATSAPP_BROWSER_NAME || "Chrome"),
+    browser: fullHistorySyncEnabled
+      ? Browsers.macOS("Desktop")
+      : Browsers.ubuntu(process.env.WHATSAPP_BROWSER_NAME || "Chrome"),
     emitOwnEvents: true,
     auth: {
       creds: state.creds,
@@ -964,7 +1073,8 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         })
       )
     },
-    shouldSyncHistoryMessage: shouldSyncOnDemandHistory,
+    shouldSyncHistoryMessage: notification =>
+      shouldSyncHistoryMessage(notification, fullHistorySyncEnabled),
     shouldIgnoreJid: jid => {
       if (typeof jid !== "string") return false;
       return (
@@ -973,7 +1083,7 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
         jid === "status@broadcast"
       );
     },
-    syncFullHistory: false,
+    syncFullHistory: fullHistorySyncEnabled,
     version: waVersionToUse,
     msgRetryCounterMap,
     markOnlineOnConnect: false,
@@ -1093,6 +1203,54 @@ const init = async (whatsapp: Whatsapp): Promise<void> => {
     } finally {
       inFlightMessageHandlers.delete(handling);
     }
+  });
+
+  const fullHistoryContactCache = new Map<string, ContactPayload>();
+  const fullHistoryCounts: HistoryImportCounts = {
+    importedMessages: 0,
+    duplicateMessages: 0,
+    failedMessages: 0
+  };
+  let fullHistoryImportQueue: Promise<void> = Promise.resolve();
+
+  wbot.ev.on("messaging-history.set", history => {
+    if (
+      !fullHistorySyncEnabled ||
+      history.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND ||
+      history.messages.length === 0
+    ) {
+      return;
+    }
+
+    const handling = fullHistoryImportQueue
+      .then(async () => {
+        const imported = await importHistoryMessages(
+          history.messages,
+          wbot,
+          fullHistoryContactCache,
+          fullHistoryMediaEnabled
+        );
+        fullHistoryCounts.importedMessages += imported.importedMessages;
+        fullHistoryCounts.duplicateMessages += imported.duplicateMessages;
+        fullHistoryCounts.failedMessages += imported.failedMessages;
+        logger.info({
+          info: "WhatsApp full history batch imported",
+          sessionId,
+          syncType: history.syncType,
+          batchMessages: history.messages.length,
+          ...fullHistoryCounts
+        });
+      })
+      .catch(error =>
+        logger.error({
+          info: "Could not import WhatsApp full history batch",
+          sessionId,
+          err: error
+        })
+      );
+    fullHistoryImportQueue = handling;
+    inFlightMessageHandlers.add(handling);
+    handling.finally(() => inFlightMessageHandlers.delete(handling));
   });
 
   wbot.ev.on("connection.update", async update => {
@@ -1625,94 +1783,14 @@ const syncHistory = async (
           break;
         }
 
-        const sortedMessages = [...messages].sort(
-          (left, right) =>
-            Number(left.messageTimestamp || 0) -
-            Number(right.messageTimestamp || 0)
+        const imported = await importHistoryMessages(
+          messages,
+          wbot,
+          contactCache
         );
-
-        for (const message of sortedMessages) {
-          if (
-            !message.message ||
-            !message.key.id ||
-            !shouldHandleMessage(message)
-          ) {
-            continue;
-          }
-          try {
-            // Evita baixar mídias e consultar contatos de mensagens que já
-            // estão persistidas. A segunda verificação no handler protege a
-            // pequena janela de concorrência entre esta leitura e o upsert.
-            // eslint-disable-next-line no-await-in-loop
-            const existingMessage = await Message.findByPk(message.key.id, {
-              attributes: ["id"]
-            });
-            if (existingMessage) {
-              const remoteJid = message.key.remoteJid || "";
-              const isGroup = isJidGroup(remoteJid);
-              const contactJid =
-                !message.key.fromMe && isGroup && message.key.participant
-                  ? message.key.participant
-                  : remoteJid;
-              // Even when the message body already exists, its current
-              // WhatsApp key can carry the missing LID <-> phone mapping.
-              // Reconcile only a confirmed pair; never infer or fabricate a
-              // phone number from the LID itself.
-              const identity = resolveWhatsAppMessageIdentity(
-                contactJid,
-                message.key as unknown as Record<string, unknown>,
-                getExtendedContext(message) as unknown as
-                  | Record<string, unknown>
-                  | undefined,
-                Boolean(message.key.fromMe)
-              );
-              if (identity.phoneJid && identity.lid && !isGroup) {
-                const cacheKey = `${contactJid}|${identity.phoneJid}`;
-                let reconciledPayload = contactCache.get(cacheKey);
-                if (!reconciledPayload) {
-                  // eslint-disable-next-line no-await-in-loop
-                  reconciledPayload = await convertToContactPayload(
-                    contactJid,
-                    message,
-                    wbot
-                  );
-                  contactCache.set(cacheKey, reconciledPayload);
-                }
-                // eslint-disable-next-line no-await-in-loop
-                await CreateOrUpdateContactService({
-                  ...reconciledPayload,
-                  emitEvent: true
-                });
-              }
-              progress.duplicateMessages += 1;
-              continue;
-            }
-            // eslint-disable-next-line no-await-in-loop
-            const data = await getHistoryMessageData(
-              message,
-              wbot,
-              contactCache
-            );
-            // eslint-disable-next-line no-await-in-loop
-            const result = await handleMessage(
-              data.messagePayload,
-              data.contactPayload,
-              data.contextPayload,
-              data.mediaPayload,
-              { historySync: true }
-            );
-            if (result === "created") progress.importedMessages += 1;
-            if (result === "duplicate") progress.duplicateMessages += 1;
-          } catch (error) {
-            progress.failedMessages += 1;
-            logger.error({
-              info: "Could not import historical WhatsApp message",
-              sessionId,
-              messageId: message.key.id,
-              err: error
-            });
-          }
-        }
+        progress.importedMessages += imported.importedMessages;
+        progress.duplicateMessages += imported.duplicateMessages;
+        progress.failedMessages += imported.failedMessages;
 
         // Publish partial imports even while a large chat is still paginating.
         onProgress?.({ ...progress });
