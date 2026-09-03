@@ -8,8 +8,10 @@ on:
   push:
     branches:
       - master
+      - codex/whatsapp-send-pacing
     paths:
       - "backend/**"
+      - ".github/workflows/build-backend.yaml"
 
 jobs:
   build:
