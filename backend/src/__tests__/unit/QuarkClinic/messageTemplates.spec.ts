@@ -7,6 +7,7 @@ import {
   newAppointmentMessage,
   noShowFollowUpMessage,
   noShowRecoveryMessage,
+  removeInsurancePriceFromMessage,
   removeLegacyConfirmationCodes,
   reminderAppointmentMessage
 } from "../../../services/QuarkClinicServices/messageTemplates";
@@ -64,6 +65,33 @@ describe("Appointment notices", () => {
       }
     });
     expect(body).toContain("R$ 420,50");
+  });
+  it("omits the private price from health-plan appointment reminders", () => {
+    const body = manualReminderAppointmentMessage({
+      ...snapshot,
+      raw: {
+        ...snapshot.raw,
+        procedimento: {
+          nome: "Consulta Psiquiatria HAPVIDA",
+          valor: 350
+        }
+      }
+    });
+    expect(body).toContain("procedimento Consulta Psiquiatria HAPVIDA");
+    expect(body).not.toContain("R$ 350,00");
+    expect(body).not.toContain("no valor de");
+  });
+  it("removes the price from health-plan reminders that were already queued", () => {
+    const queued =
+      "Caro(a) Paciente TESTE, procedimento Consulta Psiquiatria HAPVIDA, no valor de R$ 350,00, na clínica ESSENCIAL SAÚDE.";
+    expect(removeInsurancePriceFromMessage(queued)).toBe(
+      "Caro(a) Paciente TESTE, procedimento Consulta Psiquiatria HAPVIDA, na clínica ESSENCIAL SAÚDE."
+    );
+    expect(
+      removeInsurancePriceFromMessage(
+        "Procedimento Consulta Psiquiatria PARTICULAR, no valor de R$ 350,00, na clínica ESSENCIAL SAÚDE."
+      )
+    ).toContain("R$ 350,00");
   });
   it("removes appointment codes and numeric shortcuts from queued legacy text", () => {
     expect(

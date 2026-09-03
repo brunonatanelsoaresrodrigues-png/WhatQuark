@@ -27,7 +27,31 @@ const parsePrice = (value: unknown): number | null => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
+const coverageLabel = (value: unknown): string => {
+  if (typeof value === "string") return normalized(value);
+  if (!value || typeof value !== "object" || !("nome" in value)) return "";
+  return typeof value.nome === "string" ? normalized(value.nome) : "";
+};
+
+const healthPlanPattern =
+  /\b(HAPVIDA|UNIMED|AMIL|BRADESCO SAUDE|SULAMERICA|MEDISERVICE|ASSEFAZ|CASSI|CAMED|CAPESAUDE|SAUDE CAIXA|CONVENIO|PLANO DE SAUDE)\b/;
+
+const isInsuranceAppointment = (appointment: AppointmentSnapshot): boolean => {
+  const labels = [
+    coverageLabel(appointment.raw.procedimento?.nome),
+    coverageLabel(appointment.raw.convenio),
+    coverageLabel(appointment.raw.convenioNome),
+    coverageLabel(appointment.raw.plano),
+    coverageLabel(appointment.raw.planoNome)
+  ].filter(Boolean);
+
+  return labels.some(
+    label => !label.includes("PARTICULAR") && healthPlanPattern.test(label)
+  );
+};
+
 const procedurePrice = (appointment: AppointmentSnapshot): string => {
+  if (isInsuranceAppointment(appointment)) return "";
   const procedure = appointment.raw.procedimento;
   const informedPrice = [
     procedure?.valor,
@@ -69,6 +93,17 @@ export const removeLegacyConfirmationCodes = (body: string): string =>
     .replace(/\b(CONFIRMAR|CANCELAR)\s+[A-F0-9]{8}\b/gi, "$1")
     .replace(/\*CONFIRMAR\*\s+ou\s+\*1\*/gi, "*CONFIRMAR*")
     .replace(/\*CANCELAR\*\s+ou\s+\*2\*/gi, "*CANCELAR*");
+
+export const removeInsurancePriceFromMessage = (body: string): string => {
+  const content = normalized(body);
+  if (content.includes("PARTICULAR") || !healthPlanPattern.test(content)) {
+    return body;
+  }
+  return body.replace(
+    /,\s*no valor de R\$\s*[\d.]+,\d{2}(?=,\s*na clínica)/i,
+    ""
+  );
+};
 
 export const appointmentNoticeOptOut =
   "Para deixar de receber avisos, responda *PARAR*.";

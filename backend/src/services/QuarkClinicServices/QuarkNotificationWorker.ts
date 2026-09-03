@@ -17,7 +17,10 @@ import {
   formatAppointmentDateTime,
   quarkPhoneVariants
 } from "./appointmentUtils";
-import { removeLegacyConfirmationCodes } from "./messageTemplates";
+import {
+  removeInsurancePriceFromMessage,
+  removeLegacyConfirmationCodes
+} from "./messageTemplates";
 import { emitQuarkDashboardUpdate } from "./dashboardEvents";
 import {
   isSameDayReschedule,
@@ -462,7 +465,9 @@ export const processNotification = async (
       config,
       payload.phone,
       payload.patientName,
-      removeLegacyConfirmationCodes(payload.body),
+      removeInsurancePriceFromMessage(
+        removeLegacyConfirmationCodes(payload.body)
+      ),
       {
         idempotencyKey: `quark-notice:${notification.id}`,
         proactive: true,
